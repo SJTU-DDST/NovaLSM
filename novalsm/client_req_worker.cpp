@@ -40,6 +40,7 @@ namespace nova {
     Connection *nova_conns[NOVA_MAX_CONN];
     mutex new_conn_mutex;
 
+//回复给客户端fd
     SocketState socket_write_handler(int fd, Connection *conn) {
         NOVA_ASSERT(conn->response_size < NovaConfig::config->max_msg_size);
         NICClientReqWorker *store = (NICClientReqWorker *) conn->worker;
@@ -81,6 +82,7 @@ namespace nova {
         return COMPLETE;
     }
 
+//处理已经连接的fd上的事件
     void event_handler(int fd, short which, void *arg) {
         auto *conn = (Connection *) arg;
         NOVA_ASSERT(fd == conn->fd) << fd << ":" << conn->fd;
@@ -88,12 +90,15 @@ namespace nova {
 
         NICClientReqWorker *worker = (NICClientReqWorker *) conn->worker;
 
+//如果下一步是读
         if (conn->state == ConnState::READ) {
             if (worker->stats.nreqs % 100 == 0) {
                 gettimeofday(&worker->start, nullptr);
                 worker->read_start = worker->start;
             }
+//处理读??
             state = socket_read_handler(fd, which, conn);
+//读好了之后处理统计信息
             if (state == COMPLETE) {
                 if (worker->stats.nreqs % 99 == 0 &&
                     worker->stats.nreqs > 0) {
@@ -107,6 +112,7 @@ namespace nova {
                     worker->stats.read_service_time +=
                             elapsed;
                 }
+//处理并填好回复信息
                 bool reply = process_socket_request_handler(fd, conn);
                 if (reply) {
                     if (worker->stats.nreqs % 100 == 0) {
@@ -119,6 +125,7 @@ namespace nova {
                 }
                 worker->stats.nreqs++;
             }
+//如果是写
         } else {
             NOVA_ASSERT((which & EV_WRITE) > 0);
             state = socket_write_handler(fd, conn);
@@ -127,12 +134,14 @@ namespace nova {
             }
         }
 
+//如果
         if (state == CLOSED) {
             NOVA_ASSERT(event_del(&conn->event) == 0) << fd;
             close(fd);
         }
     }
 
+//更新各种状态，开启下一轮服务器循环
     void write_socket_complete(int fd, Connection *conn) {
         NICClientReqWorker *worker = (NICClientReqWorker *) conn->worker;
 
@@ -158,17 +167,19 @@ namespace nova {
         conn->response_ind = 0;
     }
 
+//处理来自客户端的get请求
     bool
     process_socket_get(int fd, Connection *conn, char *request_buf,
                        uint32_t server_cfg_id) {
         // Stats.
         NICClientReqWorker *worker = (NICClientReqWorker *) conn->worker;
         worker->stats.ngets++;
+//提取key并算出hash
         uint64_t int_key = 0;
         uint32_t nkey = str_to_int(request_buf, &int_key) - 1;
         uint64_t hv = keyhash(request_buf, nkey);
         worker->stats.nget_hits++;
-
+//找到对应的fragment
         leveldb::Slice key(request_buf, nkey);
         LTCFragment *frag = NovaConfig::home_fragment(hv, server_cfg_id);
         NOVA_ASSERT(frag) << fmt::format("cfg:{} key:{}", server_cfg_id, hv);
@@ -181,6 +192,7 @@ namespace nova {
             frag->is_ready_mutex_.Unlock();
         }
 
+//从读出来(从哪里呢)，然后发回去
         leveldb::DB *db = reinterpret_cast<leveldb::DB *>(frag->db);
         NOVA_ASSERT(db);
         std::string value;
@@ -216,6 +228,7 @@ namespace nova {
         return true;
     }
 
+//client要重新初始化qp
     bool
     process_reintialize_qps(int fd, Connection *conn) {
         NOVA_LOG(rdmaio::INFO) << "Reinitialize QPs";
@@ -254,6 +267,7 @@ namespace nova {
         return true;
     }
 
+//查看是否准备好了
     bool
     process_socket_query_ready_request(int fd, Connection *conn) {
         int current_cfg_id = NovaConfig::config->current_cfg_id;
@@ -280,6 +294,7 @@ namespace nova {
         return true;
     }
 
+//客户端要求换一个cfg
     bool
     process_socket_change_config_request(int fd, Connection *conn) {
         int current_cfg_id = NovaConfig::config->current_cfg_id;
@@ -362,6 +377,7 @@ namespace nova {
         return true;
     }
 
+//处理client端的stats请求
     bool
     process_socket_stats_request(int fd, Connection *conn) {
         NOVA_LOG(rdmaio::INFO) << "Obtain stats";
@@ -397,6 +413,7 @@ namespace nova {
         return true;
     }
 
+//客户发的是关闭stoc文件的请求，这里会将stoc文件全部关闭
     bool
     process_close_stoc_files(int fd, Connection *conn) {
         NOVA_LOG(rdmaio::INFO) << "Close StoC files";
@@ -435,6 +452,7 @@ namespace nova {
         return true;
     }
 
+//处理客户端发过来的扫描请求
     bool
     process_socket_scan(int fd, Connection *conn, char *request_buf,
                         uint32_t server_cfg_id) {
@@ -566,6 +584,7 @@ namespace nova {
 
     std::atomic_int_fast32_t total_writes;
 
+//处理客户端的put请求
     bool process_socket_put(int fd, Connection *conn, char *request_buf, uint32_t server_cfg_id) {
         // Stats.
         NICClientReqWorker *worker = (NICClientReqWorker *) conn->worker;
@@ -608,6 +627,7 @@ namespace nova {
             frag->is_ready_mutex_.Unlock();
         }
 
+//写好，并且填好返回
         leveldb::DB *db = reinterpret_cast<leveldb::DB *>(frag->db);
         NOVA_ASSERT(db) << fmt::format("cfg:{} key:{}", server_cfg_id, hv);
 
@@ -626,6 +646,7 @@ namespace nova {
         return true;
     }
 
+//处理刚刚这个fd传过来的request
     bool process_socket_request_handler(int fd, Connection *conn) {
         auto worker = (NICClientReqWorker *) conn->worker;
         char *request_buf = worker->request_buf;
@@ -636,6 +657,7 @@ namespace nova {
             msg_type == RequestType::PUT) {
             uint64_t client_cfg_id = 0;
             request_buf += str_to_int(request_buf, &client_cfg_id);
+//如果client的server id不等于本地server的cfg id的话，装上本地的server信息就直接返回
             if (client_cfg_id != server_cfg_id) {
                 char *response_buf = worker->buf;
                 int len = int_to_str(response_buf, server_cfg_id);
@@ -646,6 +668,7 @@ namespace nova {
                 return true;
             }
         }
+//如果对面发过来的client server id就是本地server id的话，就进行各种处理
         if (msg_type == RequestType::GET) {
             return process_socket_get(fd, conn, request_buf, server_cfg_id);
         } else if (msg_type == RequestType::REQ_SCAN) {
@@ -667,12 +690,14 @@ namespace nova {
         return false;
     }
 
+//将fd中的可读的部分读出来到worker的相应地方
     SocketState socket_read_handler(int fd, short which, Connection *conn) {
         NOVA_ASSERT((which & EV_READ) > 0) << which;
         NICClientReqWorker *worker = (NICClientReqWorker *) conn->worker;
         char *buf = worker->request_buf + worker->req_ind;
         bool complete = false;
 
+//将fd里面可读的部分读出来
         if (worker->req_ind == 0) {
             int count = read(fd, buf, NovaConfig::config->max_msg_size);
             worker->stats.nreads++;
@@ -775,6 +800,7 @@ namespace nova {
 //        }
     }
 
+//如果有新的连接
     void new_conn_handler(int fd, short which, void *arg) {
         NICClientReqWorker *store = (NICClientReqWorker *) arg;
         new_conn_mutex.lock();
@@ -784,6 +810,7 @@ namespace nova {
             NOVA_LOG(DEBUG) << "memstore[" << store->thread_id_ << "]: conns "
                             << store->nconns;
         }
+//处理目前queue中所有的连接，并且添加到主循环
         for (int i = 0; i < store->conn_queue.size(); i++) {
             int client_fd = store->conn_queue[i];
             Connection *conn = new Connection();
@@ -809,10 +836,12 @@ namespace nova {
         new_conn_mutex.unlock();
     }
 
+//connection线程的开始
     void NICClientReqWorker::Start() {
         NOVA_LOG(DEBUG) << "memstore[" << thread_id_ << "]: "
                         << "starting mem worker";
 
+//添加映射
         nova::NovaConfig::config->add_tid_mapping();
 
         struct event new_conn_timer_event;

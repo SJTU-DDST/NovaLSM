@@ -25,107 +25,107 @@ using namespace std;
 using namespace rdmaio;
 using namespace nova;
 
-DEFINE_string(db_path, "/tmp/db", "level db path");
-DEFINE_string(stoc_files_path, "/tmp/stoc", "StoC files path");
+DEFINE_string(db_path, "/tmp/db", "level db path");//leveldb的路径???
+DEFINE_string(stoc_files_path, "/tmp/stoc", "StoC files path");//stoc文件的路径
 
-DEFINE_string(all_servers, "localhost:11211", "A list of servers");
-DEFINE_int64(server_id, -1, "Server id.");
-DEFINE_int64(number_of_ltcs, 0, "The first n are LTCs and the rest are StoCs.");
+DEFINE_string(all_servers, "localhost:11211", "A list of servers");//server的list
+DEFINE_int64(server_id, -1, "Server id.");//当前这个server的id
+DEFINE_int64(number_of_ltcs, 0, "The first n are LTCs and the rest are StoCs.");//ltc的数量，剩下的都是stoc
 
-DEFINE_uint64(mem_pool_size_gb, 0, "Memory pool size in GB.");
-DEFINE_uint64(use_fixed_value_size, 0, "Fixed value size.");
+DEFINE_uint64(mem_pool_size_gb, 0, "Memory pool size in GB.");//内存池大小，GB为单位
+DEFINE_uint64(use_fixed_value_size, 0, "Fixed value size.");//使用的value的固定大小
 
-DEFINE_uint64(rdma_port, 0, "The port used by RDMA.");
-DEFINE_uint64(rdma_max_msg_size, 0, "The maximum message size used by RDMA.");
+DEFINE_uint64(rdma_port, 0, "The port used by RDMA.");//rdma用的端口
+DEFINE_uint64(rdma_max_msg_size, 0, "The maximum message size used by RDMA.");//最大的rdma message的大小
 DEFINE_uint64(rdma_max_num_sends, 0,
-              "The maximum number of pending RDMA sends. This includes READ/WRITE/SEND. We also post the same number of RECV events. ");
-DEFINE_uint64(rdma_doorbell_batch_size, 0, "The doorbell batch size.");
-DEFINE_bool(enable_rdma, false, "Enable RDMA.");
-DEFINE_bool(enable_load_data, false, "Enable loading data.");
+              "The maximum number of pending RDMA sends. This includes READ/WRITE/SEND. We also post the same number of RECV events. ");//最大的rdma pending请求的数量
+DEFINE_uint64(rdma_doorbell_batch_size, 0, "The doorbell batch size.");//rdma的batch size
+DEFINE_bool(enable_rdma, false, "Enable RDMA.");//是否开启rdma
+DEFINE_bool(enable_load_data, false, "Enable loading data.");//是否开启传输数据
 
 DEFINE_string(ltc_config_path, "/tmp/uniform-3-32-10000000-frags.txt",
-              "The path that stores the configuration.");
-DEFINE_uint64(ltc_num_client_workers, 0, "Number of client worker threads.");
-DEFINE_uint32(num_rdma_fg_workers, 0,
+              "The path that stores the configuration.");//ltc分布的config
+DEFINE_uint64(ltc_num_client_workers, 0, "Number of client worker threads.");//ltc的线程数量
+DEFINE_uint32(num_rdma_fg_workers, 0,//rdma的前台线程数量
               "Number of RDMA foreground worker threads.");
-DEFINE_uint32(num_compaction_workers, 0,
+DEFINE_uint32(num_compaction_workers, 0,//compaction的线程数量
               "Number of compaction worker threads.");
-DEFINE_uint32(num_rdma_bg_workers, 0,
+DEFINE_uint32(num_rdma_bg_workers, 0,//rdma后台线程数量
               "Number of RDMA background worker threads.");
 
-DEFINE_uint32(num_storage_workers, 0,
+DEFINE_uint32(num_storage_workers, 0,//存储线程数量
               "Number of storage worker threads.");
-DEFINE_uint32(ltc_num_stocs_scatter_data_blocks, 0,
+DEFINE_uint32(ltc_num_stocs_scatter_data_blocks, 0,//一个sstable的内容要散落到多少stoc里面
               "Number of StoCs to scatter data blocks of an SSTable.");
 
-DEFINE_uint64(block_cache_mb, 0, "block cache size in mb");
-DEFINE_uint64(row_cache_mb, 0, "row cache size in mb. Not supported");
+DEFINE_uint64(block_cache_mb, 0, "block cache size in mb");//block的cache大小 MB为单位
+DEFINE_uint64(row_cache_mb, 0, "row cache size in mb. Not supported");//?
 
-DEFINE_uint32(num_memtables, 0, "Number of memtables.");
-DEFINE_uint32(num_memtable_partitions, 0,
+DEFINE_uint32(num_memtables, 0, "Number of memtables.");//memtable数量
+DEFINE_uint32(num_memtable_partitions, 0,//??????
               "Number of memtable partitions. One active memtable per partition.");
-DEFINE_bool(enable_lookup_index, false, "Enable lookup index.");
-DEFINE_bool(enable_range_index, false, "Enable range index.");
+DEFINE_bool(enable_lookup_index, false, "Enable lookup index.");//是否开启lookup_index
+DEFINE_bool(enable_range_index, false, "Enable range index.");//是否开启range index
 
 DEFINE_uint32(l0_start_compaction_mb, 0,
-              "Level-0 size to start compaction in MB.");
-DEFINE_uint32(l0_stop_write_mb, 0, "Level-0 size to stall writes in MB.");
-DEFINE_int32(level, 2, "Number of levels.");
+              "Level-0 size to start compaction in MB.");//level0开启压缩的大小 MB
+DEFINE_uint32(l0_stop_write_mb, 0, "Level-0 size to stall writes in MB.");//level0需要引起写暂停的大小 MB
+DEFINE_int32(level, 2, "Number of levels.");//level的数量
 
-DEFINE_uint64(memtable_size_mb, 0, "memtable size in mb");
-DEFINE_uint64(sstable_size_mb, 0, "sstable size in mb");
+DEFINE_uint64(memtable_size_mb, 0, "memtable size in mb");//memtable的大小 MB
+DEFINE_uint64(sstable_size_mb, 0, "sstable size in mb");//sstable的大小 MB
 DEFINE_uint32(cc_log_buf_size, 0,
-              "log buffer size. Not supported. Same as memtable size.");
-DEFINE_uint32(max_stoc_file_size_mb, 0, "Max StoC file size in MB");
+              "log buffer size. Not supported. Same as memtable size.");//??
+DEFINE_uint32(max_stoc_file_size_mb, 0, "Max StoC file size in MB");//stoc文件的最大的大小 MB为单位
 DEFINE_bool(use_local_disk, false,
-            "Enable LTC to write data to its local disk.");
+            "Enable LTC to write data to its local disk.");//ltc是否可以使用本地的硬盘
 DEFINE_string(scatter_policy, "random",
-              "Policy to scatter an SSTable, i.e., random/power_of_two");
+              "Policy to scatter an SSTable, i.e., random/power_of_two");//打散一个sstable的策略
 DEFINE_string(log_record_mode, "none",
-              "Policy for LogC to replicate log records, i.e., none/rdma");
-DEFINE_uint32(num_log_replicas, 0, "Number of replicas for a log record.");
-DEFINE_string(memtable_type, "", "Memtable type, i.e., pool/static_partition");
+              "Policy for LogC to replicate log records, i.e., none/rdma");//log的记录策略
+DEFINE_uint32(num_log_replicas, 0, "Number of replicas for a log record.");//一条log记录的replica个数
+DEFINE_string(memtable_type, "", "Memtable type, i.e., pool/static_partition");//memtable的种类
 
-DEFINE_bool(recover_dbs, false, "Enable recovery");
-DEFINE_uint32(num_recovery_threads, 32, "Number of recovery threads");
+DEFINE_bool(recover_dbs, false, "Enable recovery");//是否开启recovery
+DEFINE_uint32(num_recovery_threads, 32, "Number of recovery threads");//recovery线程数量
 
-DEFINE_bool(enable_subrange, false, "Enable subranges");
-DEFINE_bool(enable_subrange_reorg, false, "Enable subrange reorganization.");
+DEFINE_bool(enable_subrange, false, "Enable subranges");//是否开启subrange
+DEFINE_bool(enable_subrange_reorg, false, "Enable subrange reorganization.");//是否开启subrange的重新组织
 DEFINE_double(sampling_ratio, 1,
-              "Sampling ratio on memtables for subrange reorg. A value between 0 and 1.");
+              "Sampling ratio on memtables for subrange reorg. A value between 0 and 1.");//为了重新组织subrange，要使用的采样率
 DEFINE_string(zipfian_dist_ref_counts, "/tmp/zipfian",
-              "Zipfian ref count file used to report load imbalance across subranges.");
+              "Zipfian ref count file used to report load imbalance across subranges.");//zipfian的引用计数文件??用来算subrange之间的负载均衡
 DEFINE_string(client_access_pattern, "uniform",
-              "Client access pattern used to report load imbalance across subranges.");
+              "Client access pattern used to report load imbalance across subranges.");//用户访问模式??
 DEFINE_uint32(num_tinyranges_per_subrange, 10,
-              "Number of tiny ranges per subrange.");
+              "Number of tiny ranges per subrange.");//一个subrange中tinyrange的数量
 
 DEFINE_bool(enable_detailed_db_stats, false,
-            "Enable detailed stats. It will report stats such as number of overlapping SSTables between Level-0 and Level-1.");
+            "Enable detailed stats. It will report stats such as number of overlapping SSTables between Level-0 and Level-1.");//是否开启详细的stats数据
 DEFINE_bool(enable_flush_multiple_memtables, false,
-            "Enable a compaction thread to compact mulitple memtables at the same time.");
+            "Enable a compaction thread to compact mulitple memtables at the same time.");//一个compaction线程是否可以同时压缩多个memtable
 DEFINE_uint32(subrange_no_flush_num_keys, 100,
-              "A subrange merges memtables into new a memtable if its contained number of unique keys is less than this threshold.");
+              "A subrange merges memtables into new a memtable if its contained number of unique keys is less than this threshold.");//如果一个subrange中的key数量少于这个数量，那就把他们捏成一个memtable
 DEFINE_string(major_compaction_type, "no",
-              "Major compaction type: i.e., no/lc/sc");
+              "Major compaction type: i.e., no/lc/sc");//major compaction的类型
 DEFINE_uint32(major_compaction_max_parallism, 1,
-              "The maximum compaction parallelism.");
+              "The maximum compaction parallelism.");//最大的compaction 并行数量??
 DEFINE_uint32(major_compaction_max_tables_in_a_set, 15,
-              "The maximum number of SSTables in a compaction job.");
-DEFINE_uint32(num_sstable_replicas, 1, "Number of replicas for SSTables.");
-DEFINE_uint32(num_sstable_metadata_replicas, 1, "Number of replicas for meta blocks of SSTables.");
-DEFINE_bool(use_parity_for_sstable_data_blocks, false, "");
-DEFINE_uint32(num_manifest_replicas, 1, "Number of replicas for manifest file.");
+              "The maximum number of SSTables in a compaction job.");//一次compaction中最多的sstable数量
+DEFINE_uint32(num_sstable_replicas, 1, "Number of replicas for SSTables.");//一个sstable的replica数量
+DEFINE_uint32(num_sstable_metadata_replicas, 1, "Number of replicas for meta blocks of SSTables.");//sstable的meta block的replica数量
+DEFINE_bool(use_parity_for_sstable_data_blocks, false, "");//是否开启对于sstable的data block的校验
+DEFINE_uint32(num_manifest_replicas, 1, "Number of replicas for manifest file.");//manifest文件的replica数量
 
 DEFINE_int32(fail_stoc_id, -1, "The StoC to fail.");
 DEFINE_int32(exp_seconds_to_fail_stoc, -1,
-             "Number of seconds elapsed to fail the stoc.");
+             "Number of seconds elapsed to fail the stoc.");//在失效一个stoc之前需要等待的秒数
 DEFINE_int32(failure_duration, -1, "Failure duration");
-DEFINE_int32(num_migration_threads, 1, "Number of migration threads");
-DEFINE_string(ltc_migration_policy, "base", "immediate/base");
-DEFINE_bool(use_ordered_flush, false, "use ordered flush");
+DEFINE_int32(num_migration_threads, 1, "Number of migration threads");//负责迁移的线程的数量
+DEFINE_string(ltc_migration_policy, "base", "immediate/base");//迁移的策略
+DEFINE_bool(use_ordered_flush, false, "use ordered flush");//是否采用顺序 flush?
 
-NovaConfig *NovaConfig::config;
+NovaConfig *NovaConfig::config; //配置
 std::atomic_int_fast32_t leveldb::EnvBGThread::bg_flush_memtable_thread_id_seq;
 std::atomic_int_fast32_t nova::StorageWorker::storage_file_number_seq;
 // Sequence id to assign tasks to a thread in a round-robin manner.
@@ -138,10 +138,12 @@ std::atomic_int_fast32_t nova::DBMigration::migration_seq_id_;
 std::atomic_int_fast32_t leveldb::StorageSelector::stoc_for_compaction_seq_id;
 
 std::unordered_map<uint64_t, leveldb::FileMetaData *> leveldb::Version::last_fnfile;
-std::atomic<nova::Servers *> leveldb::StorageSelector::available_stoc_servers;
-NovaGlobalVariables NovaGlobalVariables::global;
+std::atomic<nova::Servers *> leveldb::StorageSelector::available_stoc_servers;//当前的stoc server
+NovaGlobalVariables NovaGlobalVariables::global;//全局统计量
 
+//开启服务器
 void StartServer() {
+//rdma的管理器
     RdmaCtrl *rdma_ctrl = new RdmaCtrl(NovaConfig::config->my_server_id,
                                        NovaConfig::config->rdma_port);
 //    if (NovaConfig::config->my_server_id < FLAGS_number_of_ltcs) {
@@ -156,9 +158,11 @@ void StartServer() {
     auto *buf = (char *) malloc(ntotal);
     memset(buf, 0, ntotal);
     NovaConfig::config->nova_buf = buf;
+//nnovabuf是结尾
     NovaConfig::config->nnovabuf = ntotal;
     NOVA_ASSERT(buf != NULL) << "Not enough memory";
 
+//如果不恢复数据库，直接删除文件
     if (!FLAGS_recover_dbs) {
         int ret = system(fmt::format("exec rm -rf {}/*",
                            NovaConfig::config->db_path).data());
@@ -167,6 +171,7 @@ void StartServer() {
     }
     mkdirs(NovaConfig::config->stoc_files_path.data());
     mkdirs(NovaConfig::config->db_path.data());
+//这里就是一个服务器
     auto *mem_server = new NICServer(rdma_ctrl, buf, port);
     mem_server->Start();
 }
@@ -232,12 +237,16 @@ int main(int argc, char *argv[]) {
     NovaConfig::config->memtable_type = FLAGS_memtable_type;
 
     NovaConfig::config->num_stocs_scatter_data_blocks = FLAGS_ltc_num_stocs_scatter_data_blocks;
+//stoc文件 最大的大小 KB为单位了 这里到底是什么单位
     NovaConfig::config->max_stoc_file_size = FLAGS_max_stoc_file_size_mb * 1024;
-    NovaConfig::config->manifest_file_size = NovaConfig::config->max_stoc_file_size * 4;
+//manifest文件大小 KB为单位?
+    NovaConfig::config->manifest_file_size = NovaConfig::config->max_stoc_file_size * 4;//manifest单位应该是B?
+//sstable_size 字节为单位的大小
     NovaConfig::config->sstable_size = FLAGS_sstable_size_mb * 1024 * 1024;
     NovaConfig::config->use_local_disk = FLAGS_use_local_disk;
     NovaConfig::config->num_tinyranges_per_subrange = FLAGS_num_tinyranges_per_subrange;
 
+//不同的scatter策略
     if (FLAGS_scatter_policy == "random") {
         NovaConfig::config->scatter_policy = ScatterPolicy::RANDOM;
     } else if (FLAGS_scatter_policy == "power_of_two") {
@@ -251,6 +260,7 @@ int main(int argc, char *argv[]) {
         NovaConfig::config->scatter_policy = ScatterPolicy::SCATTER_DC_STATS;
     }
 
+//不同的log策略
     if (FLAGS_log_record_mode == "none") {
         NovaConfig::config->log_record_mode = NovaLogRecordMode::LOG_NONE;
     } else if (FLAGS_log_record_mode == "rdma") {
@@ -272,14 +282,18 @@ int main(int argc, char *argv[]) {
     NovaConfig::config->num_migration_threads = FLAGS_num_migration_threads;
     NovaConfig::config->use_ordered_flush = FLAGS_use_ordered_flush;
 
+//ltc的迁移策略
     if (FLAGS_ltc_migration_policy == "immediate") {
         NovaConfig::config->ltc_migration_policy = LTCMigrationPolicy::IMMEDIATE;
     } else {
         NovaConfig::config->ltc_migration_policy = LTCMigrationPolicy::PROCESS_UNTIL_MIGRATION_COMPLETE;
     }
 
+//读关于data partition的东西
     NovaConfig::ReadFragments(FLAGS_ltc_config_path);
+//如果一个log有一些replica的话
     if (FLAGS_num_log_replicas > 0) {
+//在每一个config里面必须要保证replica个数小于总体stoc server的个数，这里默认设置是没有replica
         for (int i = 0; i < NovaConfig::config->cfgs.size(); i++) {
             NOVA_ASSERT(FLAGS_num_log_replicas <= NovaConfig::config->cfgs[i]->stoc_servers.size());
         }
@@ -306,6 +320,7 @@ int main(int argc, char *argv[]) {
     }
     leveldb::StorageSelector::available_stoc_servers.store(available_stoc_servers);
 
+//各种检查
     // Sanity checks.
     if (NovaConfig::config->number_of_sstable_data_replicas > 1) {
         NOVA_ASSERT(NovaConfig::config->number_of_sstable_data_replicas ==
@@ -314,6 +329,7 @@ int main(int argc, char *argv[]) {
         NOVA_ASSERT(!NovaConfig::config->use_parity_for_sstable_data_blocks);
     }
 
+//各种检查
     if (NovaConfig::config->use_parity_for_sstable_data_blocks) {
         NOVA_ASSERT(NovaConfig::config->number_of_sstable_data_replicas == 1);
         NOVA_ASSERT(NovaConfig::config->num_stocs_scatter_data_blocks > 1);
@@ -321,6 +337,7 @@ int main(int argc, char *argv[]) {
                     NovaConfig::config->number_of_sstable_metadata_replicas + 1 <=
                     NovaConfig::config->cfgs[0]->stoc_servers.size());
     }
+//检查一下其他cfg的问题
     for (int i = 0; i < NovaConfig::config->cfgs.size(); i++) {
         auto cfg = NovaConfig::config->cfgs[i];
         NOVA_ASSERT(FLAGS_ltc_num_stocs_scatter_data_blocks <= cfg->stoc_servers.size()) << fmt::format(
@@ -330,6 +347,7 @@ int main(int argc, char *argv[]) {
                     "Not enough stoc to replicate sstables. Replication factor: {} Num StoCs: {}",
                     FLAGS_num_sstable_replicas, cfg->stoc_servers.size());
     }
+//开启服务器
     StartServer();
     return 0;
 }

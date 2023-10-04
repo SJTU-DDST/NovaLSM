@@ -32,6 +32,7 @@ namespace nova {
                                                                                tid_(tid) {
     }
 
+//加载数据实际调用到这里
     uint64_t LoadThread::LoadDataWithRangePartition() {
         // load data.
         timeval start{};
@@ -52,6 +53,7 @@ namespace nova {
         int loaded_frags = 0;
         std::vector<leveldb::DB *> dbs;
         while (loaded_frags < frags.size()) {
+//如果当前遍历的fragment的ltc server id不是本机的server id
             if (frags[i]->ltc_server_id != NovaConfig::config->my_server_id) {
                 loaded_frags++;
                 i = (i + 1) % frags.size();
@@ -59,12 +61,14 @@ namespace nova {
             }
 
             uint32_t dbid = frags[i]->dbid;
+//当前分配给这个线程的id里面没有这个，直接过
             if (assigned_frags_.find(dbid) == assigned_frags_.end()) {
                 loaded_frags++;
                 i = (i + 1) % frags.size();
                 continue;
             }
 
+//
             // Insert cold keys first so that hot keys will be at the top level.
             leveldb::DB *db = reinterpret_cast<leveldb::DB *>(frags[i]->db);
             dbs.push_back(db);
@@ -79,6 +83,7 @@ namespace nova {
                 std::string val(
                         NovaConfig::config->load_default_value_size, v);
 
+//这里的load应该是每次初始的时候自己搞一堆kv进去
                 for (int k = 0; k < NovaConfig::config->servers.size(); k++) {
                     state[k].rdma_wr_id = -1;
                     state[k].result = leveldb::StoCReplicateLogRecordResult::REPLICATE_LOG_RECORD_NONE;
@@ -113,11 +118,13 @@ namespace nova {
             i = (i + 1) % frags.size();
         }
 
+//load之后标记
         for (auto db : dbs) {
             auto dbimpl = reinterpret_cast<leveldb::DBImpl *>(db);
             dbimpl->is_loading_db_ = true;
             db->StartCoordinatedCompaction();
         }
+//把之前put的所有kv对都压缩到l1以及后面的level
         // Wait until there are no SSTables at L0.
         while (NovaConfig::config->major_compaction_type != "no") {
             uint32_t l0tables = 0;
@@ -198,6 +205,7 @@ namespace nova {
         }
     }
 
+//这个函数是load thread，用于加载数据
     void LoadThread::Start() {
         timeval start{};
         gettimeofday(&start, nullptr);
@@ -215,7 +223,9 @@ namespace nova {
         throughput = puts / std::max((int) (end.tv_sec - start.tv_sec), 1);
     }
 
+//加载数据??
     void NICServer::LoadData() {
+//如果不能用本地磁盘且本机server是stoc的话，直接回
         if (!NovaConfig::config->use_local_disk) {
             if (NovaConfig::config->cfgs[0]->IsStoC()) {
                 return;
@@ -278,23 +288,27 @@ namespace nova {
     NICServer::NICServer(RdmaCtrl *rdma_ctrl,
                          char *rdmabuf, int nport) : nport_(nport) {
         Configuration *cfg = NovaConfig::config->cfgs[0];
+//建立各个fragment的的数据库文件
         for (int i = 0; i < cfg->fragments.size(); i++) {
             std::string db_path = DBName(NovaConfig::config->db_path, cfg->fragments[i]->dbid);
             mkdir(db_path.c_str(), 0777);
         }
         char *buf = rdmabuf;
+//跳过了前面rdma的空间，到了mem_pool的空间这里
         char *cache_buf = buf + nrdma_buf_server();
-
         uint32_t num_mem_partitions = 1;
         NovaConfig::config->num_mem_partitions = num_mem_partitions;
-        uint64_t slab_size_mb = NovaConfig::config->manifest_file_size / 1024 / 1024;
+        uint64_t slab_size_mb = NovaConfig::config->manifest_file_size / 1024 / 1024;//倒退的话manifest_size单位应该是B
+//内存管理器
         mem_manager = new NovaMemManager(cache_buf,
                                          num_mem_partitions,
                                          NovaConfig::config->mem_pool_size_gb,
                                          slab_size_mb);
+//意义和名字一样
         log_manager = new StoCInMemoryLogFileManager(mem_manager);
         NovaConfig::config->add_tid_mapping();
         int bg_thread_id = 0;
+//创建后台的flush线程和compaction线程
         for (int i = 0; i < NovaConfig::config->num_compaction_workers; i++) {
             {
                 auto bg = new leveldb::LTCCompactionThread(mem_manager);
@@ -308,6 +322,7 @@ namespace nova {
 
         leveldb::Cache *block_cache = nullptr;
         leveldb::Cache *row_cache = nullptr;
+//如果需要block cache，那就申请一个leveldb中的lru cache
         if (NovaConfig::config->block_cache_mb > 0) {
             uint64_t cache_size =
                     (uint64_t) (NovaConfig::config->block_cache_mb) *
@@ -319,26 +334,32 @@ namespace nova {
                                block_cache->TotalCapacity(),
                                NovaConfig::config->block_cache_mb);
         }
+//申请memtable的池子
         leveldb::MemTablePool *pool = new leveldb::MemTablePool;
-        pool->num_available_memtables_ = NovaConfig::config->num_memtables;
+        pool->num_available_memtables_ = NovaConfig::config->num_memtables;//默认值是0???
         pool->range_cond_vars_ = new leveldb::port::CondVar *[cfg->fragments.size()];
 
+//设置sstable的选项?
         leveldb::EnvOptions env_option;
         env_option.sstable_mode = leveldb::NovaSSTableMode::SSTABLE_DISK;
         leveldb::PosixEnv *env = new leveldb::PosixEnv;
         env->set_env_option(env_option);
 
+//建立stoc的持久介质中的文件管理器
         leveldb::StocPersistentFileManager *stoc_file_manager = new leveldb::StocPersistentFileManager(env, mem_manager,
                                                                                                        NovaConfig::config->stoc_files_path,
-                                                                                                       NovaConfig::config->max_stoc_file_size);
+                                                                                                       NovaConfig::config->max_stoc_file_size);        
         std::vector<nova::RDMAMsgCallback *> rdma_threads;
         for (int db_index = 0; db_index < cfg->fragments.size(); db_index++) {
+//如果fragment的ltc的serverid不是当前自己的id，那就填一个null进去
             if (NovaConfig::config->cfgs[0]->fragments[db_index]->ltc_server_id != NovaConfig::config->my_server_id) {
                 dbs_.push_back(nullptr);
                 continue;
             }
+//如果dragment开这两个线程出来???，其实没有启动线程
             auto reorg = new leveldb::LTCCompactionThread(mem_manager);
             auto coord = new leveldb::LTCCompactionThread(mem_manager);
+
             auto client = new leveldb::StoCBlockClient(db_index, stoc_file_manager);
             dbs_.push_back(CreateDatabase(0, db_index, block_cache, pool, mem_manager, client, bg_compaction_threads,
                                           bg_flush_memtable_threads, reorg, coord));
@@ -350,8 +371,10 @@ namespace nova {
         // Assign request id space so that they won't conflict.
         int worker_id = 0;
         uint32_t max_req_id = UINT32_MAX - 1;
+//每个server对应的range空间大小
         uint32_t range_per_server =
                 max_req_id / NovaConfig::config->servers.size();
+//当前的server对应的request id的上下限 [) ?
         uint32_t lower_client_req_id =
                 1 + (NovaConfig::config->my_server_id * range_per_server);
         uint32 upper_client_req_id = lower_client_req_id + range_per_server;
@@ -360,18 +383,24 @@ namespace nova {
             << fmt::format("Request Id range {}:{}", lower_client_req_id,
                            upper_client_req_id);
         std::vector<RDMAServerImpl *> rdma_servers;
+//这里是处理前台的线程
         for (worker_id = 0; worker_id < NovaConfig::config->num_fg_rdma_workers; worker_id++) {
+//这个结构应该是记录本地server对于各个server有多少pending的请求??(发送的)
             RDMAAdmissionCtrl *admission_ctrl = new RDMAAdmissionCtrl;
+//这个是用来???rdma线程的基类，应该是callback类型的函数
             RDMAMsgHandler *rdma_msg_handler = new RDMAMsgHandler(rdma_ctrl, mem_manager, admission_ctrl);
+//记录到rdma线程和前台线程中
             rdma_threads.push_back(rdma_msg_handler);
             fg_rdma_msg_handlers.push_back(rdma_msg_handler);
+//
             NovaRDMABroker *broker = nullptr;
             std::vector<QPEndPoint> endpoints;
             for (int i = 0; i < NovaConfig::config->servers.size(); i++) {
+//如果是本地server，不处理
                 if (i == NovaConfig::config->my_server_id) {
                     continue;
                 }
-
+//不然的话，填好对应的server，和当前的worker_id(前台的),以及server对应的id
                 QPEndPoint qp;
                 qp.host = NovaConfig::config->servers[i];
                 qp.thread_id = worker_id;
@@ -379,6 +408,7 @@ namespace nova {
                 endpoints.push_back(qp);
             }
 
+//broker，这里是每个worker一个的，用于处理这个worker对于所有server的rdma读写
             if (NovaConfig::config->enable_rdma) {
                 broker = new NovaRDMARCBroker(buf, worker_id, endpoints,
                                               NovaConfig::config->servers.size(),
@@ -390,10 +420,12 @@ namespace nova {
                                               NovaConfig::config->nnovabuf,
                                               NovaConfig::config->rdma_port,
                                               fg_rdma_msg_handlers[worker_id]);
+//这个应该是用不上
             } else {
                 broker = new NovaRDMANoopBroker();
             }
 
+//每个worker一个的rdma server
             // Log writers.
             nova::RDMAServerImpl *rdma_server = new nova::RDMAServerImpl(
                     rdma_ctrl,
@@ -403,8 +435,10 @@ namespace nova {
                     worker_id,
                     false,
                     admission_ctrl);
+//用于向stoc写入?
             auto log_writer = new leveldb::LogCLogWriter(broker, mem_manager,
                                                          log_manager);
+//
             leveldb::StoCRDMAClient *stoc_client = new leveldb::StoCRDMAClient(
                     worker_id,
                     broker,
@@ -413,7 +447,7 @@ namespace nova {
                     lower_client_req_id,
                     upper_client_req_id,
                     rdma_server);
-
+//填好各种信息
             rdma_servers.push_back(rdma_server);
             rdma_server->rdma_broker_ = broker;
             log_writer->admission_control_ = admission_ctrl;
@@ -423,10 +457,11 @@ namespace nova {
             rdma_msg_handler->stoc_client_ = stoc_client;
             rdma_msg_handler->rdma_log_writer_ = log_writer;
             rdma_msg_handler->rdma_server_ = rdma_server;
-
+//buf跳过这个worker占据的rdma buffer
             buf += nrdma_buf_unit() * NovaConfig::config->servers.size();
         }
 
+//处理后台的线程，几乎一样的方式，这些专门的rdma回调好像是专门给各种功能的thread调用的
         for (int i = 0; i < NovaConfig::config->num_bg_rdma_workers; i++) {
             RDMAAdmissionCtrl *admission_ctrl = new RDMAAdmissionCtrl;
             RDMAMsgHandler *cc = new RDMAMsgHandler(rdma_ctrl, mem_manager, admission_ctrl);
@@ -491,6 +526,7 @@ namespace nova {
             buf += nrdma_buf_unit() * NovaConfig::config->servers.size();
         }
 
+//处理用于migrate的线程，这里handler与bg的一样
         for (int i = 0; i < NovaConfig::config->num_migration_threads; i++) {
             auto client = new leveldb::StoCBlockClient(i, stoc_file_manager);
             client->rdma_msg_handlers_ = bg_rdma_msg_handlers;
@@ -498,18 +534,22 @@ namespace nova {
                                                    bg_rdma_msg_handlers, bg_compaction_threads,
                                                    bg_flush_memtable_threads);
             db_migration_threads.push_back(migrate);
+//这里就直接开启了migration线程
             db_migrate_workers.emplace_back(&DBMigration::Start, migrate);
         }
 
+//???这个用来干嘛
         for (auto rdma_server : rdma_servers) {
             nova::RDMAWriteHandler *write_handler = new nova::RDMAWriteHandler(db_migration_threads);
             rdma_server->rdma_write_handler_ = write_handler;
         }
 
+//处理用于connection的线程??
         for (int i = 0; i < NovaConfig::config->num_conn_workers; i++) {
             conn_workers.push_back(new NICClientReqWorker(i));
             conn_workers[i]->mem_manager_ = mem_manager;
 
+//每个connection的线程分配一个max_bloacksize的大小，
             uint32_t scid = mem_manager->slabclassid(0, MAX_BLOCK_SIZE);
             conn_workers[i]->rdma_backing_mem = mem_manager->ItemAlloc(0, scid);
             conn_workers[i]->rdma_backing_mem_size = MAX_BLOCK_SIZE;
@@ -523,6 +563,7 @@ namespace nova {
             conn_workers[i]->db_migration_threads_ = db_migration_threads;
         }
 
+//每个负责flush_memtable的线程
         for (int i = 0; i < NovaConfig::config->num_compaction_workers; i++) {
             auto bg = static_cast<leveldb::LTCCompactionThread *>(bg_flush_memtable_threads[i]);
             bg->stoc_client_ = new leveldb::StoCBlockClient(i,
@@ -530,6 +571,7 @@ namespace nova {
             bg->stoc_client_->rdma_msg_handlers_ = bg_rdma_msg_handlers;
             bg->thread_id_ = i;
         }
+//每个负责compaction的线程
         for (int i = 0; i < NovaConfig::config->num_compaction_workers; i++) {
             auto bg = static_cast<leveldb::LTCCompactionThread *>(bg_compaction_threads[i]);
             bg->stoc_client_ = new leveldb::StoCBlockClient(i,
@@ -539,6 +581,7 @@ namespace nova {
         }
         NOVA_ASSERT(buf == cache_buf);
 
+//
         leveldb::EnvOptions mem_env_option;
         mem_env_option.sstable_mode = leveldb::NovaSSTableMode::SSTABLE_MEM;
         leveldb::PosixEnv *mem_env = new leveldb::PosixEnv;
@@ -548,6 +591,7 @@ namespace nova {
                                                                mem_env);
         storage_options.comparator = new leveldb::InternalKeyComparator(
                 user_comparator);
+//处理关于storage的线程，后台
         for (int i = 0; i < NovaConfig::config->num_storage_workers; i++) {
             auto client = new leveldb::StoCBlockClient(i, stoc_file_manager);
             client->rdma_msg_handlers_ = bg_rdma_msg_handlers;
@@ -561,6 +605,7 @@ namespace nova {
                     i, mem_env);
             bg_storage_workers.push_back(worker);
         }
+//处理关于storage的线程，前台
         for (int i = 0; i < NovaConfig::config->num_storage_workers; i++) {
             auto client = new leveldb::StoCBlockClient(i, stoc_file_manager);
             client->rdma_msg_handlers_ = fg_rdma_msg_handlers;
@@ -574,6 +619,7 @@ namespace nova {
                     i, mem_env);
             fg_storage_workers.push_back(worker);
         }
+//后台压缩存储线程??
         for (int i = 0; i < NovaConfig::config->num_compaction_workers; i++) {
             auto client = new leveldb::StoCBlockClient(i, stoc_file_manager);
             client->rdma_msg_handlers_ = bg_rdma_msg_handlers;
@@ -595,10 +641,12 @@ namespace nova {
             rdma_servers[i]->compaction_storage_workers_ = compaction_storage_workers;
         }
 
+//我记得应该是只有本地对应的db不是null
         for (int i = 0; i < dbs_.size(); i++) {
             if (!dbs_[i]) {
                 continue;
             }
+//开启这下面的两个线程，这两个线程对应的是同一个函数
             auto db = reinterpret_cast<leveldb::DBImpl *>(dbs_[i]);
             auto reorg_thread = reinterpret_cast<leveldb::LTCCompactionThread *>(db->options_.reorg_thread);
             reorg_workers.emplace_back(&leveldb::LTCCompactionThread::Start, reorg_thread);
@@ -610,6 +658,7 @@ namespace nova {
             compaction_coord_workers.emplace_back(&leveldb::LTCCompactionThread::Start, coord_thread);
         }
 
+//开启rdma线程
         // Start the threads.
         if (NovaConfig::config->enable_rdma) {
             for (int i = 0; i < NovaConfig::config->num_fg_rdma_workers; i++) {
@@ -619,6 +668,7 @@ namespace nova {
                 fg_rdma_workers.emplace_back(&RDMAMsgHandler::Start, bg_rdma_msg_handlers[i]);
             }
         }
+//开启ltc flush memtable线程和 ltc compaction线程
         for (int i = 0; i < NovaConfig::config->num_compaction_workers; i++) {
             auto bg = reinterpret_cast<leveldb::LTCCompactionThread *>(bg_flush_memtable_threads[i]);
             compaction_workers.emplace_back(&leveldb::LTCCompactionThread::Start, bg);
@@ -627,14 +677,17 @@ namespace nova {
             auto bg = reinterpret_cast<leveldb::LTCCompactionThread *>(bg_compaction_threads[i]);
             compaction_workers.emplace_back(&leveldb::LTCCompactionThread::Start, bg);
         }
+//开启storage线程
         for (int i = 0; i < NovaConfig::config->num_storage_workers; i++) {
             storage_worker_threads.emplace_back(&StorageWorker::Start, fg_storage_workers[i]);
             storage_worker_threads.emplace_back(&StorageWorker::Start, bg_storage_workers[i]);
         }
+//开启compaction storage线程
         for (int i = 0; i < NovaConfig::config->num_compaction_workers; i++) {
             storage_worker_threads.emplace_back(&StorageWorker::Start, compaction_storage_workers[i]);
         }
 
+//开启migrate线程
         if (NovaConfig::config->enable_subrange_reorg && NovaConfig::config->use_ordered_flush) {
             auto client = new leveldb::StoCBlockClient(0, stoc_file_manager);
             client->rdma_msg_handlers_ = bg_rdma_msg_handlers;
@@ -642,6 +695,7 @@ namespace nova {
             db_migrate_workers.emplace_back(&leveldb::LSMTreeCleaner::FlushingMemTables, lsm_tree_cleaner_);
         }
 
+//如果当初cfg个数大于1的话，开启这个定时清理数据库文件的任务???
         if (NovaConfig::config->cfgs.size() > 1) {
             auto client = new leveldb::StoCBlockClient(0, stoc_file_manager);
             client->rdma_msg_handlers_ = bg_rdma_msg_handlers;
@@ -649,6 +703,7 @@ namespace nova {
             db_migrate_workers.emplace_back(&leveldb::LSMTreeCleaner::CleanLSM, lsm_tree_cleaner_);
         }
 
+//如果cfg大于1的话开启定时
         if (NovaConfig::config->cfgs.size() > 1) {
             auto client = new leveldb::StoCBlockClient(0, stoc_file_manager);
             client->rdma_msg_handlers_ = bg_rdma_msg_handlers;
@@ -660,6 +715,7 @@ namespace nova {
         bool all_initialized = false;
         while (!all_initialized) {
             all_initialized = true;
+//查看前后台rdma msg处理线程是否已经准备完毕
             if (NovaConfig::config->enable_rdma) {
                 for (const auto &worker : fg_rdma_msg_handlers) {
                     if (!worker->IsInitialized()) {
@@ -680,6 +736,7 @@ namespace nova {
             if (!all_initialized) {
                 continue;
             }
+//检查工作线程是否准备好了
             for (const auto &worker : bg_flush_memtable_threads) {
                 if (!worker->IsInitialized()) {
                     all_initialized = false;
@@ -694,7 +751,7 @@ namespace nova {
             }
             usleep(10000);
         }
-
+//设置一些东西
         for (int db_index = 0; db_index < cfg->fragments.size(); db_index++) {
             if (!dbs_[db_index]) {
                 continue;
@@ -705,6 +762,7 @@ namespace nova {
             client->rdma_msg_handlers_ = bg_rdma_msg_handlers;
         }
 
+//如果开recover的话，就对本地server的数据库调用recover进行恢复
         if (NovaConfig::config->recover_dbs) {
             for (int db_index = 0; db_index < cfg->fragments.size(); db_index++) {
                 if (!dbs_[db_index]) {
@@ -715,10 +773,12 @@ namespace nova {
             }
         }
 
+//如果开了enable_load_data，就加载各个partition的数据，这里指示的是要不要一开始填很多数据进去
         if (NovaConfig::config->enable_load_data) {
             LoadData();
         }
 
+//开启追踪
         for (auto db : dbs_) {
             if (!db) {
                 continue;
@@ -734,6 +794,7 @@ namespace nova {
             db->StartCoordinatedCompaction();
         }
 
+//开启统计量的线程
         stat_thread_ = new NovaStatThread;
         stat_thread_->bg_storage_workers_ = bg_storage_workers;
         stat_thread_->fg_storage_workers_ = fg_storage_workers;
@@ -759,9 +820,12 @@ namespace nova {
                         continue;
                     }
                     leveldb::StoCResponse response;
+//将ltc准备好
                     uint32_t req_id = client.InitiateIsReadyForProcessingRequests(
                             ltc);
+//等待处理
                     client.Wait();
+//查看是否处理好了
                     NOVA_ASSERT(client.IsDone(req_id, &response, nullptr));
                     NOVA_LOG(INFO)
                         << fmt::format("LTC-{} is ready? {}", ltc,
@@ -779,6 +843,7 @@ namespace nova {
             }
         }
 
+//开启连接线程，这个好像是用于处理客户端请求??
         // Start connection threads in the end after we have loaded all data.
         for (int i = 0; i < NovaConfig::config->num_conn_workers; i++) {
             conn_worker_threads.emplace_back(start, conn_workers[i]);
@@ -823,6 +888,7 @@ namespace nova {
         store->conn_mu.unlock();
     }
 
+//服务器真正跑起来
     void NICServer::Start() {
         SetupListener();
         struct event event{};

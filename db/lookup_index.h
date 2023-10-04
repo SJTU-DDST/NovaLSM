@@ -12,6 +12,7 @@
 #include <atomic>
 #include "leveldb/slice.h"
 
+//这里应该是论文中提到的lookup index的位置
 namespace leveldb {
     struct TableLocation {
         std::atomic<uint32_t> memtable_id;

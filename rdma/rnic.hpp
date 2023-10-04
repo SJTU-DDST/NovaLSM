@@ -130,6 +130,7 @@ namespace rdmaio {
 
     class RdmaCtrl;
 
+//存储了各种关于网卡设备的信息，就是设备的抽象类
     struct RNicHandler {
 
         RNicHandler(uint16_t dev_id, uint8_t port_id, ibv_context *ctx, ibv_pd *pd, uint16_t lid, uint16_t gid = 0) :

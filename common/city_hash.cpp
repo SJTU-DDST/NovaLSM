@@ -40,6 +40,8 @@
 // possible hash functions, by using SIMD instructions, or by
 // compromising on hash quality.
 
+
+//cityhash的实现
 #include <string.h>
 
 namespace nova {

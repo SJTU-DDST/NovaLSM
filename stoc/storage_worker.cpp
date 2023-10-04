@@ -18,6 +18,7 @@
 #include "db/version_set.h"
 
 namespace nova {
+//初始化
     StorageWorker::StorageWorker(
             leveldb::StocPersistentFileManager *stoc_file_manager,
             std::vector<RDMAServerImpl *> &rdma_servers,
@@ -37,6 +38,7 @@ namespace nova {
         sem_init(&sem_, 0, 0);
     }
 
+//任务加一个，然后信号量赠一进行唤醒
     void StorageWorker::AddTask(
             const nova::StorageTask &task) {
         mutex_.lock();
@@ -117,6 +119,7 @@ namespace nova {
     void StorageWorker::Start() {
         NOVA_LOG(DEBUG) << "CC server worker started";
 
+//添加映射之后直接开始等待
         nova::NovaConfig::config->add_tid_mapping();
 
         while (is_running_) {

@@ -8,6 +8,7 @@
 
 namespace leveldb {
 
+//初始化一些东西
     LTCCompactionThread::LTCCompactionThread(MemManager *mem_manager)
             : mem_manager_(mem_manager) {
         sem_init(&signal, 0, 0);
@@ -16,6 +17,7 @@ namespace leveldb {
         }
     }
 
+//加一个后台工作，然后用信号量开启
     bool LTCCompactionThread::Schedule(const EnvBGTask &task) {
         background_work_mutex_.Lock();
         background_work_queue_.push_back(task);
@@ -37,6 +39,7 @@ namespace leveldb {
 
 
     void LTCCompactionThread::Start() {
+//首先添加映射
         nova::NovaConfig::config->add_tid_mapping();
 
         background_work_mutex_.Lock();
@@ -45,6 +48,7 @@ namespace leveldb {
 
         rand_seed_ = thread_id_ + 100000;
 
+//首先查看是否需要major compaction??
         if (db_) {
             leveldb::DB *db = reinterpret_cast<leveldb::DB *>(db_);
             db->CoordinateMajorCompaction();
@@ -53,6 +57,7 @@ namespace leveldb {
         NOVA_LOG(rdmaio::DEBUG)
             << fmt::format("{} Compaction worker started.", thread_id_);
         while (is_running_) {
+//在这里等待
             sem_wait(&signal);
 
             background_work_mutex_.Lock();

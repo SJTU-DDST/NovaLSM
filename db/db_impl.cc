@@ -112,6 +112,7 @@ namespace leveldb {
         return sanitized_options.max_open_files - kNumNonTableCacheFiles;
     }
 
+//打开数据库的时候建立一个具体的实例
     DBImpl::DBImpl(const Options &raw_options, const std::string &dbname)
             : env_(raw_options.env),
               internal_comparator_(raw_options.comparator),
@@ -140,6 +141,7 @@ namespace leveldb {
         terminate_coordinated_compaction_ = false;
         start_compaction_ = true;
         if (options_.enable_lookup_index) {
+//这里的lookindex是包括memtable sstable和level0的?
             lookup_index_ = new LookupIndex(
                     options_.upper_key - options_.lower_key);
             for (int i = 0; i < options_.upper_key - options_.lower_key; i++) {
@@ -1361,6 +1363,7 @@ namespace leveldb {
         }
     }
 
+//这是什么任务???
     void DBImpl::ScheduleFileDeletionTask(int thread_id) {
         if (!start_compaction_) {
             return;
@@ -1372,6 +1375,7 @@ namespace leveldb {
         }
     }
 
+//用于flush immtable，不太懂
     void DBImpl::ScheduleFlushMemTableTask(int thread_id, uint32_t memtable_id,
                                            MemTable *imm,
                                            uint32_t partition_id,
@@ -1401,6 +1405,7 @@ namespace leveldb {
         }
         task.memtable_partition_id = partition_id;
         task.imm_slot = imm_slot;
+//执行merge和flush
         if (bg_flush_memtable_threads_[thread_id]->Schedule(task)) {
         }
     }
@@ -2450,28 +2455,32 @@ namespace leveldb {
             uint32_t next_imm_slot;
         };
         std::vector<ImmutableTable> imms;
+//遍历每个partition的active memtable
         for (int partition_id = 0; partition_id < partitioned_active_memtables_.size(); partition_id++) {
             MemTablePartition *partition = partitioned_active_memtables_[partition_id];
             uint32_t next_imm_slot = -1;
             partition->mutex.Lock();
 //            NOVA_LOG(rdmaio::INFO) << partition->DebugString();
             MemTable *table = partition->active_memtable;
+//如果要求flush active memtable
             if (flush_active_memtable && table) {
+//不懂???，这里应该是记录下当前flush的generation id
                 if (versions_->mid_table_mapping_[table->memtableid()]->nentries_ == 0 ||
                     partition->available_slots.empty()) {
                     versions_->mid_table_mapping_[table->memtableid()]->generation_id_.store(
                             flush_order_->latest_generation_id);
                 } else {
+//从avalaible队列中移出，
                     NOVA_ASSERT(!partition->available_slots.empty());
                     next_imm_slot = partition->available_slots.front();
                     partition->available_slots.pop();
-
+//然后加入到immutable队列中
                     // Create a new table.
                     NOVA_ASSERT(partitioned_imms_[next_imm_slot] == 0);
                     partitioned_imms_[next_imm_slot] = table->memtableid();
                     partition->slot_imm_id[next_imm_slot] = table->memtableid();
                     partition->immutable_memtable_ids.push_back(table->memtableid());
-
+//新建一个memtable
                     uint32_t new_memtable_id = memtable_id_seq_.fetch_add(1);
                     MemTable *new_table = new MemTable(internal_comparator_, new_memtable_id, db_profiler_, true);
                     NOVA_ASSERT(new_memtable_id < MAX_LIVE_MEMTABLES);
@@ -2480,6 +2489,7 @@ namespace leveldb {
                     partition->active_memtable = new_table;
                     partition->AddMemTable(gen_id, new_memtable_id);
                     number_of_immutable_memtables_.fetch_add(1);
+//将拆下来的memtable放到imms里面
                     bool merge_memtables_without_flushing = false;
                     int thread_id =
                             EnvBGThread::bg_flush_memtable_thread_id_seq.fetch_add(1, std::memory_order_relaxed) %
@@ -2493,6 +2503,7 @@ namespace leveldb {
                     imms.push_back(imm);
                 }
             }
+//遍历当前这个partition的immtable，加入到整体的imms里面
             for (const auto &slot_immid : partition->slot_imm_id) {
                 NOVA_ASSERT(versions_->mid_table_mapping_[slot_immid.second]);
                 auto atomic_memtable = versions_->mid_table_mapping_[slot_immid.second];
@@ -2510,6 +2521,7 @@ namespace leveldb {
             }
             partition->mutex.Unlock();
         }
+//处理所有的imms
         for (auto &imm : imms) {
             ScheduleFlushMemTableTask(imm.thread_id, imm.memtable_id, imm.table, imm.partition_id, imm.next_imm_slot, &rand_seed_,
                                       false);
@@ -3307,6 +3319,7 @@ namespace leveldb {
 
     DB::~DB() = default;
 
+//打开一个具体的数据库
     Status
     DB::Open(const Options &options, const std::string &dbname, DB **dbptr) {
         *dbptr = nullptr;

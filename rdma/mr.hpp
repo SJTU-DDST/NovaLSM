@@ -10,6 +10,7 @@ namespace rdmaio {
         uint32_t key;
     };
 
+//关于memory类型的类
     class Memory {
     public:
         /**

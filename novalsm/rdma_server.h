@@ -85,6 +85,7 @@ namespace nova {
         leveldb::FileInternalType internal_type;
     };
 
+//这个是用来???
     class RDMAWriteHandler {
     public:
         RDMAWriteHandler(
@@ -96,6 +97,7 @@ namespace nova {
         std::vector<DBMigration *> destination_migration_threads_;
     };
 
+//用于处理rdma的客户请求
     // RDMA server class that handles RDMA client requests.
     class RDMAServerImpl : public RDMAMsgCallback, public leveldb::RDMAServer {
     public:

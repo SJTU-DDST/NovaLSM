@@ -11,6 +11,7 @@
 namespace leveldb {
 
 
+//每个worker一个的logc，用于向stoc中写入
     // Create a writer that will append data to "*dest".
 // "*dest" must be initially empty.
 // "*dest" must remain live while this Writer is in use.
@@ -71,6 +72,7 @@ namespace leveldb {
         replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
     }
 
+//本地server read write replicate log record后，更改本地任务的状态
     bool LogCLogWriter::AckWriteSuccess(const std::string &log_file_name,
                                         int remote_sid, uint64_t wr_id,
                                         StoCReplicateLogRecordState *replicate_log_record_states) {
@@ -146,6 +148,7 @@ namespace leveldb {
         return true;
     }
 
+//检查本地server的replicate log是否都已经成功完成
     bool LogCLogWriter::CheckCompletion(const std::string &log_file_name,
                                         uint32_t dbid,
                                         StoCReplicateLogRecordState *replicate_log_record_states) {

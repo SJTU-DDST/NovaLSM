@@ -52,6 +52,7 @@ namespace nova {
     };
 
 
+//这个基本是用不上的
     class NovaRDMANoopBroker : public NovaRDMABroker {
         void Init(RdmaCtrl *rdma_ctrl) {};
 

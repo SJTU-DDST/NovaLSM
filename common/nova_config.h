@@ -36,11 +36,13 @@ namespace nova {
         IMMEDIATE
     };
 
+//负载均衡的抽象
     struct ZipfianDist {
         uint64_t sum = 0;
         std::vector<uint64_t> accesses;
     };
 
+//这个是配置的结构体
     struct Configuration {
         uint32_t cfg_id = 0;
         std::vector<LTCFragment *> fragments;
@@ -66,19 +68,25 @@ namespace nova {
             current_cfg_id = 0;
         }
 
+//根据提供的replica个数为每个ltc fragment计算其对应的stoc，这里好像有点问题?
         static void ComputeLogReplicaLocations(uint32_t num_log_replicas) {
             auto init_cfg = config->cfgs[0];
+//每一个config
             for (auto cfg : config->cfgs) {
                 uint32_t start_stoc_id = 0;
+//每一个ltc fragment
                 for (int i = 0; i < cfg->fragments.size(); i++) {
                     cfg->fragments[i]->log_replica_stoc_ids.clear();
                     std::set<uint32_t> set;
+//每一个num_log_replicas
                     for (int r = 0; r < num_log_replicas; r++) {
+//如果可以使用本地磁盘，而且当前stocid选到了自己这台服务器，那就选下一个
                         if (config->use_local_disk &&
                                 init_cfg->stoc_servers[start_stoc_id] == config->my_server_id) {
                             // Don't write the log record locally.
                             start_stoc_id = (start_stoc_id + 1) % init_cfg->stoc_servers.size();
                         }
+//选好了填进去
                         cfg->fragments[i]->log_replica_stoc_ids.push_back(start_stoc_id);
                         set.insert(start_stoc_id);
                         start_stoc_id = (start_stoc_id + 1) % init_cfg->stoc_servers.size();
@@ -89,6 +97,7 @@ namespace nova {
             }
         }
 
+//从指定的文件读取fragment
         static void
         ReadFragments(const std::string &path) {
             std::string line;
@@ -98,18 +107,22 @@ namespace nova {
             Configuration *cfg = nullptr;
             uint32_t cfg_id = 0;
             while (std::getline(file, line)) {
+//如果这一行有config，也就是第一行
                 if (line.find("config") != std::string::npos) {
                     cfg = new Configuration;
                     cfg->cfg_id = cfg_id;
                     cfg_id++;
                     config->cfgs.push_back(cfg);
                     NOVA_ASSERT(std::getline(file, line));
+//第二行存的是ltc的server编号
                     cfg->ltc_servers = SplitByDelimiterToInt(&line, ",");
                     NOVA_ASSERT(std::getline(file, line));
+//第三行存的是stoc的server编号
                     cfg->stoc_servers = SplitByDelimiterToInt(&line, ",");
                     NOVA_ASSERT(std::getline(file, line));
+//第四行存的是这个时间?我猜是多长时间之后启动
                     cfg->start_time_in_seconds = std::stoi(line);
-
+//整理一下ltc和stoc的结构
                     for (int i = 0; i < cfg->ltc_servers.size(); i++) {
                         cfg->ltc_server_ids.insert(cfg->ltc_servers[i]);
                     }
@@ -119,16 +132,19 @@ namespace nova {
                     continue;
                 }
                 NOVA_LOG(INFO) << fmt::format("Read config line: {}", line);
+//之后的每一行都代表一个ltcfragment，分别是起始key，结束key，对应的ltc的id，对应的数据库的id?
                 auto *frag = new LTCFragment();
                 std::vector<std::string> tokens = SplitByDelimiter(&line, ",");
                 frag->range.key_start = std::stoll(tokens[0]);
                 frag->range.key_end = std::stoll(tokens[1]);
                 frag->ltc_server_id = std::stoll(tokens[2]);
                 frag->dbid = std::stoi(tokens[3]);
+//如果当前是第一个config
                 if (cfg->cfg_id == 0) {
                     frag->is_ready_ = true;
                     frag->is_complete_ = true;
                 }
+//如果一行比4个多，后面的是用来做replica stoc的?config里面从没有指定
                 int nreplicas = (tokens.size() - 4);
                 for (int i = 0; i < nreplicas; i++) {
                     frag->log_replica_stoc_ids.push_back(
@@ -139,6 +155,7 @@ namespace nova {
             }
         }
 
+//找到key对应的fragment
         static LTCFragment *
         home_fragment(uint64_t key, uint32_t server_cfg_id) {
             LTCFragment *home = nullptr;
@@ -238,6 +255,7 @@ namespace nova {
 
         LTCMigrationPolicy ltc_migration_policy = LTCMigrationPolicy::IMMEDIATE;
 
+//读一下目前的负载均衡状况??
         void ReadZipfianDist() {
             if (zipfian_dist_file_path.empty()) {
                 return;
@@ -253,6 +271,7 @@ namespace nova {
             }
         }
 
+//当前线程的id->当前线程在linux里面的唯一id
         void add_tid_mapping() {
             std::lock_guard<std::mutex> l(m);
             threads[std::this_thread::get_id()] = syscall(SYS_gettid);

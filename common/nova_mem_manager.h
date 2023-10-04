@@ -30,8 +30,10 @@ namespace nova {
         char *base;
     private:
         uint32_t item_size_;
+//这个初始化为slab的起始位置
         char *next_;
         uint64_t available_bytes_;
+//slab大小
         uint64_t slab_size_mb_;
     };
 
@@ -72,13 +74,23 @@ namespace nova {
         uint32_t slabclassid(uint64_t  size);
 
     private:
+
+//slab级别从0-63，里面的size依次递增
+
         std::mutex slab_class_mutex_[MAX_NUMBER_OF_SLAB_CLASSES];
+//各个级别的slab
         SlabClass slab_classes_[MAX_NUMBER_OF_SLAB_CLASSES];
         std::mutex oom_lock;
         bool print_class_oom = false;
         std::mutex free_slabs_mutex_;
+//pointer -> pointer -> 第一个slab
+//        -> pointer -> 第二个slab
+//              .
+//              .
+//              .
         Slab **free_slabs_ = nullptr;
         uint64_t free_slab_index_ = 0;
+//一个slab的大小
         uint64_t slab_size_mb_ = 0;
     };
 
@@ -96,7 +108,7 @@ namespace nova {
                   uint32_t scid) override;
 
         uint32_t slabclassid(uint64_t key, uint64_t  size) override;
-
+//管理不同分区的mem_manager，其实只有一个，里面写死了
     private:
         std::vector<NovaPartitionedMemManager *> partitioned_mem_managers_;
     };

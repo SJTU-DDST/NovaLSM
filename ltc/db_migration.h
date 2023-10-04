@@ -33,6 +33,7 @@ namespace nova {
         STOC = 2
     };
 
+//负责迁移的类
     class DBMigration {
     public:
         DBMigration(
@@ -70,6 +71,7 @@ namespace nova {
 
         std::mutex mu;
         std::vector<DBMeta> db_metas;
+//这个应该是用来指示是否有migrate任务
         sem_t sem_;
         std::vector<std::thread> threads_for_new_dbs_;
 

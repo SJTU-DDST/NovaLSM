@@ -16,6 +16,7 @@ namespace nova {
         delete tf;
     }
 
+//加一个工作任务
     void RDMAMsgHandler::AddTask(
             const leveldb::RDMARequestTask &task) {
         mutex_.Lock();
@@ -210,11 +211,14 @@ namespace nova {
         return t;
     }
 
+//rdma前后台进程的函数
     void RDMAMsgHandler::Start() {
         NOVA_LOG(DEBUG) << "Async worker started";
+//初始化连接和qp的各种数据
         if (NovaConfig::config->enable_rdma) {
             rdma_broker_->Init(rdma_ctrl_);
         }
+//添加映射
         nova::NovaConfig::config->add_tid_mapping();
         sleep(10);
 
@@ -227,10 +231,11 @@ namespace nova {
         while (is_running_) {
             while (should_pause) {
                 paused = true;
+//等待唤醒
                 sem_wait(&sem_);
                 paused = false;
             }
-
+//应该sleep且前台rdma线程多余1个
             if (should_sleep &&
                 nova::NovaConfig::config->num_fg_rdma_workers > 1) {
                 usleep(timeout);
@@ -262,21 +267,25 @@ namespace nova {
         }
     }
 
+//处理cqe
     bool
     RDMAMsgHandler::ProcessRDMAWC(ibv_wc_opcode opcode,
                                   uint64_t wr_id,
                                   int remote_server_id,
                                   char *buf, uint32_t imm_data,
                                   bool *generate_a_new_request) {
+//如果是发送类型的rdma请求完成了
         if (opcode == IBV_WC_SEND ||
             opcode == IBV_WC_RDMA_WRITE ||
             opcode == IBV_WC_RDMA_READ) {
             // a send request completes.
+//先修改一下计数
             admission_control_->RemoveRequests(remote_server_id, 1);
         }
         if (opcode == IBV_WC_SEND) {
             return true;
         }
+//如果是其它类型的cqe的话，可能需要stoc客户端和rdmaserver都进行处理???
         bool processed_by_client = stoc_client_->OnRecv(opcode, wr_id, remote_server_id, buf, imm_data, nullptr);
         bool processed_by_server = rdma_server_->ProcessRDMAWC(opcode, wr_id, remote_server_id, buf, imm_data, nullptr);
         if (processed_by_client && processed_by_server) {

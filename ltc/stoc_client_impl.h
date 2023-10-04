@@ -134,6 +134,7 @@ namespace leveldb {
         uint32_t req_id_ = 1;
     };
 
+//这个用来干嘛?????每个worker一个
     class StoCRDMAClient : public StoCClient {
     public:
         StoCRDMAClient(uint32_t stoc_client_id,

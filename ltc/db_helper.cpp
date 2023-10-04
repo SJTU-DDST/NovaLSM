@@ -29,6 +29,7 @@
 
 
 namespace leveldb {
+//造一个leveldb的options出来
     leveldb::Options
     BuildDBOptions(int cfg_id, int db_index, leveldb::Cache *cache,
                    leveldb::MemTablePool *memtable_pool,
@@ -44,6 +45,7 @@ namespace leveldb {
         options.block_cache = cache;
         options.memtable_pool = memtable_pool;
         if (nova::NovaConfig::config->memtable_size_mb > 0) {
+//单位是B
             options.write_buffer_size = (uint64_t) (nova::NovaConfig::config->memtable_size_mb) * 1024 * 1024;
         }
         if (nova::NovaConfig::config->sstable_size > 0) {
@@ -65,6 +67,7 @@ namespace leveldb {
         options.enable_range_index = nova::NovaConfig::config->enable_range_index;
         options.num_recovery_thread = nova::NovaConfig::config->number_of_recovery_threads;
         options.num_compaction_threads = bg_flush_memtable_threads.size();
+//这里为什么??
         options.max_stoc_file_size = std::max(options.write_buffer_size, options.max_file_size) +
                                      LEVELDB_TABLE_PADDING_SIZE_MB * 1024 * 1024;
         options.env = env;
@@ -75,6 +78,7 @@ namespace leveldb {
         options.bg_flush_memtable_threads = bg_flush_memtable_threads;
         options.enable_tracing = false;
         options.comparator = new YCSBKeyComparator();
+//这个是干嘛的
         if (nova::NovaConfig::config->memtable_type == "pool") {
             options.memtable_type = leveldb::MemTableType::kMemTablePool;
         } else {
@@ -89,6 +93,8 @@ namespace leveldb {
         options.max_num_coordinated_compaction_nonoverlapping_sets = nova::NovaConfig::config->major_compaction_max_parallism;
         options.enable_subrange_reorg = nova::NovaConfig::config->enable_subrange_reorg;
         options.level = nova::NovaConfig::config->level;
+
+//这个东西的用处??
         if (nova::NovaConfig::config->major_compaction_type == "no") {
             options.major_compaction_type = leveldb::MajorCompactionType::kMajorDisabled;
         } else if (nova::NovaConfig::config->major_compaction_type == "st") {
@@ -104,9 +110,11 @@ namespace leveldb {
         options.lower_key = nova::NovaConfig::config->cfgs[0]->fragments[db_index]->range.key_start;
         options.upper_key = nova::NovaConfig::config->cfgs[0]->fragments[db_index]->range.key_end;
         auto cfg = nova::NovaConfig::config->cfgs[0];
+//如果开了用本地的磁盘，我猜这个manifest——stoc_ids是存manifest文件存在哪个stoc里面的
         if (nova::NovaConfig::config->use_local_disk) {
             options.manifest_stoc_ids.push_back(nova::NovaConfig::config->my_server_id);
         } else {
+//如果没开用本地的磁盘，那就通过这个方式选出manifest存放的stoc的id
             uint32_t stocid = db_index % cfg->stoc_servers.size();
             for (int i = 0; i < nova::NovaConfig::config->number_of_manifest_replicas; i++) {
                 stocid = (stocid + i) % cfg->stoc_servers.size();
@@ -118,6 +126,7 @@ namespace leveldb {
         return options;
     }
 
+//设置了关于存储的选项
     leveldb::Options BuildStorageOptions(leveldb::MemManager *mem_manager, leveldb::Env *env) {
         leveldb::Options options;
         options.block_cache = nullptr;
@@ -157,6 +166,7 @@ namespace leveldb {
         return options;
     }
 
+//建立一个数据库，这个db_index对应的ltc server是本地这个server
     leveldb::DB *CreateDatabase(int cfg_id, int db_index, leveldb::Cache *cache,
                                 leveldb::MemTablePool *memtable_pool,
                                 leveldb::MemManager *mem_manager,
@@ -166,10 +176,12 @@ namespace leveldb {
                                 leveldb::EnvBGThread *reorg_thread,
                                 leveldb::EnvBGThread *compaction_coord_thread) {
         leveldb::EnvOptions env_option;
+//这里sstable选项变成了sstable_mem????这是为什么呢
         env_option.sstable_mode = leveldb::NovaSSTableMode::SSTABLE_MEM;
         leveldb::PosixEnv *env = new leveldb::PosixEnv;
         env->set_env_option(env_option);
         leveldb::DB *db;
+//造一个option出来
         leveldb::Options options = BuildDBOptions(cfg_id, db_index, cache,
                                                   memtable_pool,
                                                   mem_manager,
@@ -180,10 +192,12 @@ namespace leveldb {
                                                   compaction_coord_thread,
                                                   env);
         leveldb::Logger *log = nullptr;
+//建立这个数据库对应的文件
         std::string db_path = nova::DBName(nova::NovaConfig::config->db_path, db_index);
         nova::mkdirs(db_path.c_str());
         NOVA_ASSERT(env->NewLogger(db_path + "/LOG-" + std::to_string(db_index), &log).ok());
         options.info_log = log;
+//打开这个数据库并且返回
         leveldb::Status status = leveldb::DB::Open(options, db_path, &db);
         NOVA_ASSERT(status.ok()) << "Open leveldb failed " << status.ToString();
         return db;

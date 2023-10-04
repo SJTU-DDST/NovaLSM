@@ -95,8 +95,10 @@ namespace nova {
         std::vector<RDMAMsgHandler *> workers;
     };
 
+//用于处理connection??
     class NICClientReqWorker {
     public:
+//这个state是用来干嘛的
         NICClientReqWorker(int thread_id)
                 :
                 thread_id_(thread_id) {
@@ -118,6 +120,7 @@ namespace nova {
 
         void Start();
 
+//这个是用来干什么的???
         void ResetReplicateState() {
             for (int i = 0; i < nova::NovaConfig::config->servers.size(); i++) {
                 replicate_log_record_states[i].cfgid = 0;

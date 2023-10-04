@@ -21,6 +21,7 @@ namespace leveldb {
         }
     }
 
+//也是初始化一些东西
     StoCBlockClient::StoCBlockClient(uint32_t client_id,
                                      StocPersistentFileManager *stoc_file_manager)
             : stoc_file_manager_(stoc_file_manager) {
@@ -66,6 +67,7 @@ namespace leveldb {
         return reqid;
     }
 
+//查看remote_server_id是否准备好了??
     uint32_t StoCBlockClient::InitiateIsReadyForProcessingRequests(
             uint32_t remote_server_id) {
         NOVA_ASSERT(remote_server_id != nova::NovaConfig::config->my_server_id);
@@ -266,6 +268,7 @@ namespace leveldb {
         return reqid;
     }
 
+//查看
     bool StoCBlockClient::IsDone(uint32_t req_id,
                                  leveldb::StoCResponse *response,
                                  uint64_t *timeout) {
@@ -810,6 +813,7 @@ namespace leveldb {
         return false;
     }
 
+//stoc处理cqe。大部分都没懂，需要根据发送和协议等运转机制来看
     bool
     StoCRDMAClient::OnRecv(ibv_wc_opcode type, uint64_t wr_id,
                            int remote_server_id,
@@ -818,6 +822,7 @@ namespace leveldb {
         bool processed = false;
         uint32_t req_id = imm_data;
         switch (type) {
+//完成的工作是rdma read类型的
             case IBV_WC_RDMA_READ: {
                 uint32_t req_id = leveldb::DecodeFixed32(buf);
                 auto context_it = request_context_.find(req_id);
@@ -830,9 +835,12 @@ namespace leveldb {
                 processed = true;
             }
                 break;
+//是rdma send类型的
             case IBV_WC_SEND:
                 break;
+//是rdma write类型的
             case IBV_WC_RDMA_WRITE: {
+//如果是replicate log record
                 if (buf[0] == leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS) {
                     req_id = leveldb::DecodeFixed32(buf + 1);
                     auto context_it = request_context_.find(req_id);
@@ -859,6 +867,7 @@ namespace leveldb {
                         context.done = true;
                     }
                     processed = true;
+//如果是写远程buf
                 } else if (buf[0] == leveldb::RDMA_WRITE_REMOTE_BUF_ALLOCATED) {
                     req_id = leveldb::DecodeFixed32(buf + 1);
                     auto context_it = request_context_.find(req_id);
@@ -875,12 +884,14 @@ namespace leveldb {
                 }
             }
                 break;
+//如果是rdma recv类型的工作完成
             case IBV_WC_RECV:
             case IBV_WC_RECV_RDMA_WITH_IMM:
                 auto context_it = request_context_.find(req_id);
                 if (context_it != request_context_.end()) {
                     // I sent this request a while ago and now it is complete.
                     auto &context = context_it->second;
+//如果对面发送的send是stoc write sstable response类型的
                     if (buf[0] == STOC_WRITE_SSTABLE_RESPONSE) {
                         NOVA_ASSERT(context.req_type ==
                                     StoCRequestType::STOC_WRITE_SSTABLE);
@@ -905,6 +916,7 @@ namespace leveldb {
                                     stoc_file_offset,
                                     req_id);
                         processed = true;
+//如果对应的本地的任务是stoc read block
                     } else if (context.req_type == StoCRequestType::STOC_READ_BLOCKS) {
 //                        if (context.log_file_name.empty()) {
 //                            NOVA_ASSERT(
@@ -923,6 +935,7 @@ namespace leveldb {
                         } else {
                             context.done = false;
                         }
+//如果对面发送的是stoc persist response类型的
                     } else if (buf[0] ==
                                StoCRequestType::STOC_PERSIST_RESPONSE) {
                         NOVA_ASSERT(context.req_type ==
@@ -946,6 +959,7 @@ namespace leveldb {
                                     stoc_client_id_, stoc_block_handles, rids,
                                     req_id);
                         processed = true;
+//如果对面发送的是stoc read stats response类型的
                     } else if (buf[0] ==
                                StoCRequestType::STOC_READ_STATS_RESPONSE) {
                         context.stoc_queue_depth = leveldb::DecodeFixed64(
@@ -956,6 +970,7 @@ namespace leveldb {
                                 buf + 17);
                         context.done = true;
                         processed = true;
+//如果对面发送的是stoc alloc log buffer success类型的
                     } else if (buf[0] ==
                                StoCRequestType::STOC_ALLOCATE_LOG_BUFFER_SUCC) {
                         uint64_t base = leveldb::DecodeFixed64(buf + 1);
@@ -976,6 +991,7 @@ namespace leveldb {
                                     "stocclient[{}]: Allocate log buffer success req:{}",
                                     stoc_client_id_, req_id);
                         processed = true;
+//如果对面发送的是rdma write remote buf allocated类型的
                     } else if (buf[0] ==
                                StoCRequestType::RDMA_WRITE_REMOTE_BUF_ALLOCATED) {
                         uint64_t remote_buf = leveldb::DecodeFixed64(buf + 1);
@@ -995,6 +1011,7 @@ namespace leveldb {
                                     "stocclient[{}]: Allocate log buffer success req:{}",
                                     stoc_client_id_, req_id);
                         processed = true;
+//对面发送的是stoc query log files response类型的
                     } else if (buf[0] ==
                                StoCRequestType::STOC_QUERY_LOG_FILES_RESPONSE) {
                         uint32_t read_size = 1;
@@ -1011,10 +1028,12 @@ namespace leveldb {
                         }
                         context.done = true;
                         processed = true;
+//对面发送的是stoc filename stocfileid response类型的
                     } else if (buf[0] ==
                                StoCRequestType::STOC_FILENAME_STOCFILEID_RESPONSE) {
                         context.done = true;
                         processed = true;
+//对面发送的是stoc compaction response类型的
                     } else if (buf[0] ==
                                StoCRequestType::STOC_COMPACTION_RESPONSE) {
                         uint32_t num_outputs = leveldb::DecodeFixed32(buf + 1);

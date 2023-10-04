@@ -143,6 +143,7 @@ namespace leveldb {
         return status;
     }
 
+//用来标记persistent文件中哪部分写了没有
     bool StoCPersistentFile::MarkOffsetAsWritten(
             uint32_t given_file_id_for_assertion,
             uint64_t offset) {
@@ -732,6 +733,7 @@ namespace leveldb {
         }
     }
 
+//找到stocfile
     StoCPersistentFile *
     StocPersistentFileManager::FindStoCFile(uint32_t stoc_file_id) {
         mutex_.lock();
@@ -743,6 +745,7 @@ namespace leveldb {
         return stoc_file;
     }
 
+//建立stoc的持久介质中的文件的管理器
     StocPersistentFileManager::StocPersistentFileManager(
             leveldb::Env *env,
             leveldb::MemManager *mem_manager,

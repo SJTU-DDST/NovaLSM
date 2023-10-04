@@ -71,7 +71,9 @@ namespace nova {
             return vc;
         }
 
+//初始化为false
         std::atomic_bool should_pause;
+//初始化为false        
         std::atomic_bool paused;
         sem_t sem_;
         std::list<leveldb::RDMARequestTask> private_queue_;

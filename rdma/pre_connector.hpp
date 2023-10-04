@@ -18,6 +18,7 @@ namespace rdmaio {
     constexpr struct timeval no_timeout = {0, 0};  // it means forever
     constexpr struct timeval no_wait = {-1, -1};
 
+//计算两个时间的差值，结果是毫秒为单位的
     inline __attribute__ ((always_inline)) // inline to avoid multiple-definiations
     int64_t diff_time(const struct timeval &end, const struct timeval &start) {
         int64_t diff = (end.tv_sec > start.tv_sec) ? (end.tv_sec - start.tv_sec) * 1000 : 0;
@@ -31,6 +32,7 @@ namespace rdmaio {
 
     class PreConnector { // helper class used to exchange QP information using TCP/IP
     public:
+//一个可以listen的socket，下面应该就是listen和connect了
         static int get_listen_socket(const std::string &addr, int port) {
 
             struct sockaddr_in serv_addr;
@@ -99,6 +101,7 @@ namespace rdmaio {
             return sockfd;
         }
 
+//用select方法等待这个端口可以读，超时直接返回
         // timeout in microsend
         static bool wait_recv(int socket, uint32_t timeout = 2000) {
 
@@ -127,6 +130,7 @@ namespace rdmaio {
             return true;
         }
 
+//等待客户端关闭
         static void wait_close(int socket) {
 
             shutdown(socket, SHUT_WR);
@@ -140,6 +144,7 @@ namespace rdmaio {
             close(socket);
         }
 
+//发送
         static int send_to(int fd, char *usrbuf, size_t n) {
             size_t nleft = n;
             ssize_t nwritten;

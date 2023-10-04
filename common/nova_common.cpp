@@ -151,6 +151,7 @@ namespace nova {
         ptr[size - 1] = 0;
     }
 
+//默认写成功
     bool IsRDMAWRITEComplete(char *ptr, uint32_t size) {
         return true;
 //        return ptr[size - 1] != 0;
@@ -181,6 +182,7 @@ namespace nova {
         return tokens;
     }
 
+//将s用d这个分隔符分割出数字返回
     std::vector<uint32_t>
     SplitByDelimiterToInt(std::string *s, std::string delimiter) {
         size_t pos = 0;
@@ -215,11 +217,13 @@ namespace nova {
         return fmt::format("[{},{}): {}-{}", range.key_start, range.key_end, ltc_server_id, dbid);
     }
 
+//获取各个db文件的文件名
     std::string
     DBName(const std::string &dbname, uint32_t index) {
         return dbname + "/" + std::to_string(index);
     }
 
+//从数据库的名字里面找到dbid/db_index 这两个其实是一样的(在config的实现中
     void ParseDBIndexFromDBName(const std::string &dbname, uint32_t *index) {
         int iend = dbname.size() - 1;
         int istart = dbname.find_last_of('/') + 1;
@@ -228,6 +232,7 @@ namespace nova {
         *index = i64;
     }
 
+//建立指定的文件
     void mkdirs(const char *dir) {
         char tmp[1024];
         char *p = NULL;
@@ -364,12 +369,14 @@ namespace nova {
 //        return Host{ip_port[0], atoi(ip_port[1].c_str())};
 //    }
 
+//从字符串中解析出所有的host
     vector<Host> convert_hosts(string hosts_str) {
         NOVA_LOG(INFO) << hosts_str;
         vector<Host> hosts;
         std::stringstream ss_hosts(hosts_str);
         uint32_t host_id = 0;
         while (ss_hosts.good()) {
+//读入一个ip:port
             string host_str;
             getline(ss_hosts, host_str, ',');
 
@@ -378,6 +385,7 @@ namespace nova {
             }
             std::vector<std::string> ip_port;
             std::stringstream ss_ip_port(host_str);
+//ipheport提取出来放进去
             while (ss_ip_port.good()) {
                 std::string substr;
                 getline(ss_ip_port, substr, ':');

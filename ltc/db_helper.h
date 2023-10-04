@@ -12,6 +12,7 @@
 #include "common/nova_common.h"
 
 namespace leveldb {
+//适用于ycsb的comparator??
     class YCSBKeyComparator : public leveldb::Comparator {
     public:
         //   if a < b: negative result

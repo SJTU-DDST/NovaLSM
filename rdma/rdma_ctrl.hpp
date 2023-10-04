@@ -8,6 +8,7 @@
 
 #include "qp.hpp"
 
+//rdma的包装类,done
 namespace rdmaio {
 
     const int MAX_SERVER_SUPPORTED = 32;
@@ -18,6 +19,7 @@ namespace rdmaio {
 
     class RdmaCtrl {
     public:
+//默认构造方法
         RdmaCtrl(int node_id, int tcp_base_port,
                  connection_callback_t callback = [](const QPConnArg &) {
                      // the default callback does nothing

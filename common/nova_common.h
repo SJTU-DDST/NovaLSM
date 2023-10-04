@@ -39,6 +39,7 @@ namespace nova {
     using namespace std;
     using namespace rdmaio;
 
+//这个是?开起来像是统计类
     class NovaGlobalVariables {
     public:
         void Initialize() {
@@ -78,11 +79,13 @@ namespace nova {
         LOG_NONE = 3,
     };
 
+//~
     struct RangePartition {
         uint64_t key_start;
         uint64_t key_end;
     };
 
+//ltc的配置
     struct LTCFragment {
         LTCFragment();
 
@@ -370,6 +373,7 @@ namespace nova {
         std::string DebugString() const;
     };
 
+//这里应该是stoc server的抽象
     struct Servers {
         std::vector<uint32_t> servers;
         std::set<uint32_t> server_ids;

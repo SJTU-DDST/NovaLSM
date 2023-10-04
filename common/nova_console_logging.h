@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <string>
 
+//log的各种设置
+
 namespace rdmaio {
 
 /**

@@ -14,6 +14,7 @@ namespace nova {
         pending_rdma_sends_[server_id] += requests;
     }
 
+//减少一个pending的reqquest
     void RDMAAdmissionCtrl::RemoveRequests(int server_id, int requests) {
         NOVA_LOG(rdmaio::DEBUG)
             << fmt::format("admission remove request {}:{}:{}", server_id,

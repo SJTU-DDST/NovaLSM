@@ -14,6 +14,7 @@
 #define MAX_RESTORE_REPLICATION_BATCH_SIZE 10
 
 namespace nova {
+//都是初始化
     DBMigration::DBMigration(leveldb::MemManager *mem_manager,
                              leveldb::StoCBlockClient *client,
                              nova::StoCInMemoryLogFileManager *log_manager,
@@ -157,8 +158,10 @@ namespace nova {
         }
     }
 
+//建立之后直接开起了migrate线程
     void DBMigration::Start() {
         while (true) {
+//没事先卡在这
             sem_wait(&sem_);
 
             mu.lock();

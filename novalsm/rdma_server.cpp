@@ -27,6 +27,7 @@ namespace nova {
         }
     }
 
+//处理当前的这个worker的rdma的客户端请求
     RDMAServerImpl::RDMAServerImpl(rdmaio::RdmaCtrl *rdma_ctrl,
                                    NovaMemManager *mem_manager,
                                    leveldb::StocPersistentFileManager *stoc_file_manager,
@@ -67,6 +68,7 @@ namespace nova {
         fg_storage_workers_[id]->AddTask(task);
     }
 
+//选一个后台storage worker，把任务加进去
     void RDMAServerImpl::AddBGStorageTask(const nova::StorageTask &task) {
         uint32_t id =
                 bg_storage_worker_seq_id_.fetch_add(1,
@@ -241,6 +243,7 @@ namespace nova {
         destination_migration_threads_[value]->AddDestMigrateDB(buf, size);
     }
 
+//rdmaserver处理cqe
     // No need to flush RDMA requests since Flush will be done after all requests are processed in a receive queue.
     bool
     RDMAServerImpl::ProcessRDMAWC(ibv_wc_opcode type, uint64_t wr_id,
@@ -249,9 +252,12 @@ namespace nova {
                                   bool *) {
         bool processed = false;
         switch (type) {
+//完成的工作是rdma send类型的
             case IBV_WC_SEND:
                 break;
+//完成的工作是rdma write类型的
             case IBV_WC_RDMA_WRITE:
+//如果是stoc read blocks类型的，释放掉之前的空间
                 if (buf[0] == leveldb::StoCRequestType::STOC_READ_BLOCKS) {
                     uint64_t written_wr_id = leveldb::DecodeFixed64(buf + 1);
                     if (written_wr_id == wr_id) {
@@ -273,6 +279,7 @@ namespace nova {
                 break;
             case IBV_WC_RDMA_READ:
                 break;
+//如果完成的工作是rdma recv类型的
             case IBV_WC_RECV:
             case IBV_WC_RECV_RDMA_WITH_IMM:
                 uint32_t stoc_req_id = imm_data;

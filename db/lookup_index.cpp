@@ -12,6 +12,7 @@
 
 namespace leveldb {
 
+//似乎只是存这个键在哪个memtable里面??，其实基本是一一对应的???
     LookupIndex::LookupIndex(uint32_t size) : size_(size) {
         table_locator_ = new TableLocation[size_];
         NOVA_LOG(rdmaio::INFO)
@@ -24,6 +25,7 @@ namespace leveldb {
         return loc.memtable_id.load();
     }
 
+//将这个hash对应的memtableid存好，初始化的时候全初始化成0
     void LookupIndex::Insert(const leveldb::Slice &key, uint64_t hash,
                              uint32_t memtableid) {
 //        NOVA_ASSERT(hash >= 0 && hash <= size_) << hash;

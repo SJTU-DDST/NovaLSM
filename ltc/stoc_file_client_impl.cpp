@@ -16,6 +16,7 @@
 #include "common/nova_config.h"
 
 namespace leveldb {
+//用这个函数建立了manifest文件，还不知道有什么用处
     StoCWritableFileClient::StoCWritableFileClient(Env *env,
                                                    const Options &options,
                                                    uint64_t file_number,

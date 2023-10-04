@@ -24,6 +24,7 @@ namespace rdmaio {
         UD_ID_BASE = 20000
     };
 
+//rc类型连接默认的config
     inline constexpr RCConfig default_rc_config() {
         return RCConfig{
                 .access_flags       = (IBV_ACCESS_REMOTE_WRITE |

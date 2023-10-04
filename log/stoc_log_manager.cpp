@@ -52,7 +52,7 @@ namespace nova {
         return true;
     }
 
-
+//初始化，这个类应该是用于管理stoc的内存中的log文件的??
     StoCInMemoryLogFileManager::StoCInMemoryLogFileManager(
             nova::NovaMemManager *mem_manager) : mem_manager_(mem_manager) {
         uint32_t nranges = NovaConfig::config->cfgs[0]->fragments.size();

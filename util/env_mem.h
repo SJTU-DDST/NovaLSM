@@ -41,6 +41,7 @@
 #include "util/posix_logger.h"
 
 namespace leveldb {
+//这里应该就是在内存里面模仿一个文件的读写等性质
     class MemFile {
     public:
         explicit MemFile(Env *env, const std::string &fn,

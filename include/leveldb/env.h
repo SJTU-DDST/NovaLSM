@@ -65,6 +65,7 @@ namespace leveldb {
         int level;
     };
 
+//可能要改成pm
     enum NovaSSTableMode {
         SSTABLE_DISK = 0,
         SSTABLE_MEM = 1,

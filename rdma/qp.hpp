@@ -100,6 +100,7 @@ namespace rdmaio {
             return res;
         }
 
+//获取对面的mr星系
         /**
          * Get remote MR attribute
          */
@@ -250,6 +251,7 @@ namespace rdmaio {
             return rc == 0 ? SUCC : ERR;
         }
 
+//下发recv工作请求
         ConnStatus
         post_recv(char *local_buf, uint32_t len, uint64_t wr_id = 0) {
             int ret = 0;
@@ -390,6 +392,7 @@ namespace rdmaio {
         struct ibv_cq *recv_cq_ = NULL;
     };
 
+//ud类型连接默认的config
     inline constexpr UDConfig default_ud_config() {
         return UDConfig{
                 .max_send_size  = RC_MAX_SEND_SIZE,

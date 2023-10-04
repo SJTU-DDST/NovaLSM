@@ -36,6 +36,7 @@ namespace nova {
         }
     }
 
+//初始化任务
     void NovaStatThread::Initialize(
             std::vector<nova::NovaStatThread::StorageWorkerStats> *storage_stats,
             const std::vector<nova::StorageWorker *> &storage_workers) {
@@ -80,6 +81,7 @@ namespace nova {
         output->append("\n");
     }
 
+//统计线程的函数，不是很仔细
     void NovaStatThread::Start() {
         std::vector<uint32_t> foreground_rdma_tasks;
         std::vector<uint32_t> bg_rdma_tasks;
@@ -100,12 +102,14 @@ namespace nova {
         for (int i = 0; i < bgs_.size(); i++) {
             compaction_stats.push_back(bgs_[i]->num_running_tasks());
         }
+//初始化各个stats的函数
         Initialize(&fg_storage_stats, fg_storage_workers_);
         Initialize(&bg_storage_stats, bg_storage_workers_);
         Initialize(&compaction_storage_stats, compaction_storage_workers_);
 
         std::string output;
         int flushed_memtable_size[BUCKET_SIZE];
+// 每隔10s输出各种统计量
         while (true) {
             sleep(10);
 

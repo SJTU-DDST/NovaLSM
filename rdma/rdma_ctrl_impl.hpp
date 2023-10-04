@@ -12,6 +12,8 @@ namespace rdmaio {
  * It uses a single global block to guard RdmaCtrl.
  * This is acceptable, since RdmaCtrl is only the control plane.
  */
+
+//全局锁
     class SCS {
     public:
         SCS() {
@@ -64,6 +66,7 @@ namespace rdmaio {
                 local_ip_(local_ip),
                 qp_callback_(callback) {
             // start the background thread to handle QP connection request
+//启动线程处理qp类型的连接请求
             pthread_attr_t attr;
             pthread_attr_init(&attr);
             pthread_create(&handler_tid_, &attr,
@@ -77,6 +80,7 @@ namespace rdmaio {
                 << "rdma controler close: does not handle any future connections.";
         }
 
+//打开
         RNicHandler *open_thread_local_device(DevIdx idx) {
             // already openend device
             if (rnic_instance() != nullptr)
@@ -87,6 +91,7 @@ namespace rdmaio {
             return rnic_instance();
         }
 
+//打开idx指定的设备，分配一些东西，然后返回
         RNicHandler *open_device(DevIdx idx) {
 
             RNicHandler *rnic = nullptr;
@@ -183,6 +188,7 @@ namespace rdmaio {
                 return dynamic_cast<T *>(qps_[key]);
         }
 
+//建立发送和接收的qp
         RCQP *create_rc_qp(QPIdx idx, RNicHandler *dev, MemoryAttr *attr,
                            enum ibv_qp_type qp_type, ibv_cq *cq,
                            ibv_cq *recv_cq) {
@@ -191,8 +197,10 @@ namespace rdmaio {
             {
                 SCS s;
                 uint64_t qid = get_rc_key(idx);
+//找到了的话不用create
                 if (qps_.find(qid) != qps_.end()) {
                     res = dynamic_cast<RCQP *>(qps_[qid]);
+//没找到的话，建立这个结构并且加进去                
                 } else {
                     if (attr == NULL)
                         res = new RCQP(dev, idx, qp_type, cq, recv_cq);
@@ -246,6 +254,7 @@ namespace rdmaio {
             return res;
         }
 
+//登记一个memory 
         bool register_memory(uint64_t mr_id, const char *buf, uint64_t size,
                              RNicHandler *rnic, int flag) {
             Memory *m = new Memory(buf, size, rnic->pd, flag);
@@ -278,6 +287,7 @@ namespace rdmaio {
             return -1;
         }
 
+//获得本地的mr的信息
         MemoryAttr get_local_mr(uint64_t mr_id) {
             MemoryAttr attr = {};
             {
@@ -355,10 +365,12 @@ namespace rdmaio {
                 delete rnic;
         }
 
+//线程开启之后运行的函数
         static void *connection_handler_wrapper(void *context) {
             return ((RdmaCtrlImpl *) context)->connection_handler();
         }
 
+//线程开启，用来管理连接
         /**
          * Using TCP to connect in-coming QP & MR requests
          */
@@ -377,6 +389,7 @@ namespace rdmaio {
                 asm volatile("":: : "memory");
                 struct sockaddr_in cli_addr = {0};
                 socklen_t clilen = sizeof(cli_addr);
+//接收到一个新的端口的连接请求
                 auto csfd = accept(listenfd, (struct sockaddr *) &cli_addr,
                                    &clilen);
                 if (csfd < 0) {
@@ -384,10 +397,12 @@ namespace rdmaio {
                                     << strerror(errno);
                     continue;
                 }
+//等待对方发送信息
                 if (!PreConnector::wait_recv(csfd, 10000)) {
                     close(csfd);
                     continue;
                 }
+//接受对方发送的信息
                 ConnArg arg = {};
                 auto n = recv(csfd, (char *) (&arg), sizeof(ConnArg),
                               MSG_WAITALL);
@@ -401,6 +416,7 @@ namespace rdmaio {
                 { // in a global critical section
                     SCS s;
                     switch (arg.type) {
+//对方的服务器已经终结
                         case ConnArg::TERMINATE:
                             terminate_mutex_.lock();
                             NOVA_LOG(INFO) << "Received terminate from "
@@ -409,6 +425,7 @@ namespace rdmaio {
                             terminate_mutex_.unlock();
                             reply.ack = SUCC;
                             break;
+//发过来的是mr的请求
                         case ConnArg::MR:
                             if (mrs_.find(arg.payload.mr.mr_id) != mrs_.end()) {
                                 memcpy((char *) (&(reply.payload.mr)),
@@ -417,11 +434,13 @@ namespace rdmaio {
                                 reply.ack = SUCC;
                             };
                             break;
+//发过来的是qp的请求
                         case ConnArg::QP: {
                             qp_callback_(
                                     arg.payload.qp); // call the user callback
                             QP *qp = NULL;
                             switch (arg.payload.qp.qp_type) {
+//UD类型的qp，
                                 case IBV_QPT_UD: {
                                     UDQP *ud_qp = get_qp<UDQP, get_ud_key>(
                                             create_ud_idx(
@@ -439,6 +458,7 @@ namespace rdmaio {
                                     }
                                 }
                                     break;
+//RC类型的qp
                                 case IBV_QPT_RC: {
                                     RCQP *rc_qp = get_qp<RCQP, get_rc_key>(
                                             create_rc_idx(
@@ -487,20 +507,27 @@ namespace rdmaio {
         // registered MRs at this control manager
         std::map<uint64_t, Memory *> mrs_;
 
+//key->qp的映射
         // created QPs on this control manager
         std::map<uint64_t, QP *> qps_;
 
         // local node information
+//本地这个server的id
         const int node_id_;
+//本地tcp的端口
         const int tcp_base_port_;
+//本地的ip地址，其实就是localhost
         const std::string local_ip_;
 
+//用于记录发送来已经结束信息的node id
         std::mutex terminate_mutex_;
         std::set<uint64_t> terminated_node_ids_;
 
+//启动的线程的tid
         pthread_t handler_tid_;
         bool running_ = true;
 
+//连接之后的回调函数，其实都置为空了
         // connection callback function
         connection_callback_t qp_callback_;
 
@@ -555,11 +582,15 @@ namespace rdmaio {
 //            return true; // This example does not use error handling
 //        }
 
+//登记一个指定的callback
+
         void register_qp_callback(connection_callback_t callback) {
             qp_callback_ = callback;
         }
 
     }; //
+
+//下面基本都是包装类
 
 // link to the novalsm class
     inline __attribute__ ((always_inline))
@@ -608,6 +639,7 @@ namespace rdmaio {
         return impl_->close_device(rnic);
     }
 
+//参数都对的上，只是类定义的时候搞了个默认参数
     inline __attribute__ ((always_inline))
     bool RdmaCtrl::register_memory(uint64_t id, const char *buf, uint64_t size,
                                    RNicHandler *rnic, int flag) {

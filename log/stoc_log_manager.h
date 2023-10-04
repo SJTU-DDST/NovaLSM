@@ -41,6 +41,7 @@ namespace nova {
             std::mutex mu;
         };
 
+//这个是什么结构呢?
         struct DBLogFiles {
             std::unordered_map<std::string, LogRecords *> logfiles_;
             leveldb::port::Mutex mutex_;

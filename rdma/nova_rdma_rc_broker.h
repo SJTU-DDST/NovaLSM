@@ -19,6 +19,8 @@ namespace nova {
 
     using namespace rdmaio;
 
+//用于处理rdma send，每个线程一个，用circular buffer
+
     // Thread local. One thread has one RDMA RC Broker.
     // It maintains a circular buffer to issue RDMA SENDs.
     class NovaRDMARCBroker : public NovaRDMABroker {
@@ -56,20 +58,45 @@ namespace nova {
                                rdma_port_, end_points_.size());
             int max_num_wrs = max_num_sends;
             int num_servers = end_points_.size();
-
+//work completion， poll出来的工作完成的标志
             wcs_ = (ibv_wc *) malloc(max_num_wrs * sizeof(ibv_wc));
+//RC类型的qp 每个对应一个server
+//pointer->pointer->RCQP
+//       ->pointer
+//       ->pointer
             qp_ = (RCQP **) malloc(num_servers * sizeof(RCQP *));
+//缓冲区 每个对应一个server
+//pointer->pointer->buffer
+//       ->pointer
+//       ->pointer
             rdma_send_buf_ = (char **) malloc(num_servers * sizeof(char *));
             rdma_recv_buf_ = (char **) malloc(num_servers * sizeof(char *));
+//sge就是要发送的各个地方，可以连载一起 每个对应一个server
+//pointer->pointer->RCQP
+//       ->pointer
+//       ->pointer
             send_sges_ = (struct ibv_sge **) malloc(
                     num_servers * sizeof(struct ibv_sge *));
+//下发到qp的send request 每个对应一个server
+//pointer->pointer->RCQP
+//       ->pointer
+//       ->pointer
             send_wrs_ = (ibv_send_wr **) malloc(
                     num_servers * sizeof(struct ibv_send_wr *));
+//sge的index 这个是记录当前发送到哪里了?还是说记录sge list的大小 每个对应一个server
+//pointer->pointer->RCQP
+//       ->pointer
+//       ->pointer
             send_sge_index_ = (int *) malloc(num_servers * sizeof(int));
 
+//记录当前pending的send以及对应的index 每个对应一个server
+//pointer->pointer->RCQP
+//       ->pointer
+//       ->pointer
             npending_send_ = (int *) malloc(num_servers * sizeof(int));
             psend_index_ = (int *) malloc(num_servers * sizeof(int));
 
+//算好对应的偏移
             uint64_t nsendbuf = max_num_sends * max_msg_size;
             uint64_t nrecvbuf = max_num_sends * max_msg_size;
             uint64_t nbuf = nsendbuf + nrecvbuf;
@@ -92,15 +119,17 @@ namespace nova {
 
                 rdma_send_buf_[i] = rdma_recv_buf_[i] + nrecvbuf;
                 memset(rdma_send_buf_[i], 0, nsendbuf);
-
+//分配doorbell_batch_size大小的
                 send_sges_[i] = (ibv_sge *) malloc(
                         doorbell_batch_size * sizeof(struct ibv_sge));
+//send request也分配同样大小的
                 send_wrs_[i] = (ibv_send_wr *) malloc(
                         doorbell_batch_size * sizeof(struct ibv_send_wr));
                 for (int j = 0; j < doorbell_batch_size; j++) {
                     memset(&send_sges_[i][j], 0, sizeof(struct ibv_sge));
                     memset(&send_wrs_[i][j], 0, sizeof(struct ibv_send_wr));
                 }
+//server的id 到 索引的映射 ? 我觉得就是同一个
                 server_qp_idx_map_[end_points[i].server_id] = i;
             }
         }

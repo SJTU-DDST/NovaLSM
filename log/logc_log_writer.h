@@ -16,6 +16,8 @@
 #include "novalsm/rdma_admission_ctrl.h"
 
 namespace leveldb {
+
+//向stoc写入的工具??每个worker一个
     // Replicate log records across StoCs.
     class LogCLogWriter {
     public:

@@ -42,6 +42,7 @@ namespace rdmaio {
  * The QP connection requests sent to remote.
  * from_node & from_worker identifies which QP it shall connect to
  */
+//qp的信息
     struct QPConnArg {
         uint16_t from_node;
         uint8_t from_worker;
@@ -52,10 +53,12 @@ namespace rdmaio {
 /**
  * The MR connection requests sent to remote.
  */
+//标识mr的信息
     struct MRConnArg {
         uint64_t mr_id;
     };
 
+//发送信息的格式
     struct ConnArg {
         enum {
             MR, QP, TERMINATE
@@ -67,6 +70,7 @@ namespace rdmaio {
         } payload;
     };
 
+//发送信息的格式
     struct ConnReply {
         ConnStatus ack;
         union {

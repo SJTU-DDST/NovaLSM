@@ -18,6 +18,7 @@ namespace nova {
         return server_qp_idx_map_[server_id];
     }
 
+//rdmabroker的初始化，在rdma线程里面首先执行
     void NovaRDMARCBroker::Init(RdmaCtrl *rdma_ctrl) {
         NOVA_LOG(INFO) << "RDMA client thread " << thread_id_
                        << " initializing";
@@ -25,10 +26,12 @@ namespace nova {
         const char *cache_buf = mr_buf_;
         uint64_t my_memory_id = my_server_id_;
 
+//首先打开设备
         open_device_mutex.lock();
         if (!is_device_opened) {
             device = rdma_ctrl->open_device(idx);
             is_device_opened = true;
+//register memory，这里好像是把所有空间全部register了
             NOVA_ASSERT(
                     rdma_ctrl->register_memory(my_memory_id,
                                                cache_buf,
@@ -65,17 +68,19 @@ namespace nova {
         }
     }
 
+//初始化qp，对于所有其他server
     void NovaRDMARCBroker::InitializeQPs(RdmaCtrl *rdma_ctrl) {
         uint64_t my_memory_id = my_server_id_;
         int num_servers = end_points_.size();
+
 
         for (int peer_id = 0; peer_id < num_servers; peer_id++) {
             QPEndPoint peer_store = end_points_[peer_id];
             QPIdx my_rc_key = create_rc_idx(my_server_id_, thread_id_,
                                             peer_store.server_id);
-            QPIdx peer_rc_key = create_rc_idx(peer_store.server_id,
-                                              peer_store.thread_id,
-                                              my_server_id_);
+            QPIdx peer_rc_key = create_rc_idx(peer_store.server_id,//对面的server id
+                                              peer_store.thread_id,//负责处理对对面的 本地的 thread 的 id(就是这个线程的id)
+                                              my_server_id_);//本地的服务器的server id
             uint64_t peer_memory_id = static_cast<uint64_t >(peer_store.server_id);
             NOVA_LOG(DEBUG) << "rdma-rc[" << thread_id_
                             << "]: my rc key " << my_rc_key.node_id << ":"
@@ -86,16 +91,21 @@ namespace nova {
                             << peer_store.host.ip << ":" << peer_rc_key.node_id
                             << ":" << peer_rc_key.worker_id << ":"
                             << peer_rc_key.index;
+//获得本地mr的信息 本地serverid作为一个mr
             MemoryAttr local_mr = rdma_ctrl->get_local_mr(
                     my_memory_id);
+//建立cq用于发送
             ibv_cq *cq = rdma_ctrl->create_cq(
                     device, max_num_sends_);
+//建立cq用于接收
             ibv_cq *recv_cq = rdma_ctrl->create_cq(
                     device, max_num_sends_);
+//登记
             qp_[peer_id] = rdma_ctrl->create_rc_qp(my_rc_key,
                                                    device,
                                                    &local_mr,
                                                    cq, recv_cq);
+//获取对方的mr的信息
             // get remote server's memory information
             MemoryAttr remote_mr = {};
             while (QP::get_remote_mr(peer_store.host.ip,
@@ -103,11 +113,13 @@ namespace nova {
                                      peer_memory_id, &remote_mr) != SUCC) {
                 usleep(CONN_SLEEP);
             }
+//登记对面的mr
             qp_[peer_id]->bind_remote_mr(remote_mr);
             NOVA_LOG(INFO) << "rdma-rc[" << thread_id_
                            << "]: connect to server "
                            << peer_store.host.ip << ":" << peer_store.host.port
                            << ":" << peer_store.thread_id;
+//连接对面的
             // bind to the previous allocated mr
             while (qp_[peer_id]->connect(peer_store.host.ip,
                                          rdma_port_,
@@ -238,13 +250,16 @@ namespace nova {
                             remote_offset, is_remote_offset, imm_data);
     }
 
+//这个是处理send请求的
     uint32_t NovaRDMARCBroker::PollSQ(int server_id, uint32_t *new_requests) {
         uint32_t qp_idx = to_qp_idx(server_id);
+//如果没有pending的send??就直接返回，
         int npending = npending_send_[qp_idx];
         if (npending == 0) {
             return 0;
         }
 
+//有pending的send的话就从cq里面收
         // FIFO.
         int n = ibv_poll_cq(qp_[qp_idx]->cq_, max_num_sends_, wcs_);
         bool generate_new_request = false;
@@ -261,6 +276,7 @@ namespace nova {
                         ibv_wc_opcode_str(wcs_[i].opcode));
             char *buf = rdma_send_buf_[qp_idx] +
                         wcs_[i].wr_id * max_msg_size_;
+//调用回调函数对cq里面的cqe进行处理
             callback_->ProcessRDMAWC(wcs_[i].opcode, wcs_[i].wr_id, server_id,
                                      buf, wcs_[i].imm_data,
                                      &generate_new_request);
@@ -275,6 +291,7 @@ namespace nova {
         return n;
     }
 
+//给server_id对应的qp发一个recv工作请求?
     void NovaRDMARCBroker::PostRecv(int server_id, int recv_buf_index) {
         uint32_t qp_idx = to_qp_idx(server_id);
         char *local_buf =

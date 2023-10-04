@@ -9,12 +9,16 @@
 #include "log/stoc_log_manager.h"
 
 namespace leveldb {
+
+//初始化
     LSMTreeCleaner::LSMTreeCleaner(nova::StoCInMemoryLogFileManager *log_manager, leveldb::StoCBlockClient *client)
             : log_manager_(log_manager), client_(client) {
 
     }
 
+//只有cfg多于1个的才会开启这个线程，不知道是什么任务
     void LSMTreeCleaner::CleanLSM() const {
+//周期性调用本地server管理的，不知道是什么任务???
         while (true) {
             sleep(5);
             int current_cfg_id = nova::NovaConfig::config->current_cfg_id;
@@ -31,11 +35,13 @@ namespace leveldb {
     }
 
     void LSMTreeCleaner::FlushingMemTables() const {
+//定时调用flush memtables
         while (true) {
             sleep(1);
             int current_cfg_id = nova::NovaConfig::config->current_cfg_id;
             for (int fragid = 0; fragid < nova::NovaConfig::config->cfgs[current_cfg_id]->fragments.size(); fragid++) {
                 auto current_frag = nova::NovaConfig::config->cfgs[current_cfg_id]->fragments[fragid];
+//如果当前
                 if (current_frag->ltc_server_id == nova::NovaConfig::config->my_server_id) {
                     auto db = reinterpret_cast<DBImpl *>(current_frag->db);
                     NOVA_ASSERT(db);
@@ -45,6 +51,7 @@ namespace leveldb {
         }
     }
 
+//周期性检查是否更新cfg并且有一些compaction log相关的工作
     void LSMTreeCleaner::CleanLSMAfterCfgChange() const {
         int current_cfg_id = nova::NovaConfig::config->current_cfg_id;
 

@@ -45,7 +45,7 @@ namespace nova {
         std::set<uint32_t> assigned_frags_;
     };
 
-
+//实际的server?
     class NICServer {
     public:
         NICServer(RdmaCtrl *rdma_ctrl, char *rdmabuf, int nport);
