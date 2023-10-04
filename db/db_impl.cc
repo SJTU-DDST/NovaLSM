@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <cmath>
 
 #include <algorithm>
 #include <atomic>

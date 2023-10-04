@@ -7,6 +7,8 @@
 #ifndef LEVELDB_COMPACTION_H
 #define LEVELDB_COMPACTION_H
 
+#include<functional>
+
 #include "leveldb/status.h"
 #include "leveldb/env_bg_thread.h"
 #include "leveldb/iterator.h"

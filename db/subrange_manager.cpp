@@ -3,7 +3,7 @@
 // Created by Haoyu Huang on 5/4/20.
 // Copyright (c) 2020 University of Southern California. All rights reserved.
 //
-
+#include <cmath>
 #include "subrange_manager.h"
 #include "memtable.h"
 

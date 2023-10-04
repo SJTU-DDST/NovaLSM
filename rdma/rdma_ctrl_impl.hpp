@@ -2,6 +2,7 @@
 #include <map>
 #include <mutex>
 #include <fmt/core.h>
+#include<functional>
 #include "qp.hpp"
 #include "common.hpp"
 

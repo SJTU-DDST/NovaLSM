@@ -26,3 +26,14 @@ nova_mem_server
 nova_mc_test
 
 ycsb/YCSB_C.cbp
+
+bloom_test
+file_reader
+filter_block_test
+libleveldb.a
+memtable_bench
+nova_server_main
+nova_server_main_debug
+nova_subrange_sim
+scatter_bench
+version_set_test

@@ -4,6 +4,8 @@
 // Copyright (c) 2020 University of Southern California. All rights reserved.
 //
 
+#include<functional>
+
 #include "storage_worker.h"
 
 #include <fmt/core.h>
