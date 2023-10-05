@@ -1,5 +1,5 @@
 #!/bin/bash
-home_dir="/proj/bg-PG0/haoyu"
+home_dir="/home/yuhang/NovaLSM"
 # home_dir="/proj/BG/haoyu"
 config_dir="$home_dir/config"
 db_dir="$home_dir/db"
@@ -11,9 +11,11 @@ recordcount="$1"
 exp_results_dir="$home_dir/nova-tutorial-backup-$recordcount"
 dryrun="$2"
 
+#新建对应的目录
 mkdir -p $results
 mkdir -p $exp_results_dir
 
+#novalsm的设置??
 nservers="3"
 nclients="6"
 
@@ -30,6 +32,7 @@ zipfianconstant="0.99"
 mem_pool_size_gb="32"
 partition="range"
 
+#这个都是novalsm的一些设置
 # CC
 cc_nconn_workers="8"
 num_rdma_fg_workers="8"
@@ -62,16 +65,19 @@ num_memtables="2"
 
 log_record_mode="none"
 num_log_replicas="1"
+#存放访问频度这里有点不一样
 zipfian_dist_file_path="/tmp/zipfian-$recordcount"
 zipfian_dist_file_path=""
 try="0"
+
+#实际的跑bench的函数
 function run_bench() {
 	servers=()
 	clis=()
 	machines=()
 	i=0
-	n=0
-	while [ $n -lt $nservers ]
+	n=0 
+	while [ $n -lt $nservers ] #遍历server的个数
 	do
 		# if [[ $i == "9" ]]; then
 		# 	i=$((i+1))

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-END=$1
+END=$1 #这里第一个参数是node的个数
 REMOTE_HOME="/proj/BG"
 REMOTE_HOME="/proj/bg-PG0"
 setup_script="$REMOTE_HOME/haoyu/scripts/env"

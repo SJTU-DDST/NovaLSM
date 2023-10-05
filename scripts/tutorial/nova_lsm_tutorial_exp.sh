@@ -1,5 +1,7 @@
 #!/bin/bash
-home_dir="/proj/bg-PG0/haoyu"
+
+#先设置各种位置，并且新建文件夹
+home_dir="/home/yuhang/NovaLSM"
 # home_dir="/proj/BG/haoyu"
 config_dir="$home_dir/config"
 db_dir="$home_dir/db"
@@ -11,9 +13,11 @@ recordcount="$1"
 exp_results_dir="$home_dir/nova-tutorial-$recordcount"
 dryrun="$2"
 
+#新建对应的目录
 mkdir -p $results
 mkdir -p $exp_results_dir
 
+#novalsm的设置??
 nservers="3"
 nclients="6"
 
@@ -23,13 +27,14 @@ workload="workloadc"
 nthreads="16"
 debug="false"
 dist="zipfian"
-cardinality="10"
+cardinality="10" #这里有点区别，应该是ycsb的一些设置不一样
 value_size="4096"
 operationcount="0"
 zipfianconstant="0.99"
 mem_pool_size_gb="32"
 partition="range"
 
+#这个都是novalsm的一些设置
 # CC
 cc_nconn_workers="8"
 num_rdma_fg_workers="8"
@@ -62,45 +67,49 @@ num_memtables="2"
 
 log_record_mode="none"
 num_log_replicas="1"
+#存放访问频度这里有点不一样
 zipfian_dist_file_path="/tmp/zipfian"
 try="0"
+
+#实际的跑bench的函数
 function run_bench() {
 	servers=()
 	clis=()
 	machines=()
 	i=0
 	n=0
-	while [ $n -lt $nservers ]
+	while [ $n -lt $nservers ] #遍历server的个数
 	do
 		# if [[ $i == "9" ]]; then
 		# 	i=$((i+1))
 		# 	continue	
 		# fi
-		servers+=("node-$i")
+		servers+=("node-$i") #server里面加一个node
 		i=$((i+1))
 		n=$((n+1))
 	done
 
 	i=0
 	n=0
-	while [ $n -lt $nclients ]
+	while [ $n -lt $nclients ] #遍历client的个数
 	do
 		id=$((nmachines-1-i))
 		# if [[ $id == "9" ]]; then
 		# 	i=$((i+1))
 		# 	continue	
 		# fi
-		clis+=("node-$id")
+		clis+=("node-$id") #client里面加一个node
 		i=$((i+1))
 		n=$((n+1))
 	done
 
-	for ((i=0;i<nmachines;i++));
+	for ((i=0;i<nmachines;i++)); #遍历machine的个数
 	do
 		id=$((i))
-		machines+=("node-$id")
+		machines+=("node-$id") #给machine node的命名
 	done
 
+#打印出client server machine的内容，看看都是哪些node
 	echo ${clis[@]}
 	echo ${servers[@]}
 	echo ${machines[@]}
@@ -111,22 +120,25 @@ function run_bench() {
 	for s in ${servers[@]}
 	do
 		nova_port="$port"
-		nova_servers="$nova_servers,$s:$nova_port"
+		nova_servers="$nova_servers,$s:$nova_port" #这里是什么语法??
 		i=$((i+1))
 		if [[ $i -le number_of_ltcs ]]; then
 			nova_all_servers="$nova_all_servers,$s:$nova_port"
 		fi
 		nova_port=$((nova_port+1))
 	done
-	nova_servers="${nova_servers:1}"
-	nova_all_servers="${nova_all_servers:1}"
+	nova_servers="${nova_servers:1}" #????不太懂
+	nova_all_servers="${nova_all_servers:1}" #????不太懂
 
+# 打印一下当前的机器配置
 	current_time=$(date "+%Y-%m-%d-%H-%M-%S")
 	nstoc=$((nservers-number_of_ltcs))
 	echo "$nservers, $number_of_ltcs, $nstoc"
+# 打印一下结果的存放文件
 	result_dir_name="nova-zf-$zipfianconstant-nm-$num_memtables-lr-$num_log_replicas-try-$try-cfg-$change_cfg-d-$dist-w-$workload-ltc-$number_of_ltcs-stoc-$nstoc-l0-$l0_stop_write_mb-np-$num_memtable_partitions-nr-$cc_nranges_per_server"
 	echo "running experiment $result_dir_name"
 
+# 把目录新建出来
 	# Copy the files over local node
     dir="$exp_results_dir/$result_dir_name"
     echo "Result Dir $dir..."
@@ -138,15 +150,18 @@ function run_bench() {
 	# echo $cmd
 	# eval $cmd
 	# number_of_stocs=$((nservers-number_of_ltcs))
+# 找到config的path
 	ltc_config_path="$config_dir/nova-tutorial-config"
 	
 	db_path="/db/nova-db-$recordcount-$value_size"
 	echo "$nova_servers $ltc_config_path $db_path"
 	echo "cc servers $nova_all_servers"
+# dryrun代表的是查看config??
 	if [[ $dryrun == "true" ]]; then
 		return
 	fi
 
+# 遍历所有machine 删除各个machine的result dir并且重建
 	for m in ${machines[@]}
 	do
 		echo "remove $results at machine $m"
@@ -357,4 +372,4 @@ nthreads="512"
 run_bench
 
 
-python /proj/bg-PG0/haoyu/scripts/parse_ycsb_nova_leveldb.py $nmachines $exp_results_dir > stats_tutorial_out
+python /home/yuhang/NovaLSM/scripts/exp/parse_ycsb_nova_leveldb.py $nmachines $exp_results_dir > stats_tutorial_out

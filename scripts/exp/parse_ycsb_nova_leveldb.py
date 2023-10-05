@@ -483,7 +483,7 @@ def report_major_compaction_time(logname):
 			
 			stats["output"] = int(ems[-2]) / 1024 / 1024
 			stats["files"] = int(ems[-5].split("@")[0]) + int(ems[-7].split("@")[0])
-			print "{},{},{},{}".format(stats["files"],stats["files"]*16, stats["output"], stats["duration"]/1000000)
+			print ("{},{},{},{}".format(stats["files"],stats["files"]*16, stats["output"], stats["duration"]/1000000))
 
 	# return num_wait, sum_wait/1000000
 
@@ -536,13 +536,13 @@ def report_diskspace(result_dir):
 				space = int(lines[0].split("\t")[0])
 				sum_disk_space += space
 			except:
-				print "!!!!!!!!!!!!!{}".format(result_dir)
+				print ("!!!!!!!!!!!!!{}".format(result_dir))
 				continue
 	return sum_disk_space / 1024
 
 def parse_performance(result_dir):
 	throughput = 0
-	print result_dir
+	print (result_dir)
 	nodes={}
 	overall_latencies={}
 	overall_latencies["read"]={}
@@ -632,7 +632,7 @@ def parse_performance(result_dir):
 						if duration == 	550:
 							overall_thpt = (ops-basethpt) / 540
 					except:
-						print line
+						print (line)
 						continue
 					
 					for i in range(len(latencies)):
@@ -650,7 +650,7 @@ def parse_performance(result_dir):
 				nodes[node_id] = {}
 			nodes[node_id][client_id] = performance
 			stalls.append(safe_divide(stall, num_duration))
-			print node_id, client_id, overall_thpt, overall_latencies, safe_divide(stall, num_duration)
+			print (node_id, client_id, overall_thpt, overall_latencies, safe_divide(stall, num_duration))
 	return overall_latencies, throughput, nodes, median(stalls)
 
 params=[]
@@ -880,12 +880,12 @@ def parse_exp(exp_dir):
 			exps[exp]["coll"][node_id]["[IB]OutGbps"] = median(rdma_resources[node_id]["[IB]OutGbps"])
 
 	for exp in exps:
-		print exp, exps[exp]["thpt"], exps[exp]["total_log_records"], exps[exp]["disk_space"], exps[exp]["hit_rate"], exps[exp]["nwait"], exps[exp]["wait_time"]
+		print (exp, exps[exp]["thpt"], exps[exp]["total_log_records"], exps[exp]["disk_space"], exps[exp]["hit_rate"], exps[exp]["nwait"], exps[exp]["wait_time"])
 	return exps
 
 def print_all(exps):
 	header=""
-	print params
+	print (params)
 	for p in params:
 		header+=param_dict[p]
 		header+=","
@@ -988,18 +988,18 @@ def print_all(exps):
 		summary += "\n"
 
 		if print_thpt_timeline:
-			print thpt_timelines
+			print (thpt_timelines)
 
 		if print_resources_stats:
 			for resource in print_resources:
 				for node_id in node_resource_timelines["avg_{}".format(resource)]:
 					ag = node_resource_timelines["avg_{}".format(resource)][node_id]
-					print "avg-{}-{},{}".format(resource, node_id, ag)
+					print ("avg-{}-{},{}".format(resource, node_id, ag))
 
 			for resource in print_resources:
 				for node_id in node_resource_timelines[resource]:
-					print node_resource_timelines[resource][node_id]
-	print summary
+					print (node_resource_timelines[resource][node_id])
+	print (summary)
 
 param_dict={}
 param_dict["d"]="Distribution"

@@ -37,3 +37,5 @@ nova_server_main_debug
 nova_subrange_sim
 scatter_bench
 version_set_test
+exp_out
+stats_tutorial_out
