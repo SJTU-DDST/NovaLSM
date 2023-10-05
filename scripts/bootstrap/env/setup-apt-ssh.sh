@@ -2,7 +2,7 @@
 
 # END=$1 #这里第一个参数是node的个数,也没什么用了
 REMOTE_HOME="/home/yuhang"
-setup_script="$REMOTE_HOME/NovaLSM/scripts/env"
+setup_script="$REMOTE_HOME/NovaLSM/scripts/bootstrap/env"
 limit_dir="$REMOTE_HOME/NovaLSM/scripts"
 LOCAL_HOME="/home/yuhang/NovaLSM/scripts/bootstrap"
 
@@ -16,9 +16,9 @@ host73="192.168.98.73" #73
 
 # for ((i=0;i<END;i++)); do
 echo "building server on node 73"
-ssh -oStrictHostKeyChecking=no yuhang@${host73} "bash $setup_script/setup-ssh.sh"
+ssh -oStrictHostKeyChecking=no yuhang@${host73} "sudo bash $setup_script/setup-ssh.sh"
 echo "building server on node 74"
-ssh -oStrictHostKeyChecking=no yuhang@${host74} "bash $setup_script/setup-ssh.sh"
+ssh -oStrictHostKeyChecking=no yuhang@${host74} "sudo bash $setup_script/setup-ssh.sh"
 # done
 
 #

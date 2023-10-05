@@ -6,7 +6,7 @@ HOME=/home/yuhang
 chmod 700 $HOME/.ssh
 
 # Retrieve the server-generated RSA private key.
-geni-get key > $HOME/.ssh/id_rsa
+# geni-get key > $HOME/.ssh/id_rsa
 chmod 600 $HOME/.ssh/id_rsa
 
 # Derive the corresponding public key portion.

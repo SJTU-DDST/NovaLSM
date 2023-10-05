@@ -1,5 +1,5 @@
 #!/bin/bash
-basedir="/proj/bg-PG0/haoyu"
+basedir="/home/yuhang/NovaLSM"
 
 export DEBIAN_FRONTEND=noninteractive
 
