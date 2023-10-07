@@ -48,7 +48,7 @@ sudo mkdir /mnt/ramdisk
 sudo mount -t tmpfs -o rw,size=20G tmpfs /mnt/ramdisk
 sudo chmod 777 /mnt/ramdisk
 
-cd $basedir/gflags && sudo make install
+# cd $basedir/gflags && sudo make install #先确保 gflags fmt都安装好所以就不用了
 
 sudo apt-get --yes install elfutils
 
@@ -73,16 +73,18 @@ echo ""
 # Enable gdb history
 echo 'set history save on' >> ~/.gdbinit && chmod 600 ~/.gdbinit
 
-cd /tmp/
-wget https://github.com/fmtlib/fmt/releases/download/6.1.2/fmt-6.1.2.zip
-unzip fmt-6.1.2.zip
-cd fmt-6.1.2/ && cmake . && make -j32 && sudo make install
+#不用装fmt和cmake
+
+# cd /tmp/
+# wget https://github.com/fmtlib/fmt/releases/download/6.1.2/fmt-6.1.2.zip
+# unzip fmt-6.1.2.zip
+# cd fmt-6.1.2/ && cmake . && make -j32 && sudo make install
 
 
-cd /tmp/
-wget https://github.com/Kitware/CMake/releases/download/v3.13.3/cmake-3.13.3.tar.gz
-tar -xf cmake-3.13.3.tar.gz
-cd cmake-3.13.3 && ./bootstrap && make -j32 && sudo make install
+# cd /tmp/
+# wget https://github.com/Kitware/CMake/releases/download/v3.13.3/cmake-3.13.3.tar.gz
+# tar -xf cmake-3.13.3.tar.gz
+# cd cmake-3.13.3 && ./bootstrap && make -j32 && sudo make install
 
 sudo apt install libpopt-dev
 sudo apt-get install libiberty-dev
@@ -95,6 +97,8 @@ cd oprofile-1.3.0 && ./configure && make -j32 && sudo make install
 
 # operf /path/to/mybinary
 # opreport --symbols
+
+#确保都下载进来
 
 rm -rf /tmp/YCSB-Nova
 cp -r "$basedir/YCSB-Nova/" /tmp/

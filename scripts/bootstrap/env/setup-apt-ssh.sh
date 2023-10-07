@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# this script is deserted because I have set ssh
 # END=$1 #这里第一个参数是node的个数,也没什么用了
 REMOTE_HOME="/home/yuhang"
 setup_script="$REMOTE_HOME/NovaLSM/scripts/bootstrap/env"
@@ -21,6 +22,7 @@ echo "building server on node 74"
 ssh -oStrictHostKeyChecking=no yuhang@${host74} "sudo bash $setup_script/setup-ssh.sh"
 # done
 
+# not changing server limit
 #
 #for ((i=0;i<END;i++)); do
 #    echo "building server on node $i"

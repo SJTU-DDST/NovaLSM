@@ -4,7 +4,8 @@ basedir="/home/yuhang/NovaLSM"
 numServers=$1
 #prefix="h"
 
-nodes=("yuhang@192.168.98.73" "yuhang@192.168.98.74")
+# 5 nodes in total 
+nodes=("192.168.98.74" "192.168.98.73" "192.168.98.72" "192.168.98.70" "192.168.98.52")
 
 for ((i=0; i<numServers; i++)); do
     echo "*******************************************"
@@ -12,9 +13,9 @@ for ((i=0; i<numServers; i++)); do
     echo "******************* node$i ********************"
     echo "*******************************************"
     echo "*******************************************"
-    ssh -oStrictHostKeyChecking=no "${nodes[i]}" "sudo apt-get update"
-    ssh -oStrictHostKeyChecking=no "${nodes[i]}" "sudo apt-get --yes install screen"
-	ssh -n -f -oStrictHostKeyChecking=no "${nodes[i]}" screen -L -S env1 -dm "$basedir/scripts/env/setup-all.sh"
+    ssh -oStrictHostKeyChecking=no "yuhang@${nodes[i]}" "sudo apt-get update"
+    ssh -oStrictHostKeyChecking=no "yuhang@${nodes[i]}" "sudo apt-get --yes install screen"
+	ssh -n -f -oStrictHostKeyChecking=no "yuhang@${nodes[i]}" screen -L -S env1 -dm "$basedir/scripts/env/setup-all.sh"
 done
 
 sleep 10

@@ -6,7 +6,9 @@ home_dir="/home/yuhang/NovaLSM"
 config_dir="$home_dir/config"
 db_dir="$home_dir/db"
 script_dir="$home_dir/scripts"
+#这个应该是一些客户端的东西???有可能不在里面
 cache_bin_dir="$home_dir/nova"
+#YCSB编译出来的东西
 client_bin_dir="/tmp/YCSB-Nova"
 results="/tmp/results"
 recordcount="$1"
