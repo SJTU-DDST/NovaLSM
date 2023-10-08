@@ -7,6 +7,7 @@ bash scripts/bootstrap/env/setup-rdma.sh
 
 sudo apt-get --yes install libgflags-dev
 
+#这步倒是非常有可能有问题
 cd /tmp/
 wget https://github.com/fmtlib/fmt/releases/download/6.1.2/fmt-6.1.2.zip
 unzip fmt-6.1.2.zip

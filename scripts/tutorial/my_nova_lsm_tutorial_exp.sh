@@ -20,14 +20,14 @@ mydebug="$3"
 mkdir -p $results
 mkdir -p $exp_results_dir
 
-nmachines="5"
-nservers="4"
-number_of_ltcs="2" # duplicate
+nmachines="5" # 5 machines in total
+nservers="4" # 4 servers function(52 serve as client)
+number_of_ltcs="2" # duplicate 2 servers as ltc
 nclients="1"
 
 # YCSB
-maxexecutiontime=300
-workload="workloadc"
+maxexecutiontime=1200
+workload="workloadw"
 nthreads="512"
 debug="false"
 dist="uniform"
@@ -37,6 +37,7 @@ operationcount="0"
 zipfianconstant="0.99"
 mem_pool_size_gb="30"
 partition="range"
+nclients_per_server="1"
 
 # CC
 cc_nconn_workers="512"
@@ -48,17 +49,16 @@ num_recovery_threads="32"
 num_migration_threads="32"
 block_cache_mb="0"
 row_cache_mb="0"
-memtable_size_mb="4"
+memtable_size_mb="16"
 ltc_config_path=""
 cc_nreplicas_per_range="1"
 cc_nranges_per_server="1"
 cc_log_buf_size="1024"
-max_stoc_file_size_mb="4"
-sstable_size_mb="2"
+max_stoc_file_size_mb="18432"
+sstable_size_mb="16"
 cc_stoc_files_path="/db/stoc_files"
-ltc_num_stocs_scatter_data_blocks="3"
+ltc_num_stocs_scatter_data_blocks="1"
 num_memtable_partitions="64"
-number_of_ltcs="2"
 cc_log_record_policy="exclusive"
 cc_log_max_file_size_mb="18"
 
@@ -91,13 +91,9 @@ enable_subrange_reorg="false"
 
 #filter data...config
 scatter_policy="power_of_two"
-ltc_num_stocs_scatter_data_blocks="1"
-max_stoc_file_size_mb="18432"
 
 #lsm config
 level="6"
-memtable_size_mb="16"
-sstable_size_mb="16"
 use_local_disk="false"
 num_sstable_replicas="1"
 
@@ -110,10 +106,6 @@ major_compaction_type="sc"
 major_compaction_max_parallism="32"
 major_compaction_max_tables_in_a_set="20"
 
-#YCSB config
-maxexecutiontime=1200
-workload="workloadw"
-nclients_per_server="1"
 
 #实际的跑bench的函数
 function run_bench() {
@@ -330,7 +322,7 @@ function run_bench() {
 		for i in $(seq 1 $nclients_per_server);
 		do
 			echo "creating client on $c-$i"
-			cmd="stdbuf --output=0 --error=0 bash $script_dir/run_ycsb.sh $nthreads $nova_all_servers $debug $partition $recordcount $maxexecutiontime $dist $value_size $workload $ltc_config_path $cardinality $operationcount $zipfianconstant 0"
+			cmd="stdbuf --output=0 --error=0 bash $script_dir/exp/run_ycsb.sh $nthreads $nova_all_servers $debug $partition $recordcount $maxexecutiontime $dist $value_size $workload $ltc_config_path $cardinality $operationcount $zipfianconstant 0"
 			echo "$cmd"
 			if [[ $mydebug == "true" ]]; then
 				echo "ssh prefix: " "ssh -oStrictHostKeyChecking=no ${ssh_nodes[c]}"
