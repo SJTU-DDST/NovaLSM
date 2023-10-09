@@ -6,7 +6,7 @@ export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update
 sudo apt --yes autoremove
 
-bash $basedir/scripts/env/setup-rdma.sh
+bash $basedir/scripts/bootstrap/env/setup-rdma.sh
 
 
 nic=`netstat -i`
@@ -25,8 +25,8 @@ done
 echo $iface
 
 
-sudo bash $basedir/scripts/env/nic.sh -i $iface
-sudo bash $basedir/scripts/env/sysctl.sh
+sudo bash $basedir/scripts/bootstrap/env/nic.sh -i $iface
+sudo bash $basedir/scripts/bootstrap/env/sysctl.sh
 
 sudo apt-get --yes install screen
 sudo apt-get --yes install htop
@@ -34,19 +34,24 @@ sudo apt-get --yes install maven
 sudo apt-get --yes install cmake
 sudo apt-get --yes install run-one
 
-sudo mkfs.ext4 /dev/sdb
-sudo mkdir /db
-sudo mount /dev/sdb /db
-sudo chmod 777 /db
+#在本地新建各种文件的目录
 
-sudo mkfs.ext4 /dev/sda4
-sudo mkdir /db
-sudo mount /dev/sda4 /db
-sudo chmod 777 /db
+# sudo mkfs.ext4 /dev/sdb
+# sudo mkdir /db
+# sudo mount /dev/sdb /db
+# sudo chmod 777 /db
 
-sudo mkdir /mnt/ramdisk
-sudo mount -t tmpfs -o rw,size=20G tmpfs /mnt/ramdisk
-sudo chmod 777 /mnt/ramdisk
+# sudo mkfs.ext4 /dev/sda4
+# sudo mkdir /db
+# sudo mount /dev/sda4 /db
+# sudo chmod 777 /db
+
+mkdir $basedir/db_files
+chmod 777 $basedir/db_files
+
+# sudo mkdir /mnt/ramdisk
+# sudo mount -t tmpfs -o rw,size=20G tmpfs /mnt/ramdisk
+# sudo chmod 777 /mnt/ramdisk
 
 # cd $basedir/gflags && sudo make install #先确保 gflags fmt都安装好所以就不用了
 

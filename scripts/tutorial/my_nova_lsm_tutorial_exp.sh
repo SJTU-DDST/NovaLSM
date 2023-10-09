@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #ssh版本的node
-ssh_nodes=("yuhang@192.168.98.74" "yuhang@192.168.98.73" "yuhang@192.168.98.72" "yuhang@192.168.98.70" "yuhang@192.168.98.52")
-#ip的node，就先用74 73 72 70 52
-ip_nodes=("192.168.98.74" "192.168.98.73" "192.168.98.72" "192.168.98.70" "192.168.98.52")
+ssh_nodes=("yuhang@192.168.98.74" "yuhang@192.168.98.73" "yuhang@192.168.98.70" "yuhang@192.168.98.53" "yuhang@192.168.98.52")
+#ip的node，就先用74 73 70 53 52
+ip_nodes=("192.168.98.74" "192.168.98.73" "192.168.98.70" "192.168.98.53" "192.168.98.52")
 
 home_dir="/home/yuhang/NovaLSM"
 config_dir="$home_dir/config"
@@ -56,7 +56,7 @@ cc_nranges_per_server="1"
 cc_log_buf_size="1024"
 max_stoc_file_size_mb="18432"
 sstable_size_mb="16"
-cc_stoc_files_path="/db/stoc_files"
+cc_stoc_files_path="$home_dir/db_files/stoc_files"
 ltc_num_stocs_scatter_data_blocks="1"
 num_memtable_partitions="64"
 cc_log_record_policy="exclusive"
@@ -192,7 +192,7 @@ function run_bench() {
 # 找到config的path
 	ltc_config_path="$config_dir/nova-tutorial-config"
 	
-	db_path="/db/nova-db-$recordcount-$value_size"
+	db_path="$home_dir/db_files/nova-db-$recordcount-$value_size"
 
 	echo "nova server ip+port: " "$nova_servers" 
 	echo "ltc config: " "$ltc_config_path" 
@@ -233,9 +233,9 @@ function run_bench() {
 		echo "restore database image $s"
 		if [[ $mydebug == "true" ]]; then
 			echo "ssh prefix: " "ssh -oStrictHostKeyChecking=no ${ssh_nodes[s]}"
-			echo "exec on node $s: " "rm -rf /db/nova-db-$recordcount-1024/ && cp -r /db/snapshot-$cc_nranges_per_server-$nservers-$number_of_ltcs-$dist-$num_memtable_partitions-$memtable_size_mb-$zipfianconstant-$num_sstable_replicas/nova-db-$recordcount-1024/ /db/ &"
+			echo "exec on node $s: " "rm -rf $home_dir/db_files/nova-db-$recordcount-1024/ && cp -r $home_dir/db_files/snapshot-$cc_nranges_per_server-$nservers-$number_of_ltcs-$dist-$num_memtable_partitions-$memtable_size_mb-$zipfianconstant-$num_sstable_replicas/nova-db-$recordcount-1024/ $home_dir/db_files/ &"
 		else
-			ssh -oStrictHostKeyChecking=no ${ssh_nodes[s]} "rm -rf /db/nova-db-$recordcount-1024/ && cp -r /db/snapshot-$cc_nranges_per_server-$nservers-$number_of_ltcs-$dist-$num_memtable_partitions-$memtable_size_mb-$zipfianconstant-$num_sstable_replicas/nova-db-$recordcount-1024/ /db/ &" &
+			ssh -oStrictHostKeyChecking=no ${ssh_nodes[s]} "rm -rf $home_dir/db_files/nova-db-$recordcount-1024/ && cp -r $home_dir/db_files/snapshot-$cc_nranges_per_server-$nservers-$number_of_ltcs-$dist-$num_memtable_partitions-$memtable_size_mb-$zipfianconstant-$num_sstable_replicas/nova-db-$recordcount-1024/ $home_dir/db_files/ &" &
 		fi
 	done
 
@@ -442,4 +442,4 @@ function run_bench() {
 }
 
 run_bench
-# python /home/yuhang/NovaLSM/scripts/exp/parse_ycsb_nova_leveldb.py $nmachines $exp_results_dir > stats_tutorial_out
+python /home/yuhang/NovaLSM/scripts/exp/parse_ycsb_nova_leveldb.py $nmachines $exp_results_dir > stats_tutorial_out
