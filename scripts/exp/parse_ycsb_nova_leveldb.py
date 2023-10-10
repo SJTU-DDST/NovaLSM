@@ -732,7 +732,7 @@ def concat_timeline(timelines):
 	line += "\n"
 	return line
 
-
+#处理存放结果的目录中的各种
 def parse_exp(exp_dir):
 	exps={}
 	median_exps={}

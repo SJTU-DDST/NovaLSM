@@ -30,7 +30,7 @@ DEFINE_string(stoc_files_path, "/tmp/stoc", "StoC files path");//stoc文件的�
 
 DEFINE_string(all_servers, "localhost:11211", "A list of servers");//server的list
 DEFINE_int64(server_id, -1, "Server id.");//当前这个server的id
-DEFINE_int64(number_of_ltcs, 0, "The first n are LTCs and the rest are StoCs.");//ltc的数量，剩下的都是stoc
+DEFINE_int64(number_of_ltcs, 0, "The first n are LTCs and the rest are StoCs.");//ltc的数量，剩下的都是stoc 这个没有意义
 
 DEFINE_uint64(mem_pool_size_gb, 0, "Memory pool size in GB.");//内存池大小，GB为单位
 DEFINE_uint64(use_fixed_value_size, 0, "Fixed value size.");//使用的value的固定大小
