@@ -7,18 +7,20 @@ import json
 import time
 import datetime
 
+# 字符串转int
 def convert_int(val):
 	try:
 		return int(val)
 	except:
 		return 0
 
+# 字符串转float
 def convert_float(val):
 	try:
 		return float(val)
 	except:
 		return 0
-
+# 找到中位数
 def median(values):
 	nozerovalues = []
 	for v in values:
@@ -27,13 +29,15 @@ def median(values):
 	sorted(nozerovalues)
 	if len(nozerovalues) == 0:
 		return -1
-	return nozerovalues[len(nozerovalues) / 2]
+	return nozerovalues[int(len(nozerovalues) / 2)]
 
+# 除法
 def safe_divide(a, b):
 	if convert_float(b) <= 0:
 		return 0
 	return float(a) * 100.0 / float(b)
 
+# 只是返回平均值
 def stats(data):
 	if len(data) == 0:
 		return "0"
@@ -46,6 +50,7 @@ def stats(data):
 	diff=ma-avg
 	return "{}".format(avg)
 
+# 将一行数据转化为float数组
 def get_numbers(line):
 	ems = line.split(" ")
 	narray = []
@@ -56,6 +61,8 @@ def get_numbers(line):
 			narray.append(float(em))
 	return narray
 
+# 传入一个具体的实验的目录
+# 返回关于coll文件的处理结果
 def parse_rdma_resource(result_dir):
 	nodes={}
 	for node_id in range(num_nodes):
@@ -68,13 +75,43 @@ def parse_rdma_resource(result_dir):
 		if node_id not in print_resource_servers:
 			continue
 		try:
-			file = open("{}/node-{}-coll.txt".format(result_dir, node_id), 'r')
+			file = open("{}/{}-coll.txt".format(result_dir, node_id), 'r') # modify name
 		except:
 			continue
 		lines = file.readlines()
 		if len(lines) == 0 or len(lines) <= 2:
 			continue
+		# line 1
+		# #Date Time [CPU]User% [CPU]Nice% [CPU]Sys% [CPU]Wait% [CPU]Irq% [CPU]Soft% [CPU]Steal% [CPU]Idle% [CPU]Totl% [CPU]Guest% [CPU]GuestN% [CPU]Intrpt/sec [CPU]Ctx/sec [CPU]Proc/sec [CPU]ProcQue [CPU]ProcRun [CPU]L-Avg1 [CPU]L-Avg5 [CPU]L-Avg15 [CPU]RunTot [CPU]BlkTot [IB]InPkt [IB]OutPkt [IB]InKB [IB]OutKB [IB]Err
 		headers = lines[1].split(" ")
+		# #Date
+		# Time
+		# [CPU]User%
+		# [CPU]Nice%
+		# [CPU]Sys%
+		# [CPU]Wait%
+		# [CPU]Irq% 
+		# [CPU]Soft%
+		# [CPU]Steal%
+		# [CPU]Idle%
+		# [CPU]Totl%
+		# [CPU]Guest%
+		# [CPU]GuestN%
+		# [CPU]Intrpt/sec
+		# [CPU]Ctx/sec
+		# [CPU]Proc/sec
+		# [CPU]ProcQue
+		# [CPU]ProcRun
+		# [CPU]L-Avg1
+		# [CPU]L-Avg5
+		# [CPU]L-Avg15
+		# [CPU]RunTot
+		# [CPU]BlkTot
+		# [IB]InPkt
+		# [IB]OutPkt
+		# [IB]InKB
+		# [IB]OutKB
+		# [IB]Err
 		stats = {}
 		values = []
 		for i in range(len(headers)):
@@ -83,16 +120,19 @@ def parse_rdma_resource(result_dir):
 		for i in range(len(lines)):
 			if i <= 1:
 				continue
+			# 20231011 15:51:30 0 0 0 0 0 0 0 100 0 0 0 2221 4939 12 2214 2 0.70 0.74 0.57 0 0 0 0 1 0 0
 			ems = lines[i].split(" ")
 			for j in range(len(ems)):
-				values[j].append(convert_int(ems[j]))
+				values[j].append(convert_int(ems[j])) # 这里转换不了的列就直接设为0
 
 		for i in range(len(headers)):
 			name = headers[i]
-			if "KB" in headers[i]:
+			# [IB]InKB
+			# [IB]OutKB
+			if "KB" in headers[i]: # KB转化为Gbps
 				name = headers[i][:-2] + "Gbps"
 				for j in range(len(values[i])):
-					values[i][j] = float(values[i][j] * 1024  * 8) / (56 * 1000 * 1000 * 1000)
+					values[i][j] = float(values[i][j] * 1024  * 8) / (56 * 1000 * 1000 * 1000) #???为什么是56 有待研究
 			stats[name] = values[i]
 		if "[IB]InGbps" not in stats:
 			stats["[IB]InGbps"] = []
@@ -101,6 +141,7 @@ def parse_rdma_resource(result_dir):
 		nodes[node_id] = stats
 	return nodes
 
+# 去掉传入的东西中空的元素
 def remove_empty(array):
 	narray=[]
 	for em in array:
@@ -108,6 +149,8 @@ def remove_empty(array):
 			narray.append(em)
 	return narray
 
+# 传入具体的实验结果的目录
+# 返回关于网络的stats结果
 def parse_net_resource(result_dir):
 	nodes={}
 	nodeid_nic = {}
@@ -123,6 +166,8 @@ def parse_net_resource(result_dir):
 	for i in range(num_nodes):
 		nodeid_nic[i] = "enp3s0f0"
 	# nodeid_nic[1] = "enp3s0f0"
+ 
+	
 	for node_id in range(num_nodes):
 		nodes[node_id] = {}
 		nodes[node_id]["[NET]TxGbps"]=[]
@@ -132,31 +177,48 @@ def parse_net_resource(result_dir):
 		if node_id not in print_resource_servers:
 			continue
 		try:
-			file = open("{}/node-{}-net.txt".format(result_dir, node_id), 'r')
+			file = open("{}/{}-net.txt".format(result_dir, node_id), 'r')
 		except:
 			continue
+		# Linux 5.4.0-150-generic (ddst-PowerEdge-R750) 	2023年10月11日 	_x86_64_	(112 CPU)
+
+		# 15时51分35秒     IFACE   rxpck/s   txpck/s    rxkB/s    txkB/s   rxcmp/s   txcmp/s  rxmcst/s   %ifutil
+		# 15时51分36秒        lo     50.00     50.00      3.36      3.36      0.00      0.00      0.00      0.00
 		lines = file.readlines()
 		nets=[]
 		stats={}
 		for line in lines:
 			read_line=False
+			# 这里 nodeid_nic[node_id]应该是???什么对应的接口呢
 			if nodeid_nic[node_id] in line:
 				read_line = True
 
 			if read_line == True:
 				netarray = remove_empty(line.split(" "))
-				nets.append(convert_float(netarray[6]) * 1024 * 8 * 10 / (1000 * 1000 * 1000))
+				# 15时51分36秒
+				# lo
+				# 50.00
+				# 50.00
+				# 3.36
+				# 3.36
+				# 0.00
+				# 0.00
+				# 0.00
+				# 0.00
+				nets.append(convert_float(netarray[6]) * 1024 * 8 * 10 / (1000 * 1000 * 1000)) # 如果是txcmp的话索引应该是7??? 待定
 		name="[NET]TxGbps"
 		stats[name]=nets
 		nodes[node_id] = stats
 	# print nodes
 	return nodes
 
+# 传入具体的实验的目录
+# 传出disk的使用
 def parse_disk_resource(result_dir):
 	nodes={}
 	node_disk={}
 	for i in range(num_nodes):
-		node_disk[i] = "dev8-0"
+		node_disk[i] = "dev8-0" # 设备的编号... 这个是一定需要改
 		# if i == 7:
 		# 	node_disk[i] = "dev8-0"
 		# else:
@@ -172,9 +234,17 @@ def parse_disk_resource(result_dir):
 			continue
 
 		try:
-			file = open("{}/node-{}-disk.txt".format(result_dir, node_id), 'r')
+			file = open("{}/{}-disk.txt".format(result_dir, node_id), 'r')
 		except:
 			continue
+# Linux 5.4.0-150-generic (ddst-PowerEdge-R750) 	2023年10月11日 	_x86_64_	(112 CPU)
+
+# 0                  1         2       3         4        5          6          7         8          9
+# 15时51分43秒       DEV       tps     rkB/s     wkB/s   areq-sz    aqu-sz     await     svctm     %util
+# 15时51分44秒    dev7-0      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+# 15时51分44秒    dev7-1      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+# 15时51分44秒    dev7-2      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+# 15时51分44秒    dev7-3      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
 		lines = file.readlines()
 		disks=[]
 		stats={}
@@ -190,7 +260,7 @@ def parse_disk_resource(result_dir):
 				elif disk_metric == "bandwidth":
 					disks.append((convert_float(diskarray[5])) / 2 / 1024)
 				elif disk_metric == "size":
-					disks.append(convert_float(diskarray[6]) / 2)
+					disks.append(convert_float(diskarray[6]) / 2) # 这里提取东西有点问题...再看看
 				elif disk_metric == "queue":
 					disks.append(convert_float(diskarray[7]))
 				elif disk_metric == "read":
@@ -201,6 +271,8 @@ def parse_disk_resource(result_dir):
 	# print nodes
 	return nodes
 
+# 传入具体结果的实验的目录
+# 得到cpu的使用率
 def parse_cpu_resource(result_dir):
 	nodes={}
 	for node_id in range(num_nodes):
@@ -217,9 +289,17 @@ def parse_cpu_resource(result_dir):
 			continue
 
 		try:
-			file = open("{}/node-{}-cpu.txt".format(result_dir, node_id), 'r')
+			file = open("{}/{}-cpu.txt".format(result_dir, node_id), 'r')
 		except:
 			continue
+# Linux 5.4.0-150-generic (ddst-S2600WFQ) 	10/11/2023 	_x86_64_	(72 CPU)
+
+# 03:53:00 PM     CPU     %user     %nice   %system   %iowait    %steal     %idle
+# 03:53:01 PM     all      0.03      0.00      0.01      0.04      0.00     99.92
+# 03:53:01 PM       0      0.00      0.00      0.00      0.00      0.00    100.00
+# 03:53:01 PM       1      0.00      0.00      0.00      0.00      0.00    100.00
+# 03:53:01 PM       2      0.00      0.00      0.00      0.00      0.00    100.00
+# 03:53:01 PM       3      0.00      0.00      0.00      0.00      0.00    100.00
 		lines = file.readlines()
 		cpus={}
 		stats={}
@@ -229,18 +309,18 @@ def parse_cpu_resource(result_dir):
 		i = 0
 		while i < len(lines):
 			line = lines[i]
-			if "all" not in line:
+			if "all" not in line: # 只从all的行开始处理
 				i+=1
 				continue
 			cpuarray = remove_empty(line.split(" "))
-			cpus["all"].append(100.0-convert_float(cpuarray[-1]))
+			cpus["all"].append(100.0-convert_float(cpuarray[-1])) # 得到的是使用率
 			for j in range(ncores):
 				i+=1
 				if i >= len(lines):
 					break
 				line=lines[i]
 				cpuarray = remove_empty(line.split(" "))
-				cpus["{}".format(j)].append(100.0-convert_float(cpuarray[-1]))
+				cpus["{}".format(j)].append(100.0-convert_float(cpuarray[-1])) # 每个cpu的使用率
 		name="CPU"
 		stats[name]=cpus["all"]
 		for j in range(ncores):
@@ -249,10 +329,12 @@ def parse_cpu_resource(result_dir):
 		nodes[node_id] = stats
 	return nodes
 
+# 去除换行符并且用逗号分隔
 def convert_disk_stats_to_array(line):
 	ems = line.replace('\n', '').split(",")
 	return ems
 
+# 求和
 def sum_disk_stats(line):
 	ems = convert_disk_stats_to_array(line)
 	s = 0
@@ -260,6 +342,8 @@ def sum_disk_stats(line):
 		s += convert_int(em)
 	return s
 
+# 传入具体的实验目录
+# 返回log record的相关统计
 def parse_disk_stats(result_dir):
 	nodes={}
 	total_log_records=0
@@ -267,7 +351,7 @@ def parse_disk_stats(result_dir):
 		# if node_id != 0:
 		# 	continue
 		try:
-			file = open("{}/server-node-{}-out".format(result_dir, node_id), 'r')
+			file = open("{}/server-{}-out".format(result_dir, node_id), 'r')
 		except:
 			continue
 
@@ -301,61 +385,93 @@ def parse_disk_stats(result_dir):
 				total_log_records += num_log_records
 			i+=1
 
-			# if "[leveldb_main_stat_thread.cpp" not in line:
-			# 	i+=1
-			# 	continue
+			# 这里原来是干嘛的
 
-			# try:
-			# 	storage = sum_disk_stats(lines[i+4]) / 10
-			# 	storage_reads = sum_disk_stats(lines[i+5]) / 1024 / 1024 / 10
-			# 	storage_writes = sum_disk_stats(lines[i+6]) / 1024 / 1024 / 10
+	# 		if "[stat_thread.cpp" not in line: #找到stats的起始打印
+	# 			i+=1
+	# 			continue
 
-			# 	nodes[node_id]["storage"].append(storage)
-			# 	nodes[node_id]["storage_reads"].append(storage_reads)
-			# 	nodes[node_id]["storage_writes"].append(storage_writes)
+	# 		try:
+	# 			# frdma 1
+	# 			# brdma 2
+	# 			# compaction 3
+	# 			# fg-storage 4
+	# 			# fg-storage-read 5
+	# 			# fg-storage-write 6
+	# 			# bg-storage 7
+	# 			# bg-storage-read 8
+	# 			# bg-storage-write 9
+	# 			# c-storage 10
+	# 			# c-storage-read 11
+	# 			# c-storage-write 12
+	# 			# active-memtables 13
+	# 			# immutable-memtables 14
+	# 			# steals 15
+	# 			# puts 16
+	# 			# wait-due-to-contention 17
+	# 			# gets 18
+	# 			# hits 19
+	# 			# scans 20
+	# 			# searched_file_per_miss 21
+	# 			# memtable-hist 22
+	# 			# puts-no-wait 23
+	# 			# puts-wait 24
+	# 			# db 25
+	# 			storage = sum_disk_stats(lines[i+4]) / 10
+	# 			storage_reads = sum_disk_stats(lines[i+5]) / 1024 / 1024 / 10
+	# 			storage_writes = sum_disk_stats(lines[i+6]) / 1024 / 1024 / 10
 
-			# 	base = 7 + 6
-			# 	nodes[node_id]["active_memtables"].append(lines[i+base].replace("\n",""))
-			# 	i+=1
-			# 	nodes[node_id]["immutable_memtables"].append(lines[i+base].replace("\n",""))
-			# 	i+=1
+	# 			nodes[node_id]["storage"].append(storage)
+	# 			nodes[node_id]["storage_reads"].append(storage_reads)
+	# 			nodes[node_id]["storage_writes"].append(storage_writes)
 
-			# 	actives = nodes[node_id]["active_memtables"][-1].split(",")
-			# 	immutables = nodes[node_id]["immutable_memtables"][-1].split(",")
-			# 	all_mems = ""
-			# 	for j in range(len(actives)):
-			# 		all_mems += str(convert_int(actives[j]) + convert_int(immutables[j]))
-			# 		all_mems += ","
-			# 	nodes[node_id]["memtables"].append(all_mems)
-			# 	nodes[node_id]["steals"] = convert_disk_stats_to_array(lines[i+base])
-			# 	i+=1
-			# 	nodes[node_id]["puts"] = convert_disk_stats_to_array(lines[i+base])
-			# 	i+=1
-			# 	nodes[node_id]["waits"] = convert_disk_stats_to_array(lines[i+base])
-			# 	i+=1
-			# 	nodes[node_id]["gets"] = convert_disk_stats_to_array(lines[i+base])
-			# 	i+=1
-			# 	nodes[node_id]["hits"] = convert_disk_stats_to_array(lines[i+base])
-			# 	i+=1
-			# 	nodes[node_id]["file_per_miss"] = convert_disk_stats_to_array(lines[i+base])
-			# 	i+=1
-			# 	nodes[node_id]["memtable_hist"] = convert_disk_stats_to_array(lines[i+base])
-			# 	i+=1
-			# 	nodes[node_id]["no_waits"] = convert_disk_stats_to_array(lines[i+base])
-			# 	# print lines[i+base]
-			# 	i += 7
-			# 	# print lines[i+base]
-			# 	ems = convert_disk_stats_to_array(lines[i+base])
-			# 	i+=1
-			# 	nodes[node_id]["db_size"].append(ems[1])
-			# 	nodes[node_id]["num_l0_tables"].append(ems[2])
-			# 	nodes[node_id]["total_memtable_size"] = convert_int(ems[3])
-			# 	nodes[node_id]["written_memtable_size"] = convert_int(ems[4])
-			# 	nodes[node_id]["total_disk_reads"] = convert_int(ems[5])
-			# 	nodes[node_id]["total_disk_writes"] = convert_int(ems[6])
-			# except:
-			# 	# raise e
-			# 	break
+	# 			base = 7 + 6
+	# 			nodes[node_id]["active_memtables"].append(lines[i+base].replace("\n",""))
+	# 			i+=1
+	# 			nodes[node_id]["immutable_memtables"].append(lines[i+base].replace("\n",""))
+	# 			i+=1
+
+	# 			actives = nodes[node_id]["active_memtables"][-1].split(",")
+	# 			immutables = nodes[node_id]["immutable_memtables"][-1].split(",")
+	# 			all_mems = ""
+	# 			for j in range(len(actives)):
+	# 				all_mems += str(convert_int(actives[j]) + convert_int(immutables[j]))
+	# 				all_mems += ","
+	# 			nodes[node_id]["memtables"].append(all_mems)
+	# 			nodes[node_id]["steals"] = convert_disk_stats_to_array(lines[i+base])
+	# 			i+=1
+	# 			nodes[node_id]["puts"] = convert_disk_stats_to_array(lines[i+base])
+	# 			i+=1
+	# 			nodes[node_id]["waits-due-to-connection"] = convert_disk_stats_to_array(lines[i+base])
+	# 			i+=1
+	# 			nodes[node_id]["gets"] = convert_disk_stats_to_array(lines[i+base])
+	# 			i+=1
+	# 			nodes[node_id]["hits"] = convert_disk_stats_to_array(lines[i+base])
+	# 			i+=1
+	# 			nodes[node_id]["scans"] = convert_disk_stats_to_array(lines[i+base]) # add scan
+	# 			i+=1
+	# 			nodes[node_id]["file_per_miss"] = convert_disk_stats_to_array(lines[i+base])
+	# 			i+=1
+	# 			nodes[node_id]["memtable_hist"] = convert_disk_stats_to_array(lines[i+base])
+	# 			i+=1
+	# 			nodes[node_id]["no_waits"] = convert_disk_stats_to_array(lines[i+base])
+	# 			i+=1
+	# 			nodes[node_id]["puts-wait"] = convert_disk_stats_to_array(lines[i+base])
+	# 			# nodes[node_id]["waits"] = waits-due-to-connection + puts-wait  
+	# 			# print lines[i+base]
+	# 			i += 7 #????????????????????????????????????
+	# 			# print lines[i+base]
+	# 			ems = convert_disk_stats_to_array(lines[i+base])
+	# 			i+=1
+	# 			nodes[node_id]["db_size"].append(ems[1])
+	# 			nodes[node_id]["num_l0_tables"].append(ems[2])
+	# 			nodes[node_id]["total_memtable_size"] = convert_int(ems[3])
+	# 			nodes[node_id]["written_memtable_size"] = convert_int(ems[4])
+	# 			nodes[node_id]["total_disk_reads"] = convert_int(ems[5])
+	# 			nodes[node_id]["total_disk_writes"] = convert_int(ems[6])
+	# 		except:
+	# 			# raise e
+	# 			break
 			
 
 	# total_gets=0
@@ -383,23 +499,23 @@ def parse_disk_stats(result_dir):
 	# 				out += ","
 	# 			print out
 
-		# for metric in ["immutable_memtables"]:
-		# 	print metric
-		# 	for node_id in range(num_nodes):
-		# 		if node_id not in nodes:
-		# 			continue
-		# 		print node_id
+	# 	for metric in ["immutable_memtables"]:
+	# 		print metric
+	# 		for node_id in range(num_nodes):
+	# 			if node_id not in nodes:
+	# 				continue
+	# 			print node_id
 				
-		# 		out=""
-		# 		for i in range(len(nodes[node_id][metric])):
-		# 			out += str(i)
-		# 			out += ","
-		# 		out += "\n"
+	# 			out=""
+	# 			for i in range(len(nodes[node_id][metric])):
+	# 				out += str(i)
+	# 				out += ","
+	# 			out += "\n"
 
-		# 		for i in range(len(nodes[node_id][metric])):
-		# 			out += str(nodes[node_id][metric][i])
-		# 			out += "\n"
-		# 		print out
+	# 			for i in range(len(nodes[node_id][metric])):
+	# 				out += str(nodes[node_id][metric][i])
+	# 				out += "\n"
+	# 			print out
 	# print nodes
 	hit_rate=0
 	return nodes, hit_rate, total_log_records #safe_divide(total_hits, total_gets)
@@ -409,10 +525,11 @@ def parse_date(line):
 	seconds= time.mktime(datetime.datetime.strptime(ems[0], "%Y/%m/%d-%H:%M:%S").timetuple())
 	return seconds * 1000000 + int(ems[1])
 
+# 返回记录开始的时间, 只有秒数
 def report_starttime(result_dir):
 	for client_id in range(num_nodes):
 		try:
-			file = open("{}/client-node-{}-out".format(result_dir, client_id), 'r')
+			file = open("{}/client-{}-out".format(result_dir, client_id), 'r')
 		except:
 			continue
 		lines = file.readlines()
@@ -424,6 +541,7 @@ def report_starttime(result_dir):
 				break
 		return start_time * 1000000
 
+# 
 def report_leveldb_waittime(result_dir):
 	sum_wait=0
 	num_wait=0
@@ -494,11 +612,12 @@ def tid_string(ems):
 	else:
 		return tt[1]
 
+# 具体的实验目录，用于分析server的LOG，但是对应的LOG里面没有, 有待查明原因
 def report_waittime(result_dir):
 	sum_wait=0
 	num_wait=0
-	for sid in range(7):
-		for i in range(128):
+	for sid in range(7): #server的id
+		for i in range(128): #数据库db的id??
 			fname="{}/server-{}-dblogs/LOG-{}".format(result_dir, sid, i)
 			try:
 				file = open(fname, 'r')
@@ -522,10 +641,11 @@ def report_waittime(result_dir):
 				sum_wait += int(ems[1])
 	return num_wait, sum_wait/1000000
 
+# 计算占用的磁盘空间
 def report_diskspace(result_dir):
 	sum_disk_space=0
 	for sid in range(7):
-		for file in ["{}/server-node-{}-db-disk-space", "{}/server-node-{}-rtable-disk-space"]:
+		for file in ["{}/server-{}-db-disk-space", "{}/server-{}-rtable-disk-space"]:
 			fname=file.format(result_dir, sid)
 			try:
 				file = open(fname, 'r')
@@ -540,6 +660,8 @@ def report_diskspace(result_dir):
 				continue
 	return sum_disk_space / 1024
 
+# 处理一个实验的目录(具体的实验) nova-tutorial-10000000/nova-zf-0.99...
+# 返回各种操作的延迟，总吞吐量，测试节点的performance信息，写暂停时间比率
 def parse_performance(result_dir):
 	throughput = 0
 	print (result_dir)
@@ -554,9 +676,11 @@ def parse_performance(result_dir):
 		overall_latencies[op]["p95"] = ""
 		overall_latencies[op]["p99"] = ""
 
+# 遍历所有的machine
 	for node_id in range(num_nodes):
 		stall = 0
 		num_duration = 0
+# 遍历所有的client???client最多开16个??
 		for client_id in range(16):
 			performance = {}
 			performance["thpt"] = []
@@ -569,19 +693,22 @@ def parse_performance(result_dir):
 			performance["p9999"] = []
 			
 			try:
-				file = open("{}/client-node-{}-{}-out".format(result_dir, node_id, client_id), 'r')
+				file = open("{}/client-{}-{}-out".format(result_dir, node_id, client_id), 'r') # 这里的client端输出要改一下
 			except:
 				continue
+			# 读进来
 			lines = file.readlines()
 
 			overall_thpt = 0
 			basethpt = 0
 			for line in lines:
 				latency=0
+				# 关于latency的行，提取出来，整理格式
 				if "Latency(us)" in line:
 					ems=line.split(",")
 					latency=ems[2].replace(" ", "")
 					latency=latency.replace("\n","")
+				# 根据不同类型的操作进行读写的修改
 				if "[READ], AverageLatency(us)," in line:
 					overall_latencies["read"]["avg"] = latency
 				elif "[READ], 95thPercentileLatency(us)," in line:
@@ -600,11 +727,13 @@ def parse_performance(result_dir):
 					overall_latencies["read"]["p95"] = latency
 				elif "[SCAN], 99thPercentileLatency(us)," in line:
 					overall_latencies["read"]["p99"] = latency
-
+				
+    			# 这个是关于总结的行
 				if "[OVERALL], Throughput(ops/sec)," in line:
 					ems = line.split(",")
 					# overall_thpt = ems[2].replace(" ", "")
 					# overall_thpt = overall_thpt.replace("\n", "")
+				# 每一秒都有一个这个行
 				if "current ops/sec" in line:
 					# 2019-12-29 08:53:01:106 22 sec: 1050634 operations; 50204 current ops/sec; [READ: Count=25128, Max=23647, Min=63, Avg=465.62, 90=679, 99=2141, 99.9=5963, 99.99=12983] [UPDATE: Count=25063, Max=66431, Mi
 					# n=362, Avg=9757.04, 90=19951, 99=29807, 99.9=40479, 99.99=56991]
@@ -615,28 +744,46 @@ def parse_performance(result_dir):
 					# 	start_time=start_time * 1000000
 
 					ems = line.split(";")
+					# 0: 2019-12-29 08:53:01:106 22 sec: 1050634 operations
+					# 1:  50204 current ops/sec
+					# 2: [UPDATE: Count=62852, Max=256895, Min=180, Avg=3207.75, 90=4735, 99=28975, 99.9=93375, 99.99=220671] 
 					latencies = ems[2].split(",")
-					thp = ems[1]
-					thp=thp.replace("current ops/sec", "")
-					thp=convert_float(thp.replace(" ", ""))
+					# 0: [UPDATE: Count=62852
+					# 1:  Max=256895
+					# 2:  Min=180
+					# 3:  Avg=3207.75
+					# 4:  90=4735
+					# 5:  99=28975
+					# 6:  99.9=93375
+					# 7:  99.99=220671
+					thp = ems[1] # 50204 current ops/sec
+					thp=thp.replace("current ops/sec", "") # 50204
+					thp=convert_float(thp.replace(" ", "")) # 提取ops/sec
 					performance["thpt"].append(thp)
-					othp = ems[0].split(" ")
+					othp = ems[0].split(" ") 
+					# 0: 2019-12-29
+					# 1: 08:53:01:106
+					# 2: 22
+					# 3: sec:
+					# 4: 1050634
+					# 5: operations
 					num_duration += 1
-					if thp == 0:
+					if thp == 0: # thp = 0 说明出现了写暂停
 						stall += 1
 					try:
 						duration = float(othp[2])
 						ops = float(othp[4])
-						if duration == 10:
+						if duration == 10: # 设定10s时的吞吐量为基本吞吐量
 							basethpt = ops
-						if duration == 	550:
+						if duration == 	550: # 然后隔了540s做了一个平均
 							overall_thpt = (ops-basethpt) / 540
 					except:
-						print (line)
+						print (line) #????
 						continue
 					
+					# 这里
 					for i in range(len(latencies)):
-						if "READ" not in latencies[i]:
+						if "READ" not in latencies[i]: # 
 							continue
 						performance["Max"].append(convert_float(latencies[i+1].split("=")[1]))
 						performance["Min"].append(convert_float(latencies[i+2].split("=")[1]))
@@ -654,6 +801,8 @@ def parse_performance(result_dir):
 	return overall_latencies, throughput, nodes, median(stalls)
 
 params=[]
+
+# 拆解实验的目录结构得到当前实验得到配置
 def expname(exp_dir_name):
 	# nova-d-$dist-w-$workload-nm-$num_memtables-np-$num_memtable_partitions-s-$enable_subrange-mc-$major_compaction_type
 	ems = exp_dir_name.split("-")
@@ -732,7 +881,7 @@ def concat_timeline(timelines):
 	line += "\n"
 	return line
 
-#处理存放结果的目录中的各种
+#处理存放结果的目录, nova-tutorial-10000000
 def parse_exp(exp_dir):
 	exps={}
 	median_exps={}
@@ -754,16 +903,16 @@ def parse_exp(exp_dir):
 		# 	continue
 		
 		# num_wait = 0
-		result_dir = exp_dir + "/" + expdirname
-		latencies, thpt, performance, stall_time = parse_performance(result_dir)
-		num_wait, wait_time = report_waittime(result_dir)# report_leveldb_waittime(result_dir)
+		result_dir = exp_dir + "/" + expdirname # 找到一个存放一个实验结束之后的目录, nova-tutorial-10000000/nova-zf-0.99 ....
+		latencies, thpt, performance, stall_time = parse_performance(result_dir) # performance相关数据
+		num_wait, wait_time = report_waittime(result_dir) # 分析来自server的log，获取等待时间等数据
 
-		rdma_resources = parse_rdma_resource(result_dir)
-		net_resources = parse_net_resource(result_dir)
-		cpu_resources = parse_cpu_resource(result_dir)
+		rdma_resources = parse_rdma_resource(result_dir) # 分析来自server的coll.txt，获取关于rdma等的数据
+		net_resources = parse_net_resource(result_dir)  # 分析来自server的net.txt，获取关于网络的数据??
+		cpu_resources = parse_cpu_resource(result_dir) # 分析来自server的cpu.txt，获取关于cpu的数据
 
-		disk_resources = parse_disk_resource(result_dir)
-		disk_spaces, hit_rate, total_log_records = parse_disk_stats(result_dir)
+		disk_resources = parse_disk_resource(result_dir) # 分析来自server的disk.txt，获取关于disk的数据
+		disk_spaces, hit_rate, total_log_records = parse_disk_stats(result_dir) # 分析来自server的server- -out数据，获得关于log record的数据
 		disk_space_timeline = []
 		disk_space = 0
 		num_l0_tables = 0
@@ -772,6 +921,7 @@ def parse_exp(exp_dir):
 		total_disk_reads = 0
 		total_disk_writes = 0
 
+		# 关于磁盘占用空间的统计
 		if len(disk_spaces) > 0 and len(disk_spaces[0]["db_size"]) > 0:
 			# print disk_spaces
 			for node_id in disk_spaces:
@@ -788,6 +938,7 @@ def parse_exp(exp_dir):
 					ds += int(disk_spaces[node_id]["db_size"][node_id])
 				disk_space_timeline.append(ds)
 
+		# 关于吞吐量的统计
 		thpt_timeline = []
 		peak_thpt = 0
 		for metric in ["thpt"]:
@@ -883,6 +1034,7 @@ def parse_exp(exp_dir):
 		print (exp, exps[exp]["thpt"], exps[exp]["total_log_records"], exps[exp]["disk_space"], exps[exp]["hit_rate"], exps[exp]["nwait"], exps[exp]["wait_time"])
 	return exps
 
+# 打印所有统计
 def print_all(exps):
 	header=""
 	print (params)
@@ -926,7 +1078,7 @@ def print_all(exps):
 
 						node_resource_timelines[resource][node_id] = "{}-{},".format(resource, node_id)
 						node_resource_timelines[resource][node_id] += concat_timeline(timeline)
-						node_resource_timelines["avg_{}".format(resource)][node_id] = stats(timeline[len(timeline)/2:])
+						node_resource_timelines["avg_{}".format(resource)][node_id] = stats(timeline[int(len(timeline)/2):])
 						resource_nodes[resource][node_id] = float(node_resource_timelines["avg_{}".format(resource)][node_id])
 						resource_nodes[resource]["SUM"] += resource_nodes[resource][node_id]
 		
@@ -1001,6 +1153,7 @@ def print_all(exps):
 					print (node_resource_timelines[resource][node_id])
 	print (summary)
 
+# 各种参数的定义字典
 param_dict={}
 param_dict["d"]="Distribution"
 param_dict["w"]="Workload"
@@ -1036,7 +1189,7 @@ param_dict["sr"]="Size ratio"
 param_dict["nf"]="No Flush"
 param_dict["of"]="Ordered Flush"
 
-ncores = 32
+ncores = 112 # server的 cpu数量 应该改为112??
 disk_metric="bandwidth"
 # disk_metric="read"
 # print_resource_servers=[0, 1, 2, 4]
@@ -1045,22 +1198,23 @@ disk_metric="bandwidth"
 # print_resources=["cpu", "net", "disk", "rdma"]
 # print_resource_servers=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 # print_resources=["disk"]
-print_resources=[]
-print_resource_servers=[]
+print_resources=["cpu", "net", "disk", "rdma"]
+print_resource_servers=[0, 1, 2] # 要分析资源使用的服务器节点编号
+
+read_resources_stats=True # 是否分析各种资源的使用stats
+print_thpt_timeline=True # 是否打印出吞吐量时间变化
+print_resources_stats=False # 是否打印各种资源的stats
+print_db_stats=False # 是否打印数据库的stats
 
 read_resources_stats=True
 print_thpt_timeline=True
-print_resources_stats=False
-print_db_stats=False
-
-read_resources_stats=False
-print_thpt_timeline=False
-print_resources_stats=False
-print_db_stats=False
+print_resources_stats=True
+print_db_stats=True
 
 
-num_nodes=int(sys.argv[1])
-exp_dir=sys.argv[2]
+num_nodes=int(sys.argv[1]) # 机器的数量 包括ltc stoc client
+exp_dir=sys.argv[2] # 一组实验的目录
+debug=sys.argv[3]
 exps=parse_exp(exp_dir)
 print_all(exps)
 

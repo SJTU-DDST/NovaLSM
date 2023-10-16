@@ -278,17 +278,17 @@ function run_bench() {
 			echo "exec on node $m: " "sar -d 1 > $results/$m-disk.txt &"
 		else
 			echo "processing node $m, ip: ${ip_nodes[m]}"
-			ssh -oStrictHostKeyChecking=no -t ${ssh_nodes[m]} "sudo killall leveldb_main nova_shared_main nova_multi_thread_compaction nova_server_main java collectl sar"
+			ssh -oStrictHostKeyChecking=no ${ssh_nodes[m]} "sudo killall leveldb_main nova_shared_main nova_multi_thread_compaction nova_server_main java collectl sar"
 			echo "sudo killall done"
-			ssh -oStrictHostKeyChecking=no -t ${ssh_nodes[m]} "sudo collectl -scx -i 1 -P > $results/$m-coll.txt &"
+			ssh -oStrictHostKeyChecking=no ${ssh_nodes[m]} "sudo collectl -scx -i 1 -P > $results/$m-coll.txt &"
 			echo "sudo collectl done"
-			ssh -oStrictHostKeyChecking=no -t ${ssh_nodes[m]} "sar -P ALL 1 > $results/$m-cpu.txt &"
+			ssh -oStrictHostKeyChecking=no ${ssh_nodes[m]} "sar -P ALL 1 > $results/$m-cpu.txt &"
 			echo "sar -p done"
-			ssh -oStrictHostKeyChecking=no -t ${ssh_nodes[m]} "sar -n DEV 1 > $results/$m-net.txt &"
+			ssh -oStrictHostKeyChecking=no ${ssh_nodes[m]} "sar -n DEV 1 > $results/$m-net.txt &"
 			echo "sar -n done"
-			ssh -oStrictHostKeyChecking=no -t ${ssh_nodes[m]} "sar -r 1 > $results/$m-mem.txt &"
+			ssh -oStrictHostKeyChecking=no ${ssh_nodes[m]} "sar -r 1 > $results/$m-mem.txt &"
 			echo "sar -r done"
-			ssh -oStrictHostKeyChecking=no -t ${ssh_nodes[m]} "sar -d 1 > $results/$m-disk.txt &"
+			ssh -oStrictHostKeyChecking=no ${ssh_nodes[m]} "sar -d 1 > $results/$m-disk.txt &"
 			echo "sar -d done"
 		fi
 	done
@@ -467,4 +467,9 @@ function run_bench() {
 
 run_bench
 echo "processing results"
-sudo python /home/yuhang/NovaLSM/scripts/exp/parse_ycsb_nova_leveldb.py $nmachines $exp_results_dir > stats_tutorial_out
+if [[ $mydebug == "true" ]]; then
+	echo "exec: sudo python /home/yuhang/NovaLSM/scripts/exp/parse_ycsb_nova_leveldb.py $nmachines $exp_results_dir > stats_tutorial_out"
+else
+	sudo python /home/yuhang/NovaLSM/scripts/exp/parse_ycsb_nova_leveldb.py $nmachines $exp_results_dir > stats_tutorial_out
+fi
+
