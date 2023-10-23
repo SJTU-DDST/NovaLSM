@@ -33,13 +33,13 @@ def parse_disk_util(filename, group_by):
         header += "disk-{}".format(i)
         header += ","
 
-    print header
+    print(header)
     for time in range(len(disk_utils[0])):
         thpt="{},".format(time)
         for i in range(len(disk_utils)):
             thpt += str(disk_utils[i][time])
             thpt += ","
-        print thpt
+        print(thpt)
 
     for i in range(len(disk_utils)):
         thpt=0
@@ -49,7 +49,7 @@ def parse_disk_util(filename, group_by):
             if t > 5:
                 thpt += t
                 times += 1
-        print "disk-{},{}".format(i, thpt / times)
+        print("disk-{},{}".format(i, thpt / times))
 
 def parse_tput(filename, group_by):
     with open(filename) as f:
@@ -58,7 +58,7 @@ def parse_tput(filename, group_by):
         ctput=0
         for i in range(len(tputs)):
           if i != 0 and i % group_by == 0:
-              print "{},{}".format(i / group_by, ctput / group_by)
+              print("{},{}".format(i / group_by, ctput / group_by))
               ctput = 0
           ctput += float(tputs[i])
 
@@ -68,7 +68,7 @@ def parse_migration_stoc(filename):
         s=0
         for line in content:
             if "Migrate StoC" in line:
-                print s
+                print(s)
                 s=0
                 continue
             val=float(line.split(",")[-3])+float(line.split(",")[-4])

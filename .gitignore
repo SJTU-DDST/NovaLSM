@@ -45,3 +45,5 @@ sync.sh
 db_files
 nova/*
 nova-tutorial-*
+nova-experiment*
+sync

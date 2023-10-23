@@ -3,6 +3,7 @@ import optparse
 import time
 import random
 import os
+import sys
 # from parser import Parser
 
 class SSHInfo(object):
@@ -107,7 +108,7 @@ class Runner(object):
         self.results = "/tmp/results"
         self.recordcount = 10000000
         self.exp_results_dir = self.home_dir + "/nova-experiment-" + time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
-        self.mydebug = True
+        self.mydebug = False
         
         self.nmachines = 3 # 5 machines in total
         self.nservers = 2 # 4 servers function(52 serve as client)
@@ -116,7 +117,7 @@ class Runner(object):
 
         # YCSB
         self.maxexecutiontime=1200
-        self.workload = "workloadw" # TBD
+        self.workload = "workloada" # TBD
         self.nthreads = 512
         self.debug = "false"
         self.dist = "uniform"
@@ -216,8 +217,11 @@ class Runner(object):
         for i in range(0, self.nmachines):
             machines.append(i)
         print("machines: ", machines)
+        sys.stdout.flush()
         print("servers: ", servers)
+        sys.stdout.flush()
         print("clis: ", clis)
+        sys.stdout.flush()
         
         
         nova_servers="" # ltc和stoc的服务器加起来的所有server ip:port形式, 真正的所有服务器的集合, 传给nova_server_main用
@@ -232,13 +236,18 @@ class Runner(object):
         nova_servers = nova_servers[1:]
         nova_all_servers = nova_all_servers[1:]
         print("nova_servers: ", nova_servers)
+        sys.stdout.flush()
         print("nova_all_servers: ", nova_all_servers)
+        sys.stdout.flush()
         
         
         nstoc = self.nservers - self.number_of_ltcs
         print("server count: ", self.nservers)
+        sys.stdout.flush()
         print("ltc count: ", self.number_of_ltcs)
-        print("stoc count: ", nstoc) 
+        sys.stdout.flush()
+        print("stoc count: ", nstoc)
+        sys.stdout.flush() 
         
         #这里省略了try
         result_dir_name="nova" + \
@@ -254,156 +263,212 @@ class Runner(object):
                         "-np-" + str(self.num_memtable_partitions) + \
                         "-nr-" + str(self.cc_nranges_per_server)
         print("running experiment: ", result_dir_name)
+        sys.stdout.flush()
         dir = self.exp_results_dir + "/" + result_dir_name
         print("Result Dir: ", dir)
+        sys.stdout.flush()
         os.system("rm -rf " + dir)
         os.system("mkdir -p " + dir)
         os.system("chmod -R 777 " + dir)
         db_path = self.home_dir + "/db_files/nova-db-" + str(self.recordcount) + "-" + str(self.value_size)
         print("nova server ip+port: ", nova_servers) 
+        sys.stdout.flush()
         print("ltc config: ", self.ltc_config_path)
+        sys.stdout.flush()
         print("db path: ", db_path)
+        sys.stdout.flush()
         print("cc servers: ", nova_all_servers) #这个其实就是ltc
-        
+        sys.stdout.flush()
         
         print("cleaning results")
+        sys.stdout.flush()
         for m in machines:
             print("removing resluts at machine ", m)
+            sys.stdout.flush()
             if self.mydebug == True:
                 print("ssh prefix: ssh -oStrictHostKeyChecking=no -t "+self.sshProxies[m].getSSHstylestring())
+                sys.stdout.flush()
                 print("exec on node " + str(m) + ": sudo rm -rf " + self.results + " && mkdir -p " + self.results + " && chmod -R 777 " + self.results)
+                sys.stdout.flush()
                 print("exec on node " + str(m) + ": sudo sh -c 'echo 3 >/proc/sys/vm/drop_caches'")
+                sys.stdout.flush()
             else:
                 self.sshProxies[m].command("sudo rm -rf " + self.results + " && mkdir -p " + self.results + " && chmod -R 777 " + self.results)
+                print("sudo rm -rf " + self.results + " && mkdir -p " + self.results + " && chmod -R 777 " + self.results)
+                sys.stdout.flush()
                 self.sshProxies[m].command("sudo sh -c 'echo 3 >/proc/sys/vm/drop_caches'")
+                print("sudo sh -c 'echo 3 >/proc/sys/vm/drop_caches'")
+                sys.stdout.flush()
         
         print("restoring images")
+        sys.stdout.flush()
         for s in servers:
             print("restore database image " + str(s))
+            sys.stdout.flush()
             if self.mydebug == True:
                 print("ssh prefix: ssh -oStrictHostKeyChecking=no -t " + self.sshProxies[s].getSSHstylestring())
-                print("exec on node " + str(s) + ": rm -rf " + str(self.home_dir) + "/db_files/nova-db-" + str(self.recordcount) + "-1024/ && cp -r " + \
-                    str(self.home_dir) + "/db_files/snapshot-" + str(self.cc_nranges_per_server) + "-" + str(self.nservers) + \
-                    "-" + str(self.number_of_ltcs) + "-" + str(self.dist) + "-" + str(self.num_memtable_partitions) + \
+                sys.stdout.flush()
+                print("exec on node " + str(s) + ": rm -rf " + str(self.home_dir) + "/db_files/nova-db-" + str(self.recordcount) + "-1024/ ")
+                sys.stdout.flush()
+                print("exec on node " + str(s) + ": cp -r " + str(self.home_dir) + "/db_files/snapshot-" + str(self.cc_nranges_per_server) + "-" + str(self.nservers) + "-" + str(self.number_of_ltcs) + "-" + str(self.dist) + "-" + str(self.num_memtable_partitions) + \
                     "-" + str(self.memtable_size_mb) + "-" + str(self.zipfianconstant) + "-" + str(self.num_sstable_replicas) + \
                     "/nova-db-" + str(self.recordcount) + "-1024/ " + str(self.home_dir) + "/db_files/ > /dev/null 2> /dev/null < /dev/null &")
+                sys.stdout.flush()
             else:
-                self.sshProxies[s].command("rm -rf " + str(self.home_dir) + "/db_files/nova-db-" + str(self.recordcount) + "-1024/ && cp -r " + \
-                    str(self.home_dir) + "/db_files/snapshot-" + str(self.cc_nranges_per_server) + "-" + str(self.nservers) + \
-                    "-" + str(self.number_of_ltcs) + "-" + str(self.dist) + "-" + str(self.num_memtable_partitions) + \
+                self.sshProxies[s].command("rm -rf " + str(self.home_dir) + "/db_files/nova-db-" + str(self.recordcount) + "-1024/ ")
+                print("rm -rf " + str(self.home_dir) + "/db_files/nova-db-" + str(self.recordcount) + "-1024/ ")
+                sys.stdout.flush()
+                self.sshProxies[s].command("cp -r " + str(self.home_dir) + "/db_files/snapshot-" + str(self.cc_nranges_per_server) + "-" + str(self.nservers) + "-" + str(self.number_of_ltcs) + "-" + str(self.dist) + "-" + str(self.num_memtable_partitions) + \
                     "-" + str(self.memtable_size_mb) + "-" + str(self.zipfianconstant) + "-" + str(self.num_sstable_replicas) + \
                     "/nova-db-" + str(self.recordcount) + "-1024/ " + str(self.home_dir) + "/db_files/ > /dev/null 2> /dev/null < /dev/null &")
-        
+                print("cp -r " + str(self.home_dir) + "/db_files/snapshot-" + str(self.cc_nranges_per_server) + "-" + str(self.nservers) + "-" + str(self.number_of_ltcs) + "-" + str(self.dist) + "-" + str(self.num_memtable_partitions) + \
+                    "-" + str(self.memtable_size_mb) + "-" + str(self.zipfianconstant) + "-" + str(self.num_sstable_replicas) + \
+                    "/nova-db-" + str(self.recordcount) + "-1024/ " + str(self.home_dir) + "/db_files/ > /dev/null 2> /dev/null < /dev/null &")
+                sys.stdout.flush()
+                
+                
         if self.mydebug == True:
             pass
         else:   
             time.sleep(10)
         print("syning restoring process")
+        sys.stdout.flush()
         for m in machines:
             if self.mydebug == True:
                 print("ssh prefix: ssh -oStrictHostKeyChecking=no -t " + self.sshProxies[m].getSSHstylestring())
+                sys.stdout.flush()
                 print("exec on node " + str(m) + ": ps -ef | grep -v grep | grep -v ssh | grep -v bash | grep -c \"cp -r\"")
+                sys.stdout.flush()
                 print("wait for it done")
+                sys.stdout.flush()
             else:
                 while True:    
                     resultStr = self.sshProxies[m].command("ps -ef | grep -v grep | grep -v ssh | grep -v bash | grep -c \"cp -r\"")
                     if int(resultStr) > 0:
                         time.sleep(10)
                         print("waiting for " + m)
+                        sys.stdout.flush()
                     else:
                         break    
         
         print("Preparing sar")
+        sys.stdout.flush()
         for m in machines:
             if self.mydebug == True:
                 print("ssh prefix: ssh -oStrictHostKeyChecking=no -t " + self.sshProxies[m].getSSHstylestring())
+                sys.stdout.flush()
                 print("exec on node " + str(m) + ": sudo killall leveldb_main nova_shared_main nova_multi_thread_compaction nova_server_main java collectl sar")
+                sys.stdout.flush()
                 print("exec on node " + str(m) + ": sudo collectl -scx -i 1 -P > " + self.results + "/" + str(m) + "-coll.txt 2> /dev/null < /dev/null &")
+                sys.stdout.flush()
                 print("exec on node " + str(m) + ": sar -P ALL 1 > " + self.results + "/" + str(m) + "-cpu.txt 2> /dev/null < /dev/null &")
+                sys.stdout.flush()
                 print("exec on node " + str(m) + ": sar -n DEV 1 > " + self.results + "/" + str(m) + "-net.txt 2> /dev/null < /dev/null &")
+                sys.stdout.flush()
                 print("exec on node " + str(m) + ": sar -r 1 > " + self.results + "/" + str(m) + "-mem.txt 2> /dev/null < /dev/null &")
+                sys.stdout.flush()
                 print("exec on node " + str(m) + ": sar -d 1 > " + self.results + "/" + str(m) + "-disk.txt 2> /dev/null < /dev/null &")             
             else:
                 self.sshProxies[m].command("sudo killall leveldb_main nova_shared_main nova_multi_thread_compaction nova_server_main java collectl sar")
+                print("sudo killall leveldb_main nova_shared_main nova_multi_thread_compaction nova_server_main java collectl sar")
+                sys.stdout.flush()
                 self.sshProxies[m].command("sudo collectl -scx -i 1 -P > " + self.results + "/" + str(m) + "-coll.txt 2> /dev/null < /dev/null &")
+                print("sudo collectl -scx -i 1 -P > " + self.results + "/" + str(m) + "-coll.txt 2> /dev/null < /dev/null &")
+                sys.stdout.flush()
                 self.sshProxies[m].command("sar -P ALL 1 > " + self.results + "/" + str(m) + "-cpu.txt 2> /dev/null < /dev/null &")
+                print("sar -P ALL 1 > " + self.results + "/" + str(m) + "-cpu.txt 2> /dev/null < /dev/null &")
+                sys.stdout.flush()
                 self.sshProxies[m].command("sar -n DEV 1 > " + self.results + "/" + str(m) + "-net.txt 2> /dev/null < /dev/null &")
+                print("sar -n DEV 1 > " + self.results + "/" + str(m) + "-net.txt 2> /dev/null < /dev/null &")
+                sys.stdout.flush()                
                 self.sshProxies[m].command("sar -r 1 > " + self.results + "/" + str(m) + "-mem.txt 2> /dev/null < /dev/null &")
+                print("sar -r 1 > " + self.results + "/" + str(m) + "-mem.txt 2> /dev/null < /dev/null &")
+                sys.stdout.flush()
                 self.sshProxies[m].command("sar -d 1 > " + self.results + "/" + str(m) + "-disk.txt 2> /dev/null < /dev/null &")
+                print("sar -d 1 > " + self.results + "/" + str(m) + "-disk.txt 2> /dev/null < /dev/null &")
+                sys.stdout.flush()
         
         print("syning nova_server_main")
+        sys.stdout.flush()
         for m in machines:
             if self.mydebug == True:
                 print("ssh prefix: ssh -oStrictHostKeyChecking=no -t " + self.sshProxies[m].getSSHstylestring())
+                sys.stdout.flush()
                 print("exec on node " + str(m) + ": ps -ef | grep -v grep | grep -v ssh | grep -v bash | grep -c nova_server_main")
+                sys.stdout.flush()
                 print("exec on node " + str(m) + ": wait for it done")
+                sys.stdout.flush()
             else:
                 while True:    
                     resultStr = self.sshProxies[m].command("ps -ef | grep -v grep | grep -v ssh | grep -v bash | grep -c nova_server_main")
                     if int(resultStr) > 0:
                         time.sleep(10)
                         print("waiting for " + m)
+                        sys.stdout.flush()
                     else:
                         break  
         
         print("starting server")
+        sys.stdout.flush()
         server_id = 0
         for s in servers:
             print("creating server on " + str(s))
-            cmd = "stdbuf --output=0 --error=0 ./nova_server_main \
-                --ltc_migration_policy={} \
-                --enable_range_index={} \
-                --num_migration_threads={} \
-                --num_sstable_replicas={} \
-                --level={} \
-                --l0_start_compaction_mb={} \
-                --subrange_no_flush_num_keys={} \
-                --enable_detailed_db_stats={} \
-                --major_compaction_type={} \
-                --major_compaction_max_parallism={} \
-                --major_compaction_max_tables_in_a_set={} \
-                --enable_flush_multiple_memtables={} \
-                --recover_dbs={} \
-                --num_recovery_threads={} \
-                --sampling_ratio=1 \
-                --zipfian_dist_ref_counts={} \
-                --client_access_pattern={}  \
-                --memtable_type=static_partition \
-                --enable_subrange={} \
-                --num_log_replicas={} \
-                --log_record_mode={} \
-                --scatter_policy={} \
-                --number_of_ltcs={} \
-                --enable_lookup_index={} \
-                --l0_stop_write_mb={} \
-                --num_memtable_partitions={} \
-                --num_memtables={} \
-                --num_rdma_bg_workers={} \
-                --db_path={} \
-                --num_storage_workers={} \
-                --stoc_files_path={} \
-                --max_stoc_file_size_mb={} \
-                --sstable_size_mb={} \
-                --ltc_num_stocs_scatter_data_blocks={} \
-                --all_servers={} \
-                --server_id={} \
-                --mem_pool_size_gb={} \
-                --use_fixed_value_size={} \
-                --ltc_config_path={} \
-                --ltc_num_client_workers={} \
-                --num_rdma_fg_workers={} \
-                --num_compaction_workers={} \
-                --block_cache_mb={} \
-                --row_cache_mb={} \
-                --memtable_size_mb={} \
-                --cc_log_buf_size={} \
-                --rdma_port={} \
-                --rdma_max_msg_size={} \
-                --rdma_max_num_sends={} \
-                --rdma_doorbell_batch_size={} \
-                --enable_rdma={} \
-                --enable_load_data={} \
-                --use_local_disk={}".format(self.ltc_migration_policy, \
+            sys.stdout.flush()
+            cmd = str("stdbuf --output=0 --error=0 {}/nova_server_main " +\
+                "--ltc_migration_policy={} " + \
+                "--enable_range_index={} " + \
+                "--num_migration_threads={} " + \
+                "--num_sstable_replicas={} " + \
+                "--level={} " + \
+                "--l0_start_compaction_mb={} " + \
+                "--subrange_no_flush_num_keys={} " + \
+                "--enable_detailed_db_stats={} " + \
+                "--major_compaction_type={} " + \
+                "--major_compaction_max_parallism={} " + \
+                "--major_compaction_max_tables_in_a_set={} " + \
+                "--enable_flush_multiple_memtables={} " + \
+                "--recover_dbs={} " + \
+                "--num_recovery_threads={} " + \
+                "--sampling_ratio=1 " + \
+                "--zipfian_dist_ref_counts={} " + \
+                "--client_access_pattern={} " +  \
+                "--memtable_type=static_partition " + \
+                "--enable_subrange={} " + \
+                "--num_log_replicas={} " + \
+                "--log_record_mode={} " + \
+                "--scatter_policy={} " + \
+                "--number_of_ltcs={} " + \
+                "--enable_lookup_index={} " + \
+                "--l0_stop_write_mb={} " + \
+                "--num_memtable_partitions={} " + \
+                "--num_memtables={} " + \
+                "--num_rdma_bg_workers={} " + \
+                "--db_path={} " + \
+                "--num_storage_workers={} " + \
+                "--stoc_files_path={} " + \
+                "--max_stoc_file_size_mb={} " + \
+                "--sstable_size_mb={} " + \
+                "--ltc_num_stocs_scatter_data_blocks={} " + \
+                "--all_servers={} " + \
+                "--server_id={} " + \
+                "--mem_pool_size_gb={} " + \
+                "--use_fixed_value_size={} " + \
+                "--ltc_config_path={} " + \
+                "--ltc_num_client_workers={} " + \
+                "--num_rdma_fg_workers={} " + \
+                "--num_compaction_workers={} " + \
+                "--block_cache_mb={} " + \
+                "--row_cache_mb={} " + \
+                "--memtable_size_mb={} " + \
+                "--cc_log_buf_size={} " + \
+                "--rdma_port={} " + \
+                "--rdma_max_msg_size={} " + \
+                "--rdma_max_num_sends={} " + \
+                "--rdma_doorbell_batch_size={} " + \
+                "--enable_rdma={} " + \
+                "--enable_load_data={} " + \
+                "--use_local_disk={}").format(str(self.cache_bin_dir), \
+                                                        self.ltc_migration_policy, \
                                                         self.enable_range_index, \
                                                         self.num_migration_threads, \
                                                         self.num_sstable_replicas, \
@@ -456,11 +521,20 @@ class Runner(object):
                                                         self.enable_load_data, \
                                                         self.use_local_disk)
             print(cmd)
+            sys.stdout.flush()
             if self.mydebug == True:
                 print("ssh prefix: ssh -oStrictHostKeyChecking=no -t " + self.sshProxies[s].getSSHstylestring())
-                print("exec on node " + str(s) + ": mkdir -p " + str(self.cc_stoc_files_path) + " && mkdir -p " + str(db_path) + " &&  cd " + str(self.cache_bin_dir) + " && " + cmd + " >& " + self.results + "/server-" + str(s) + "-out < /dev/null &")
+                sys.stdout.flush()
+                print("exec on node " + str(s) + ": mkdir -p " + str(self.cc_stoc_files_path))
+                sys.stdout.flush()
+                print("exec on node " + str(s) + ": mkdir -p " + str(db_path))
+                sys.stdout.flush()
+                print("exec on node " + str(s) + ": " + cmd + " >& " + self.results + "/server-" + str(s) + "-out < /dev/null &")
+                sys.stdout.flush()     
             else:
-                self.sshProxies[s].command("mkdir -p " + str(self.cc_stoc_files_path) + " && mkdir -p " + str(db_path) + " &&  cd " + str(self.cache_bin_dir) + " && " + cmd + " >& " + self.results + "/server-" + str(s) + "-out < /dev/null &")
+                self.sshProxies[s].command("mkdir -p " + str(self.cc_stoc_files_path))
+                self.sshProxies[s].command("mkdir -p " + str(db_path))
+                self.sshProxies[s].command(cmd + " >& " + self.results + "/server-" + str(s) + "-out < /dev/null &")
                 time.sleep(1)
             server_id = server_id + 1
         
@@ -469,6 +543,7 @@ class Runner(object):
         else:   
             time.sleep(30)
         print("starting ycsb")
+        sys.stdout.flush()
         for c in clis:
             for i in seq(self.nclients_per_server):
                 print("creating client on {}-{}".format(c, i))
@@ -491,13 +566,17 @@ class Runner(object):
                 cmd = cmd.format(self.script_dir, str(self.nthreads), nova_all_servers, self.debug, self.partition, self.recordcount, self.maxexecutiontime, \
                                 self.dist, str(self.value_size), self.workload, self.ltc_config_path, self.cardinality, self.operationcount, self.zipfianconstant)
                 print(cmd)
+                sys.stdout.flush()
                 if self.mydebug == True:
                     print("ssh prefix: ssh -oStrictHostKeyChecking=no -t " + self.sshProxies[c].getSSHstylestring())
+                    sys.stdout.flush()
                     print("exec on node " + str(s) + ": cd {} && {} >& {}/client-{}-{}-out < /dev/null &".format(self.client_bin_dir, cmd, self.results, c, i))
+                    sys.stdout.flush()
                 else:
-                    self.sshProxies[c].command("cd {} && {} >& {}/client-{}-{}-out < /dev/null &".format(self.client_bin_dir, cmd, self.results, c, i))
+                    self.sshProxies[c].command("{} >& {}/client-{}-{}-out < /dev/null &".format(cmd, self.results, c, i))
         
         print("change_cfg: " + self.change_cfg)
+        sys.stdout.flush()
         if self.change_cfg == "true":
             os.system("java -jar {}/nova_coordinator.jar {} {}".format(self.cache_bin_dir, nova_servers, self.ltc_config_path))
         
@@ -509,11 +588,15 @@ class Runner(object):
         sleep_time = 0
         max_wait_time = self.maxexecutiontime + 1200
         print("waiting for experiments done")
+        sys.stdout.flush()
         for c in clis:
             if self.mydebug == True:
                 print("ssh prefix: ssh -oStrictHostKeyChecking=no -t " + self.sshProxies[c].getSSHstylestring())
+                sys.stdout.flush()
                 print("exec on node " + str(c) + ": ps -ef | grep -v \"grep --color=auto ycsb\" | grep -v ssh | grep -v bash | grep ycsb | grep -c java")
+                sys.stdout.flush()
                 print("wait for it done")
+                sys.stdout.flush()
             else:
                 while True:    
                     resultStr = self.sshProxies[c].command("ps -ef | grep -v \"grep --color=auto ycsb\" | grep -v ssh | grep -v bash | grep ycsb | grep -c java")
@@ -521,6 +604,7 @@ class Runner(object):
                         time.sleep(10)
                         sleep_time = sleep_time + 10
                         print("waiting for {} for {} seconds".format(c, sleep_time))
+                        sys.stdout.flush()
                         if sleep_time > max_wait_time:
                             stop = "true"
                             break
@@ -528,67 +612,88 @@ class Runner(object):
                         break  
                 if stop == "true":
                     print("exceeded maximum wait time")
+                    sys.stdout.flush()
                     break
                 
         print("getting db size")
+        sys.stdout.flush()
         for s in servers:
             cmd="du -sm {}".format(db_path)
             print(cmd)
+            sys.stdout.flush()
             if self.mydebug == True:
                 print("ssh prefix: ssh -oStrictHostKeyChecking=no -t " + self.sshProxies[s].getSSHstylestring())
+                sys.stdout.flush()
                 print("exec on node " + str(s) + ": {} >& {}/server-{}-db-disk-space < /dev/null".format(cmd, self.results, s))
+                sys.stdout.flush()
             else:
                 self.sshProxies[s].command("{} >& {}/server-{}-db-disk-space < /dev/null".format(cmd, self.results, s))
         
         print("getting stoc file size")
+        sys.stdout.flush()
         for s in servers:
             cmd="du -sm {}".format(self.cc_stoc_files_path)
             print(cmd)
+            sys.stdout.flush()
             if self.mydebug == True:
                 print("ssh prefix: ssh -oStrictHostKeyChecking=no -t " + self.sshProxies[s].getSSHstylestring())
+                sys.stdout.flush()
                 print("exec on node " + str(s) + ": {} >& {}/server-{}-rtable-disk-space".format(cmd, self.results, s))
+                sys.stdout.flush()
             else:
                 self.sshProxies[s].command("{} >& {}/server-{}-rtable-disk-space".format(cmd, self.results, s))
         
         print("killing experiment processes")
+        sys.stdout.flush()
         for m in machines:
             print("kill experiment processes on {}".format(m))
+            sys.stdout.flush()
             if self.mydebug == True:
                 print("ssh prefix: ssh -oStrictHostKeyChecking=no -t " + self.sshProxies[m].getSSHstylestring())
-                print("exec on node " + str(s) + ": sudo killall leveldb_main nova_shared_main nova_multi_thread_compaction nova_server_main java collectl sar")
+                sys.stdout.flush()
+                print("exec on node " + str(m) + ": sudo killall leveldb_main nova_shared_main nova_multi_thread_compaction nova_server_main java collectl sar")
+                sys.stdout.flush()
             else:
                 self.sshProxies[m].command("sudo killall leveldb_main nova_shared_main nova_multi_thread_compaction nova_server_main java collectl sar")
         
         dir = "{}/{}".format(self.exp_results_dir, result_dir_name)
         print("saving to {}".format(dir))
+        sys.stdout.flush()
         os.system("rm -rf {}".format(dir))
         os.system("mkdir -p {}".format(dir))
         os.system("chmod -R 777 {}".format(dir))
         
         print("getting logs")
+        sys.stdout.flush()
         server_id = 0
         for s in servers:
             if self.mydebug == True:
                 print("ssh prefix: ssh -oStrictHostKeyChecking=no -t " + self.sshProxies[s].getSSHstylestring())
+                sys.stdout.flush()
                 print("exec on node " + str(s) + ": mkdir -p {}/server-{}-dblogs/ && cp -r {}/*/LOG* {}/server-{}-dblogs/".format(self.results, server_id, db_path, self.results, server_id))
+                sys.stdout.flush()
             else:
                 self.sshProxies[s].command("mkdir -p {}/server-{}-dblogs/ && cp -r {}/*/LOG* {}/server-{}-dblogs/".format(self.results, server_id, db_path, self.results, server_id))
             server_id = server_id + 1
         
         print("transferring to main node")
+        sys.stdout.flush()
         for m in machines:
             if self.mydebug == True:
-                print("exec: scp -r {}:{}/* {}".format(self.sshProxies[s].getSSHstylestring(), self.results, dir))
+                print("exec: scp -r {}:{}/* {}".format(self.sshProxies[m].getSSHstylestring(), self.results, dir))
+                sys.stdout.flush()
             else:
-                os.system("scp -r {}:{}/* {}".format(self.sshProxies[s].getSSHstylestring(), self.results, dir))
+                os.system("scp -r {}:{}/* {}".format(self.sshProxies[m].getSSHstylestring(), self.results, dir))
         if self.mydebug == True:
             pass
         else:   
             time.sleep(10)   
         
         print("processing results")
+        sys.stdout.flush()
         if self.mydebug == True:
             print("exec: sudo python /home/yuhang/NovaLSM/scripts/exp/parse_ycsb_nova_leveldb.py {} {} > {}/stats_tutorial_out".format(self.nmachines, self.exp_results_dir, self.exp_results_dir))
+            sys.stdout.flush()
         else:
             os.system("sudo python /home/yuhang/NovaLSM/scripts/exp/parse_ycsb_nova_leveldb.py {} {} > {}/stats_tutorial_out".format(self.nmachines, self.exp_results_dir, self.exp_results_dir)) 
         return 

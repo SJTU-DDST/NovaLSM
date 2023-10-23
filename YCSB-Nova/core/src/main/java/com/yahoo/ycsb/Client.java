@@ -716,7 +716,7 @@ public final class Client {
   public static void main(String[] args) {
     Properties props = parseArguments(args);
 
-    boolean status = Boolean.valueOf(props.getProperty(STATUS_PROPERTY, String.valueOf(false)));
+    boolean status = Boolean.valueOf(props.getProperty(STATUS_PROPERTY, String.valueOf(false))); // -s 
     String label = props.getProperty(LABEL_PROPERTY, "");
 
     long maxExecutionTime = Integer.parseInt(props.getProperty(MAX_EXECUTION_TIME, "0"));
@@ -724,7 +724,7 @@ public final class Client {
     //get number of threads, target and db
     int threadcount = Integer.parseInt(props.getProperty(THREAD_COUNT_PROPERTY, "1"));
     String dbname = props.getProperty(DB_PROPERTY, "com.yahoo.ycsb.BasicDB");
-    int target = Integer.parseInt(props.getProperty(TARGET_PROPERTY, "0"));
+    int target = Integer.parseInt(props.getProperty(TARGET_PROPERTY, "0")); //这个参数一般不设
 
     //compute the target throughput
     double targetperthreadperms = -1;
@@ -733,7 +733,7 @@ public final class Client {
       targetperthreadperms = targetperthread / 1000.0;
     }
 
-    Thread warningthread = setupWarningThread();
+    Thread warningthread = setupWarningThread(); //如果准备时间比较长，用这个线程打印一些提示的信息
     warningthread.start();
 
     Measurements.setProperties(props);
@@ -760,7 +760,7 @@ public final class Client {
           Measurements.MEASUREMENT_TRACK_JVM_PROPERTY_DEFAULT).equals("true");
       statusthread = new StatusThread(completeLatch, clients, label, standardstatus, statusIntervalSeconds,
           trackJVMStats);
-      statusthread.start();
+      statusthread.start();//打印一些统计信息
     }
 
     Thread terminator = null;
@@ -979,7 +979,7 @@ public final class Client {
     }
 
     while (args[argindex].startsWith("-")) {
-      if (args[argindex].compareTo("-threads") == 0) {
+      if (args[argindex].compareTo("-threads") == 0) { 
         argindex++;
         if (argindex >= args.length) {
           usageMessage();

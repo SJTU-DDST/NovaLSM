@@ -151,9 +151,9 @@ public class NovaDBClient extends DB {
 
 	@Override
 	public Status read(String table, String key, Set<String> fields, HashMap<String, ByteIterator> result) {
-		if (debug) {
-			key = "0";
-		}
+		// if (debug) { // debug模式下 读都改成读key 0
+		// 	key = "0";
+		// }
 		if (startTime == 0) {
 			startTime = System.currentTimeMillis();
 		}
@@ -193,8 +193,8 @@ public class NovaDBClient extends DB {
 
 			int fragmentId = homeFragment(startkey, current);
 			int startKeyId = Integer.parseInt(startkey);
-			int cardinality = Math.min(this.cardinality, numberOfRecords - startKeyId);
-			int remainingRecords = cardinality;
+			int cardinality = Math.min(this.cardinality, numberOfRecords - startKeyId); // 取min(cardinality, 剩下的key)
+			int remainingRecords = cardinality; // 要scan的key
 			List<String> keys = Lists.newArrayList();
 			List<String> values = Lists.newArrayList();
 			String pivotKey = startkey;
@@ -271,9 +271,9 @@ public class NovaDBClient extends DB {
 
 	@Override
 	public Status update(String table, String key, HashMap<String, ByteIterator> values) {
-		if (debug) {
-			key = "0";
-		}
+		// if (debug) { // debug模式下 都改为对key0的写
+		// 	key = "0";
+		// }
 
 		if (startTime == 0) {
 			startTime = System.currentTimeMillis();
@@ -302,7 +302,7 @@ public class NovaDBClient extends DB {
 		return Status.OK;
 	}
 
-	public String buildValue(HashMap<String, ByteIterator> values) {
+	public String buildValue(HashMap<String, ByteIterator> values) { // 做成value 多退少补
 		final StringBuilder builder = new StringBuilder();
 		values.forEach((k, v) -> {
 			builder.append(k);
