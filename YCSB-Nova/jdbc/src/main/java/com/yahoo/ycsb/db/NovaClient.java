@@ -64,12 +64,23 @@ public class NovaClient {
 
 	private long bytesToLong(byte[] buf) { // 从buf中提取long, 这个改了sock_read_pivot
 		long x = 0;
-		while (buf[sock_read_pivot] != '!') {
+
+		//读到最后了
+		if ( buf[sock_read_pivot] < '0' && buf[sock_read_pivot] > '9'){
+			return x;
+		}
+
+		//while (buf[sock_read_pivot] != '!') { // 根本没有考虑scan不到的情况
+		while ( buf[sock_read_pivot] >= '0' && buf[sock_read_pivot] <= '9'){
 			char c = (char) buf[sock_read_pivot];
 			x = (c - '0') + x * 10;
 			sock_read_pivot++;
 		}
-		sock_read_pivot++;
+
+		if ( buf[sock_read_pivot] == '!'){
+			sock_read_pivot++;
+		}
+		
 		return x;
 	}
 
@@ -282,23 +293,28 @@ public class NovaClient {
 
 			sock.out.write(socketBuffer, 0, size);
 			sock.out.flush();
-			int len = readPlainText(sock.in, '\n'); // 回复格式: configid ! keysize ! key ! valuesize ! value
+			int len = readPlainText(sock.in, '\n'); // 回复格式: configid ! keysize ! key ! valuesize ! value \n
 
 			if (debug) {
 				System.out.println(String.format("scan receive content length: %d", len));
 				System.out.println("Scan receive parsed content: ");
-				// for (int i = 0; i < len; i++) {
-				// 	if ( (char) socketBuffer[i] == '\n' ){
-				// 		System.out.print("\\");
-				// 		System.out.print("n");
-				// 	}else{
-				// 		System.out.print((char) socketBuffer[i]);
-				// 	}
-				// }
-				// System.out.println();
+				for (int i = 0; i < len; i++) {
+					if ( (char) socketBuffer[i] == '\n' ){
+						System.out.print("\\");
+						System.out.print("n");
+					}else{
+						System.out.print((char) socketBuffer[i]);
+					}
+				}
+				System.out.println();
 			}
 
 			if (len > 0) {
+				// if (debug) {
+				// 	System.out.println()
+				// }
+
+
 				v.configId = (int) bytesToLong(socketBuffer);
 				if (v.configId != clientConfigId) {
 					return v;
@@ -308,12 +324,16 @@ public class NovaClient {
 				long valueSize = 0;
 				do {
 					keySize = bytesToLong(socketBuffer);
-					assert keySize > 0;
+					// assert keySize > 0; // 这样必须提前load???
+					if (debug){
+						System.out.println(String.format("keysize: %d", (int) keySize));
+						System.out.println(String.format("sock_read_pivot: %d", sock_read_pivot));
+					}
 					String rkey = new String(socketBuffer, sock_read_pivot, (int) keySize);
 					sock_read_pivot += keySize;
 
 					valueSize = bytesToLong(socketBuffer);
-					assert valueSize > 0;
+					// assert valueSize > 0; // 这样必须提前load???
 					String rvalue = new String(socketBuffer, sock_read_pivot, (int) (valueSize));
 					sock_read_pivot += valueSize;
 
@@ -321,10 +341,10 @@ public class NovaClient {
 						System.out.println("key: " + rkey + " value: " + rvalue);
 					}
 
-					if (debug) {
-						// System.out.println(String.format("key-%s value-%d", rkey,
-						// rvalue.length()));
-					}
+					// if (debug) {
+					// 	// System.out.println(String.format("key-%s value-%d", rkey,
+					// 	// rvalue.length()));
+					// }
 					keys.add(rkey);
 					values.add(rvalue);
 					if (socketBuffer[sock_read_pivot] == '\n') {
@@ -392,7 +412,7 @@ public class NovaClient {
 
 			if (debug) {
 				System.out.print("put receive content: ");
-				for (int i = 0; i < size; i++) {
+				for (int i = 0; i < response; i++) {
 					if ( (char) socketBuffer[i] == '\n' ){
 						System.out.print("\\");
 						System.out.print("n");

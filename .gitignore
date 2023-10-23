@@ -47,3 +47,4 @@ nova/*
 nova-tutorial-*
 nova-experiment*
 sync
+YCSB-Nova

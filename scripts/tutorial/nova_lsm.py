@@ -108,7 +108,7 @@ class Runner(object):
         self.results = "/tmp/results"
         self.recordcount = 10000000
         self.exp_results_dir = self.home_dir + "/nova-experiment-" + time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
-        self.mydebug = False
+        self.mydebug = True
         
         self.nmachines = 3 # 5 machines in total
         self.nservers = 2 # 4 servers function(52 serve as client)
@@ -118,8 +118,8 @@ class Runner(object):
         # YCSB
         self.maxexecutiontime=1200
         self.workload = "workloada" # TBD
-        self.nthreads = 512
-        self.debug = "false"
+        self.nthreads = 1
+        self.debug = "true"
         self.dist = "uniform"
         self.cardinality = 10 # 这里有点区别，应该是ycsb的一些设置不一样
         self.value_size = 1024
@@ -541,7 +541,40 @@ class Runner(object):
         if self.mydebug == True:
             pass
         else:   
-            time.sleep(30)
+            time.sleep(30)   
+        
+        if self.workload != "workloadw":
+            print("starting preload")
+            sys.stdout.flush()
+            cmd = "stdbuf --output=0 --error=0 bash " + \
+                    "{}/exp/load_ycsb.sh " + \
+                    "{} " + \
+                    "{} " + \
+                    "{} " + \
+                    "{} " + \
+                    "{} " + \
+                    "{} " + \
+                    "{} " + \
+                    "{} " + \
+                    "{} " + \
+                    "{} " + \
+                    "{} " + \
+                    "{} " + \
+                    "{} " + \
+                    "0"
+            cmd = cmd.format(self.script_dir, str(self.nthreads), nova_all_servers, self.debug, self.partition, self.recordcount, self.maxexecutiontime, \
+                                self.dist, str(self.value_size), self.workload, self.ltc_config_path, self.cardinality, self.operationcount, self.zipfianconstant)
+            print(cmd)
+            sys.stdout.flush()
+            if self.mydebug == True:
+                print("ssh prefix: ssh -oStrictHostKeyChecking=no -t " + self.sshProxies[2].getSSHstylestring())
+                sys.stdout.flush()
+                print("exec on node " + str(2) + ": cd {} && {} >& {}/preload-out < /dev/null &".format(self.client_bin_dir, cmd, self.results))
+                sys.stdout.flush()
+            else:
+                self.sshProxies[c].command("{} >& {}/preload-out < /dev/null &".format(cmd, self.results, c, i))
+                
+
         print("starting ycsb")
         sys.stdout.flush()
         for c in clis:
@@ -570,7 +603,7 @@ class Runner(object):
                 if self.mydebug == True:
                     print("ssh prefix: ssh -oStrictHostKeyChecking=no -t " + self.sshProxies[c].getSSHstylestring())
                     sys.stdout.flush()
-                    print("exec on node " + str(s) + ": cd {} && {} >& {}/client-{}-{}-out < /dev/null &".format(self.client_bin_dir, cmd, self.results, c, i))
+                    print("exec on node " + str(c) + ": cd {} && {} >& {}/client-{}-{}-out < /dev/null &".format(self.client_bin_dir, cmd, self.results, c, i))
                     sys.stdout.flush()
                 else:
                     self.sshProxies[c].command("{} >& {}/client-{}-{}-out < /dev/null &".format(cmd, self.results, c, i))
