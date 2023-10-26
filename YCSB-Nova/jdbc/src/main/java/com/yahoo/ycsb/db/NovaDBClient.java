@@ -327,6 +327,7 @@ public class NovaDBClient extends DB {
 
 	@Override
 	public Status insert(String table, String key, HashMap<String, ByteIterator> values) {
+		System.out.print("NovaDBClient insert detected");
 		assert false;
 		return Status.OK;
 	}

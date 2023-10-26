@@ -118,7 +118,7 @@ class Runner(object):
         # YCSB
         self.maxexecutiontime=1200
         self.workload = "workloada" # TBD
-        self.nthreads = 1
+        self.nthreads = 60
         self.debug = "true"
         self.dist = "uniform"
         self.cardinality = 10 # 这里有点区别，应该是ycsb的一些设置不一样
@@ -572,7 +572,7 @@ class Runner(object):
                 print("exec on node " + str(2) + ": cd {} && {} >& {}/preload-out < /dev/null &".format(self.client_bin_dir, cmd, self.results))
                 sys.stdout.flush()
             else:
-                self.sshProxies[c].command("{} >& {}/preload-out < /dev/null &".format(cmd, self.results, c, i))
+                self.sshProxies[2].command("{} >& {}/preload-out < /dev/null &".format(cmd, self.results, c, i))
                 
 
         print("starting ycsb")

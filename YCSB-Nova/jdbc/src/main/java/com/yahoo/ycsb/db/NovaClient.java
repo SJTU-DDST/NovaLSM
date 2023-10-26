@@ -66,7 +66,7 @@ public class NovaClient {
 		long x = 0;
 
 		//读到最后了
-		if ( buf[sock_read_pivot] < '0' && buf[sock_read_pivot] > '9'){
+		if ( buf[sock_read_pivot] < '0' || buf[sock_read_pivot] > '9'){
 			return x;
 		}
 
@@ -216,7 +216,7 @@ public class NovaClient {
 			socketBuffer[cfgSize + size + 1] = '\n';
 			if (debug) {
 				System.out.println(String.format("Get: tid:%d sid:%d key:%d", tid, serverId, intKey));
-				System.out.print("get send content: ");
+				System.out.println("get send content: ");
 				for (int i = 0; i < cfgSize + size + 2; i++) {
 					if ( (char) socketBuffer[i] == '\n' ){
 						System.out.print("\\");
@@ -231,6 +231,20 @@ public class NovaClient {
 			sock.out.flush();
 
 			int len = readPlainText(sock.in, '\n');
+
+			if (debug){
+				System.out.println("receive content: ");
+				for (int i = 0; i < len; i++){
+					if ( (char) socketBuffer[i] == '\n' ){
+						System.out.print("\\");
+						System.out.print("n");
+					}else{
+						System.out.print((char) socketBuffer[i]);
+					}
+				}
+				System.out.println();
+			}
+
 			v.configId = (int) bytesToLong(socketBuffer); // 回复的格式 : configid ! valuesize ! value \n
 			// if (debug) {
 			// 	System.out.println(String.format("Hit: tid:%d sid:%d key:%d size:%d", tid, serverId, intKey, len - 1));
@@ -241,19 +255,19 @@ public class NovaClient {
 			int valueSize = (int) bytesToLong(socketBuffer);
 			assert valueSize > 0;
 			v.getValue = new String(socketBuffer, sock_read_pivot, (int) valueSize);
-			if (debug) {
-				System.out.println(String.format("Hit: tid:%d sid:%d key:%d size:%d", tid, serverId, intKey, len - 1));
-				System.out.print("get receive content: ");
-				for (int i = 0; i < len; i++) {
-					if ( (char) socketBuffer[i] == '\n' ){
-						System.out.print("\\");
-						System.out.print("n");
-					}else{
-						System.out.print((char) socketBuffer[i]);
-					}
-				}
-				System.out.println();
-			}
+			// if (debug) {
+			// 	System.out.println(String.format("Hit: tid:%d sid:%d key:%d size:%d", tid, serverId, intKey, len - 1));
+			// 	System.out.print("get receive content: ");
+			// 	for (int i = 0; i < len; i++) {
+			// 		if ( (char) socketBuffer[i] == '\n' ){
+			// 			System.out.print("\\");
+			// 			System.out.print("n");
+			// 		}else{
+			// 			System.out.print((char) socketBuffer[i]);
+			// 		}
+			// 	}
+			// 	System.out.println();
+			// }
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -279,7 +293,7 @@ public class NovaClient {
 			
 			if (debug) {
 				System.out.println(String.format("Scan: tid:%d sid:%d key:%d", tid, sid, intKey));
-				System.out.print("scan send content: ");
+				System.out.println("scan send content: ");
 				for (int i = 0; i < size; i++) {
 					if ( (char) socketBuffer[i] == '\n' ){
 						System.out.print("\\");
@@ -297,7 +311,7 @@ public class NovaClient {
 
 			if (debug) {
 				System.out.println(String.format("scan receive content length: %d", len));
-				System.out.println("Scan receive parsed content: ");
+				System.out.println("receive content: ");
 				for (int i = 0; i < len; i++) {
 					if ( (char) socketBuffer[i] == '\n' ){
 						System.out.print("\\");
@@ -387,7 +401,7 @@ public class NovaClient {
 			if (debug) {
 				System.out.println(
 						String.format("Put: tid:%d sid:%d key:%d size:%d", tid, serverId, intKey, value.length()));
-				System.out.print("put send content: ");
+				System.out.println("put send content: ");
 				for (int i = 0; i < size; i++) {
 					if ( (char) socketBuffer[i] == '\n' ){
 						System.out.print("\\");
@@ -403,15 +417,8 @@ public class NovaClient {
 			sock.out.flush();
 
 			int response = readPlainText(sock.in, '\n');
-//			String val;
-//			for (int i = 0; i < response; i++) {
-//				System.out.print((char) socketBuffer[i]);
-//			}
-
-			v.configId = (int) bytesToLong(socketBuffer); //回复的格式: configid ! \n
-
 			if (debug) {
-				System.out.print("put receive content: ");
+				System.out.println("put receive content: ");
 				for (int i = 0; i < response; i++) {
 					if ( (char) socketBuffer[i] == '\n' ){
 						System.out.print("\\");
@@ -423,6 +430,12 @@ public class NovaClient {
 				System.out.println();
 			}
 
+//			String val;
+//			for (int i = 0; i < response; i++) {
+//				System.out.print((char) socketBuffer[i]);
+//			}
+
+			v.configId = (int) bytesToLong(socketBuffer); //回复的格式: configid ! \n
 			socketBuffer[0] = 'a';
 		} catch (Exception e) {
 			e.printStackTrace();
