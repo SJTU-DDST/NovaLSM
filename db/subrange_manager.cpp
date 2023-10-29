@@ -7,6 +7,7 @@
 #include "subrange_manager.h"
 #include "memtable.h"
 
+//这个是用来管理什么的呢????
 namespace leveldb {
     SubRangeManager::SubRangeManager(leveldb::StoCWritableFileClient *manifest_file,
                                      FlushOrder *flush_order,
@@ -30,9 +31,10 @@ namespace leveldb {
         upper_bound_ = options.upper_key;
         auto sr = new SubRanges;
 
+//这里是1个fragment对应的那个dbindex一个subranges，也就是1个range????
         uint32_t cfgid = nova::NovaConfig::config->current_cfg_id;
         auto range = nova::NovaConfig::config->cfgs[cfgid]->fragments[dbindex_];
-        if (range->range.key_end - range->range.key_start <= options_.num_memtable_partitions) {
+        if (range->range.key_end - range->range.key_start <= options_.num_memtable_partitions) { // 如果这个key的范围小于active memtable的数量， 开始的时候基本不会发生，也许后面会有duplicate的情况??
             int nkeys = range->range.key_end - range->range.key_start;
             int num_duplicates = options_.num_memtable_partitions / nkeys;
             int cdup = 0;
@@ -44,7 +46,7 @@ namespace leveldb {
                 Range r;
                 r.lower = std::to_string(lower);
                 r.upper = std::to_string(upper);
-                if (num_duplicates == 1) {
+                if (num_duplicates == 1) { //基本不可能是这个分支，全是0(开始的时候)
                     r.num_duplicates = 0;
                     nsr.num_duplicates = 0;
                 } else {
@@ -63,7 +65,7 @@ namespace leveldb {
                     break;
                 }
             }
-        } else {
+        } else { // 把大的range捏成一个
             // Construct one subrange.
             SubRange nsr;
             Range r;
@@ -1275,8 +1277,8 @@ namespace leveldb {
 
     void
     SubRangeManager::ComputeCompactionThreadsAssignment(SubRanges *subranges) {
-        if (options_.subrange_no_flush_num_keys == 0 ||
-            !options_.enable_flush_multiple_memtables) {
+        if (options_.subrange_no_flush_num_keys == 0 || // config基本100
+            !options_.enable_flush_multiple_memtables) { // config基本是true
             // MemTables of a subrange maybe assigned to any compaction thread.
             for (SubRange &subrange : subranges->subranges) {
                 subrange.start_tid = 0;
@@ -1290,16 +1292,16 @@ namespace leveldb {
         int thread_id = 0;
         // MemTables of a subrange is assigned to only one thread.
         for (SubRange &subrange : subranges->subranges) {
-            if (subrange.keys() <= options_.subrange_no_flush_num_keys) {
+            if (subrange.keys() <= options_.subrange_no_flush_num_keys) { // no flush num keys代表最少的开启写的key的数量??
                 subrange.merge_memtables_without_flushing = true;
                 subrange.start_tid = thread_id;
                 subrange.end_tid = thread_id;
                 thread_id = thread_id + 1;
             }
         }
-        for (SubRange &subrange : subranges->subranges) {
-            if (subrange.keys() > options_.subrange_no_flush_num_keys) {
-                subrange.merge_memtables_without_flushing = false;
+        for (SubRange &subrange : subranges->subranges) { 
+            if (subrange.keys() > options_.subrange_no_flush_num_keys) { // 不懂
+                subrange.merge_memtables_without_flushing = false; 
                 subrange.start_tid = thread_id;
                 subrange.end_tid = options_.num_compaction_threads - 1;
             }

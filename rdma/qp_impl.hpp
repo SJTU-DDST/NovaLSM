@@ -34,7 +34,7 @@ namespace rdmaio {
                 .max_dest_rd_atomic = 16,
                 .rq_psn             = DEFAULT_PSN,
                 .sq_psn             = DEFAULT_PSN,
-                .timeout            = 20
+                .timeout            = 60
         };
     }
 

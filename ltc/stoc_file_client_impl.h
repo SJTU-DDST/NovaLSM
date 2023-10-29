@@ -18,6 +18,7 @@
 
 namespace leveldb {
 
+//从ltc向stoc写的抽象类
     // A stoc writable file client is implemented based on memfile.
     // It first writes data to its memory and then RDMA WRITEs to StoCs.
     class StoCWritableFileClient : public MemFile {
@@ -105,7 +106,7 @@ namespace leveldb {
                                uint64_t allocated_size,
                                uint64_t *used_size);
 
-        Env *mem_env_ = nullptr;
+        Env *mem_env_ = nullptr; 
         unsigned int *rand_seed_ = nullptr;
         uint64_t file_number_ = 0;
         const std::string fname_debug_only_;

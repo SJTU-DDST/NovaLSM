@@ -12,7 +12,7 @@
 
 namespace leveldb {
 
-//似乎只是存这个键在哪个memtable里面??，其实基本是一一对应的???
+//似乎只是存这个键在哪个memtable里面??，其实基本是一一对应的??? 那后面的hash应该不是所谓的hash，而是偏移量
     LookupIndex::LookupIndex(uint32_t size) : size_(size) {
         table_locator_ = new TableLocation[size_];
         NOVA_LOG(rdmaio::INFO)

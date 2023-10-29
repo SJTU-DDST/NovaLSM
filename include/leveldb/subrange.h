@@ -16,6 +16,7 @@
 
 namespace leveldb {
 
+//range是一个最基本的单位
     struct Range {
         std::string lower = {};
         std::string upper = {};
@@ -91,6 +92,7 @@ namespace leveldb {
         return false;
     }
 
+//应该为drange，包括很多tiny ranges
     struct SubRange {
         std::vector<Range> tiny_ranges;
         uint32_t num_duplicates = 0;
@@ -148,6 +150,7 @@ namespace leveldb {
         bool IsAPoint(const Comparator *comparator);
     };
 
+//这个就像一个range，有很多drange
     class SubRanges {
     public:
         ~SubRanges();

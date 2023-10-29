@@ -290,7 +290,6 @@ public class NovaClient {
 			size += longToBytes(socketBuffer, size, nrecords);
 			socketBuffer[size] = '\n';
 			size++;
-			
 			if (debug) {
 				System.out.println(String.format("Scan: tid:%d sid:%d key:%d", tid, sid, intKey));
 				System.out.println("scan send content: ");
@@ -397,10 +396,10 @@ public class NovaClient {
 			size += value.length();
 			socketBuffer[size] = '\n';
 			size++;
-
+			
 			if (debug) {
 				System.out.println(
-						String.format("Put: tid:%d sid:%d key:%d size:%d", tid, serverId, intKey, value.length()));
+							String.format("Put: tid:%d sid:%d key:%d size:%d", tid, serverId, intKey, value.length()));
 				System.out.println("put send content: ");
 				for (int i = 0; i < size; i++) {
 					if ( (char) socketBuffer[i] == '\n' ){

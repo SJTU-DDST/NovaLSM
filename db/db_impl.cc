@@ -81,6 +81,7 @@ namespace leveldb {
         if (static_cast<V>(*ptr) < minvalue) *ptr = minvalue;
     }
 
+    //规范一些options里面的参数设置
     Options SanitizeOptions(const std::string &dbname,
                             const InternalKeyComparator *icmp,
                             const InternalFilterPolicy *ipolicy,
@@ -93,7 +94,7 @@ namespace leveldb {
         ClipToRange(&result.write_buffer_size, 64 << 10, 1 << 30);
         ClipToRange(&result.max_file_size, 1 << 20, 1 << 30);
         ClipToRange(&result.block_size, 1 << 10, 4 << 20);
-        if (result.info_log == nullptr) {
+        if (result.info_log == nullptr) { //这里不为null 之前自己新建了logger
             // Open a log file in the same directory as the db
             src.env->CreateDir(dbname);  // In case it does not exist
             src.env->RenameFile(InfoLogFileName(dbname),
@@ -122,7 +123,7 @@ namespace leveldb {
               owns_info_log_(options_.info_log != raw_options.info_log),
               owns_cache_(options_.block_cache != raw_options.block_cache),
               dbname_(dbname),
-              db_profiler_(new DBProfiler(raw_options.enable_tracing, raw_options.trace_file_path)),
+              db_profiler_(new DBProfiler(raw_options.enable_tracing, raw_options.trace_file_path)), //一般是不开tracing的
               table_cache_(new TableCache(dbname_, options_, TableCacheSize(options_), db_profiler_)),
               db_lock_(nullptr),
               shutting_down_(false),
@@ -142,7 +143,7 @@ namespace leveldb {
         terminate_coordinated_compaction_ = false;
         start_compaction_ = true;
         if (options_.enable_lookup_index) {
-//这里的lookindex是包括memtable sstable和level0的?
+//这里的lookindex是包括memtable sstable和level0的
             lookup_index_ = new LookupIndex(
                     options_.upper_key - options_.lower_key);
             for (int i = 0; i < options_.upper_key - options_.lower_key; i++) {
@@ -3329,8 +3330,8 @@ namespace leveldb {
         impl->server_id_ = nova::NovaConfig::config->my_server_id;
 
         if (!options.debug) {
-            std::string manifest_file_name = DescriptorFileName(dbname, 0, 0);
-            impl->manifest_file_ = new StoCWritableFileClient(options.env,
+            std::string manifest_file_name = DescriptorFileName(dbname, 0, 0); //manifest文件
+            impl->manifest_file_ = new StoCWritableFileClient(options.env, //建立manifest文件
                                                               impl->options_, 0,
                                                               options.mem_manager,
                                                               options.stoc_client,
@@ -3340,9 +3341,9 @@ namespace leveldb {
                                                               manifest_file_name);
         }
         for (int i = 0; i < MAX_LIVE_MEMTABLES; i++) {
-            impl->versions_->mid_table_mapping_[i]->nentries_ = 0;
+            impl->versions_->mid_table_mapping_[i]->nentries_ = 0; //mid_table_mapping用途未知
         }
-        if (options.memtable_type == MemTableType::kMemTablePool) {
+        if (options.memtable_type == MemTableType::kMemTablePool) { //默认的是else static partition
             for (int i = 0; i < impl->min_memtables_; i++) {
                 uint32_t memtable_id = impl->memtable_id_seq_.fetch_add(1);
                 MemTable *new_table = new MemTable(impl->internal_comparator_, memtable_id, impl->db_profiler_, true);
@@ -3359,30 +3360,30 @@ namespace leveldb {
             options.memtable_pool->range_cond_vars_[impl->dbid_] = &impl->memtable_available_signal_;
             impl->number_of_active_memtables_ = impl->min_memtables_;
         } else {
-            impl->partitioned_active_memtables_.resize(options.num_memtable_partitions);
-            impl->partitioned_imms_.resize(options.num_memtables);
+            impl->partitioned_active_memtables_.resize(options.num_memtable_partitions); //大多数config设置为64
+            impl->partitioned_imms_.resize(options.num_memtables); //大多数config设为256 论文里面好像说一个是memtable（256） 另一个是immutable memtable（64） 这样就合理了
 
             for (int i = 0; i < impl->partitioned_imms_.size(); i++) {
                 impl->partitioned_imms_[i] = 0;
             }
-            uint32_t nslots = options.num_memtables / options.num_memtable_partitions;
+            uint32_t nslots = options.num_memtables / options.num_memtable_partitions; // slots和remainder是什么? 
             uint32_t remainder = options.num_memtables % options.num_memtable_partitions;
             uint32_t slot_id = 0;
             for (int i = 0; i < options.num_memtable_partitions; i++) {
                 uint64_t memtable_id = impl->memtable_id_seq_.fetch_add(1);
                 MemTable *table = new MemTable(impl->internal_comparator_, memtable_id, impl->db_profiler_, true);
                 NOVA_ASSERT(memtable_id < MAX_LIVE_MEMTABLES);
-                impl->versions_->mid_table_mapping_[memtable_id]->SetMemTable(INIT_GEN_ID, table);
+                impl->versions_->mid_table_mapping_[memtable_id]->SetMemTable(INIT_GEN_ID, table); //这个是imm还是acti，大概率active
                 impl->partitioned_active_memtables_[i] = new MemTablePartition;
                 impl->partitioned_active_memtables_[i]->active_memtable = table;
                 impl->partitioned_active_memtables_[i]->partition_id = i;
                 impl->partitioned_active_memtables_[i]->AddMemTable(INIT_GEN_ID, table->memtableid());
                 uint32_t slots = nslots;
-                if (remainder > 0) {
+                if (remainder > 0) { //多的remainder就分配下去
                     slots += 1;
                     remainder--;
                 }
-                impl->partitioned_active_memtables_[i]->imm_slots.resize(slots);
+                impl->partitioned_active_memtables_[i]->imm_slots.resize(slots); //imm的数量?? 把immutable的数量分配下去 但是没有真实分配
                 for (int j = 0; j < slots; j++) {
                     impl->partitioned_active_memtables_[i]->imm_slots[j] = slot_id + j;
                     impl->partitioned_active_memtables_[i]->available_slots.push(slot_id + j);
@@ -3409,11 +3410,11 @@ namespace leveldb {
         impl->processed_writes_ = 0;
         impl->number_of_puts_no_wait_ = 0;
         impl->number_of_puts_wait_ = 0;
-        impl->flush_order_ = new FlushOrder(&impl->partitioned_active_memtables_);
+        impl->flush_order_ = new FlushOrder(&impl->partitioned_active_memtables_);//partitioned active memtables装的是active memtable携带了对应的imm的信息
 
-        if (options.enable_subranges) {
+        if (options.enable_subranges) { //开了subrange 这个subrange就是drange， 基本都是true
             FlushOrder *flush_order = nullptr;
-            if (nova::NovaConfig::config->use_ordered_flush) {
+            if (nova::NovaConfig::config->use_ordered_flush) { // true false都有，经常是false（默认）
                 flush_order = impl->flush_order_;
             }
             impl->subrange_manager_ = new SubRangeManager(impl->manifest_file_,
@@ -3428,12 +3429,12 @@ namespace leveldb {
                                                           &impl->partitioned_active_memtables_,
                                                           &impl->partitioned_imms_);
         }
-        if (options.enable_range_index) {
+        if (options.enable_range_index) { // 开启range index和不开config里面都有
             impl->range_index_manager_ = new RangeIndexManager(&impl->scan_stats, impl->versions_,
                                                                impl->user_comparator_);
         }
         impl->mutex_.Unlock();
-        *dbptr = impl;
+        *dbptr = impl; //返回了数据库实例
         return Status::OK();
     }
 

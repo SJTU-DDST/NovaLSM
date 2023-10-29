@@ -14,6 +14,8 @@
 
 //这里应该是论文中提到的lookup index的位置
 namespace leveldb {
+
+    //要么存memtable 要么存l0的sstable
     struct TableLocation {
         std::atomic<uint32_t> memtable_id;
     };

@@ -16,7 +16,7 @@
 #include "common/nova_config.h"
 
 namespace leveldb {
-//用这个函数建立了manifest文件，还不知道有什么用处
+//用这个函数建立了manifest文件，这个文件应该放置于stoc?
     StoCWritableFileClient::StoCWritableFileClient(Env *env,
                                                    const Options &options,
                                                    uint64_t file_number,
@@ -36,12 +36,12 @@ namespace leveldb {
               MemFile(nullptr, "", false) {
         NOVA_ASSERT(mem_manager);
         NOVA_ASSERT(stoc_client);
-        meta_block_handles_.resize(nova::NovaConfig::config->number_of_sstable_metadata_replicas);
-        data_replica_status_.resize(nova::NovaConfig::config->number_of_sstable_data_replicas);
+        meta_block_handles_.resize(nova::NovaConfig::config->number_of_sstable_metadata_replicas); // sstable元数据replica个数
+        data_replica_status_.resize(nova::NovaConfig::config->number_of_sstable_data_replicas); // sstable数据replica个数
         // Only used for flushing SSTables.
         // Policy.
         NOVA_LOG(rdmaio::DEBUG) << fmt::format("create file w {}", filename);
-        uint32_t scid = mem_manager->slabclassid(thread_id, file_size);
+        uint32_t scid = mem_manager->slabclassid(thread_id, file_size); //找到对的slab并且分配文件大小
         backing_mem_ = mem_manager->ItemAlloc(thread_id, scid);
         NOVA_ASSERT(backing_mem_) << "Running out of memory " << file_size;
         NOVA_LOG(rdmaio::DEBUG) << fmt::format(

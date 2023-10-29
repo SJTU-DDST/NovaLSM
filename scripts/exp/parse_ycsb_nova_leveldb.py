@@ -230,11 +230,11 @@ def parse_disk_resource(result_dir):
 	node_disk={}
 	for i in range(num_nodes):
 		if i == 0:
-			node_disk[i] = "dev8-0"
-		elif i == 1:
-			node_disk[i] = "sda"
-		elif i == 2:
 			node_disk[i] = "dev8-16"
+		elif i == 1:
+			node_disk[i] = "sdb"
+		elif i == 2:
+			node_disk[i] = "dev8-16" # ycsb端的无所谓
 		else:
 			node_disk[i] = "dev8-0" # 设备的编号... 这个是一定需要改 done
 		# if i == 7:

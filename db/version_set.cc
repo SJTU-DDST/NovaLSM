@@ -1038,6 +1038,7 @@ namespace leveldb {
               dummy_versions_(cmp, table_cache, options, version_id_seq_++,
                               nullptr),
               current_(nullptr) {
+        //midtable mapping和versions????
         for (int i = 0; i < MAX_LIVE_MEMTABLES; i++) {
             mid_table_mapping_[i] = new AtomicMemTable;
             mid_table_mapping_[i]->generation_id_ = 0;
@@ -1073,7 +1074,7 @@ namespace leveldb {
         v->prev_->next_ = v;
         v->next_->prev_ = v;
 
-        versions_[v->version_id_]->SetVersion(v);
+        versions_[v->version_id_]->SetVersion(v); //versions只是为了省略循环??
         current_version_id_.store(v->version_id_);
     }
 

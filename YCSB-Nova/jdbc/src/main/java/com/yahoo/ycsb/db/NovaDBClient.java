@@ -327,8 +327,39 @@ public class NovaDBClient extends DB {
 
 	@Override
 	public Status insert(String table, String key, HashMap<String, ByteIterator> values) {
-		System.out.print("NovaDBClient insert detected");
-		assert false;
+		// System.out.print("NovaDBClient insert detected");
+		// assert false;
+		// return Status.OK;
+
+		if (startTime == 0) {
+			startTime = System.currentTimeMillis();
+		}
+
+		int intKey = Integer.parseInt(key) + offset;
+		key = String.valueOf(intKey);
+		String value = buildValue(values);
+
+		ReturnValue retVal = null;
+		while (true) {
+
+			if (intKey % 100000 == 0) {
+				System.out.println("current key: " + key);
+			}
+
+			int clientConfigId = config.configurationId.get();
+			List<LTCFragment> current = config.configs.get(clientConfigId).fragments;
+			int fragmentId = homeFragment(key, current);
+			int serverId = current.get(fragmentId).ltcServerId;
+			retVal = novaClient.put(clientConfigId, key, value, serverId);
+
+			if (retVal.configId != clientConfigId) {
+				config.configurationId.set(retVal.configId);
+				continue;
+			} else {
+				break;
+			}			
+		}
+
 		return Status.OK;
 	}
 

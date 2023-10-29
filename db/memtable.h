@@ -21,6 +21,7 @@ namespace leveldb {
 
     class MemTableIterator;
 
+//最原始的memtable
     class MemTable {
     public:
         // MemTables are reference counted.  The initial reference count
@@ -122,6 +123,7 @@ namespace leveldb {
         std::string DebugString() const;
     };
 
+//memtable的类，增加了什么呢?
     class AtomicMemTable {
     public:
         void SetMemTable(uint64_t generation_id, MemTable *mem);
@@ -151,7 +153,7 @@ namespace leveldb {
 
         std::mutex mutex_;
         MemTable *memtable_ = nullptr;
-        std::atomic_int_fast32_t nentries_;
+        std::atomic_int_fast32_t nentries_; //memtable中有多少条记录??
         uint32_t memtable_size_ = 0;
         uint32_t number_of_pending_writes_ = 0;
     };
@@ -166,6 +168,7 @@ namespace leveldb {
         std::unordered_map<uint32_t, uint64_t> server_logbuf;
     };
 
+//
     // static partition.
     struct MemTablePartition {
         MemTablePartition() : background_work_finished_signal_(&mutex) {
