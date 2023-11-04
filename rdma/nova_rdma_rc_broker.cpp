@@ -199,6 +199,7 @@ namespace nova {
                             remote_addr, is_offset, 0);
     }
 
+// 加一个send的请求
     uint64_t
     NovaRDMARCBroker::PostSend(const char *localbuf, uint32_t size,
                                int server_id,
@@ -210,6 +211,7 @@ namespace nova {
                             imm_data);
     }
 
+// 发送
     void NovaRDMARCBroker::FlushSendsOnQP(int qp_idx) {
         if (send_sge_index_[qp_idx] == 0) {
             return;
@@ -276,7 +278,7 @@ namespace nova {
                         ibv_wc_opcode_str(wcs_[i].opcode));
             char *buf = rdma_send_buf_[qp_idx] +
                         wcs_[i].wr_id * max_msg_size_;
-//调用回调函数对cq里面的cqe进行处理
+//调用回调函数对cq里面的cqe进行处理 broker里面的回调函数都是rdma handler
             callback_->ProcessRDMAWC(wcs_[i].opcode, wcs_[i].wr_id, server_id,
                                      buf, wcs_[i].imm_data,
                                      &generate_new_request);
@@ -291,7 +293,7 @@ namespace nova {
         return n;
     }
 
-//给server_id对应的qp发一个recv工作请求?
+// 给server_id对应的qp发一个recv工作请求?
     void NovaRDMARCBroker::PostRecv(int server_id, int recv_buf_index) {
         uint32_t qp_idx = to_qp_idx(server_id);
         char *local_buf =
@@ -305,6 +307,7 @@ namespace nova {
 
     void NovaRDMARCBroker::FlushPendingRecvs() {}
 
+// 处理之前post下去的recv的完成
     uint32_t NovaRDMARCBroker::PollRQ(int server_id, uint32_t *new_requests) {
         uint32_t qp_idx = to_qp_idx(server_id);
         int n = ibv_poll_cq(qp_[qp_idx]->recv_cq_, max_num_sends_, wcs_);

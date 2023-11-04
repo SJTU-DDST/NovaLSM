@@ -299,6 +299,15 @@ def shellPut():
 def shellGet():
     pass
 
+def putAlot(novaClient, ops):
+    for i in range(0, ops):
+        novaClient.put(0, key, "a" * value_size, 0)
+def getAlot(novaClient, ops):
+    for i in range(0, ops):
+        novaClient.get(0, key, 0)
+    
+    
+    
 if __name__ == "__main__":
     
     # parse argument
@@ -433,6 +442,12 @@ if __name__ == "__main__":
                 #     print("key {} not found".format(key))
                 # else:
                 #     print("getValue: {}, configId:{}".format(getValue, configId))
+            elif command[0] == "getalot":
+                ops = int(command[1])
+                getAlot(novaClient, ops)
+            elif command[0] == "putalot":
+                ops = int(command[1])
+                putAlot(novaClient, ops)
             else:
                 print("incorrect command")
                 continue

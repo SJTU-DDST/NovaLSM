@@ -289,6 +289,7 @@ namespace leveldb {
         int compaction_level_ = -1;
     };
 
+// versions中version的类添加了统计信息
     class AtomicVersion {
     public:
         void SetVersion(Version *v);

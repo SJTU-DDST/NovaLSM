@@ -617,8 +617,8 @@ namespace leveldb {
                                                         manifest_file_size,
                                                         buf,
                                                         manifest_file_size,
-                                                        manifest, false);
-        client->Wait();
+                                                        manifest, false); // 前后台由什么决定?
+        client->Wait(); // 下发一个请求 传入client 的 sem， 完成/收到回复的时候会post
         StoCResponse response;
         NOVA_ASSERT(client->IsDone(req_id, &response, nullptr));
 
@@ -2245,17 +2245,18 @@ namespace leveldb {
         snapshots_.Delete(static_cast<const SnapshotImpl *>(snapshot));
     }
 
+// put最后会落到这个函数上么
 // Convenience methods
     Status
     DBImpl::Put(const WriteOptions &o, const Slice &key, const Slice &val) {
         processed_writes_ += 1;
         if (options_.memtable_type == MemTableType::kStaticPartition) {
-            if (o.is_loading_db || !options_.enable_subranges) {
+            if (o.is_loading_db || !options_.enable_subranges) { // is_loading_db标识是否进行了预load 
                 return WriteStaticPartition(o, key, val);
             }
-            return WriteSubrange(o, key, val);
+            return WriteSubrange(o, key, val); // 一般都是这个
         }
-        return WriteMemTablePool(o, key, val);
+        return WriteMemTablePool(o, key, val); // 基本不会进这个
     }
 
     Status DBImpl::Delete(const WriteOptions &options, const Slice &key) {
@@ -2531,6 +2532,7 @@ namespace leveldb {
         return number_of_immutable_memtables_;
     }
 
+// 平常设置进入到这里 partition_id就是subrange对应的id
     bool DBImpl::WriteStaticPartition(const leveldb::WriteOptions &options,
                                       const leveldb::Slice &key,
                                       const leveldb::Slice &value,
@@ -2551,25 +2553,34 @@ namespace leveldb {
         bool wait = false;
         int imm_slot;
         uint64_t start_wait = 0;
+
+        //这个循环是为了
         while (true) {
             table = partition->active_memtable;
             imm_slot = -1;
+
+            // 根据当前active memtable的大小决定是不是把当前memtable转化为immutable memtable
             if (table) {
                 auto atomic_mem = versions_->mid_table_mapping_[table->memtableid()];
-                if (atomic_mem->memtable_size_ <= options_.write_buffer_size) {
+                if (atomic_mem->memtable_size_ <= options_.write_buffer_size) { // ?????? 如果当前memtable大小小于写buffer大小?? buffer大小一般设置为和memtable大小一致 直接完全跳出
                     break;
                 }
+
+                // 当前table已经写满 大小大于写buffer的大小
+
                 bool wait_for_l0 = false;
-                while (options_.l0bytes_stop_writes_trigger > 0) {
+
+                // 这个循环是等待后台l0层压缩完成
+                while (options_.l0bytes_stop_writes_trigger > 0) { // ??? 好像是设置为10G
                     // Get the current version.
                     Version *current = nullptr;
-                    while (current == nullptr) {
+                    while (current == nullptr) { // 忙等...
                         uint32_t vid = versions_->current_version_id();
                         NOVA_ASSERT(vid < MAX_LIVE_MEMTABLES) << vid;
                         current = versions_->versions_[vid]->Ref();
                     }
-                    if (current->l0_bytes_ >= options_.l0bytes_stop_writes_trigger) {
-                        versions_->versions_[current->version_id_]->Unref(dbname_);
+                    if (current->l0_bytes_ >= options_.l0bytes_stop_writes_trigger) { // l0层如果大于这个阈值了 这个说明后台在进行压缩??
+                        versions_->versions_[current->version_id_]->Unref(dbname_); // unref了一次 这里是为了对应于上面的ref 在使用就ref 不使用就unref
                         // Wait if the L0 bytes exceed max.
                         // The mutex is only needed to protect the conditional varilable.
                         if (start_wait == 0) {
@@ -2580,37 +2591,45 @@ namespace leveldb {
                         wait_for_l0 = true;
                         continue;
                     }
-                    versions_->versions_[current->version_id_]->Unref(dbname_);
+                    versions_->versions_[current->version_id_]->Unref(dbname_); // 确认l0层小于阈值后，unref
                     break;
                 }
 
-                if (wait_for_l0) {
+                if (wait_for_l0) { // 如果刚才等待了l0的压缩，去看看table是不是还有效
                     // Check if the table is still valid.
                     continue;
                 }
 
-                if (atomic_mem->number_of_pending_writes_ > 0) {
+                if (atomic_mem->number_of_pending_writes_ > 0) { // 等到没有等待的写
                     // Wait until the number of pending writes is 0.
                     partition->background_work_finished_signal_.Wait();
                     continue;
                 }
 
+                // 写满了
+                //available slots装的是本partition分配到的memtable的编号
+
                 // The table is full.
                 NOVA_ASSERT(!partition->available_slots.empty());
                 // Mark the active memtable as immutable and schedule compaction.
-                imm_slot = partition->available_slots.front();
+                imm_slot = partition->available_slots.front(); // 可用的imm槽的编号?
                 partition->available_slots.pop();
                 NOVA_ASSERT(partitioned_imms_[imm_slot] == 0);
-                partitioned_imms_[imm_slot] = table->memtableid();
-                partition->slot_imm_id[imm_slot] = table->memtableid();
+                partitioned_imms_[imm_slot] = table->memtableid(); // 把本active memtable做成imm的
+                partition->slot_imm_id[imm_slot] = table->memtableid(); //
                 partition->immutable_memtable_ids.push_back(table->memtableid());
                 number_of_immutable_memtables_.fetch_add(1);
                 partition->active_memtable = nullptr;
             }
+
+            // 当前没有空闲的slot了
             if (partition->available_slots.empty()) {
+                // imm_slot!=0说明刚才把active memtable转化为immutable memtable了
                 if (imm_slot != -1) {
                     int thread_id = -1;
                     bool merge_memtables_without_flushing = false;
+                    // 不太懂subrange什么时候设置为null 
+                    // 这个时候需要压缩 并 flush 腾出空间
                     if (subrange) {
                         thread_id = subrange->GetCompactionThreadId(
                                 &EnvBGThread::bg_flush_memtable_thread_id_seq,
@@ -2640,6 +2659,8 @@ namespace leveldb {
                 partition->background_work_finished_signal_.Wait();
                 wait = true;
             } else {
+                //当前还有空闲的memtable，初始的时候搞1个memtable，一直搞到所有memtable都被创建出来
+
                 // Create a new table.
                 uint32_t memtable_id = memtable_id_seq_.fetch_add(1);
                 table = new MemTable(internal_comparator_, memtable_id, db_profiler_, true);
@@ -2649,6 +2670,7 @@ namespace leveldb {
                 partition->active_memtable = table;
                 partition->AddMemTable(generation_id, table->memtableid());
 
+                // 如果开了range index的话
                 if (range_index_manager_) {
                     RangeIndexVersionEdit edit;
                     edit.sr = subrange;
@@ -2659,21 +2681,28 @@ namespace leveldb {
                 break;
             }
         }
+
+
+        // 如果之前进入了等待状态 记录统计数据
         if (wait) {
             number_of_puts_wait_ += 1;
             uint64_t duration = env_->NowMicros() - start_wait;
             Log(options_.info_log, "%u,%lu\n", partition_id, duration);
+        // 
         } else {
             number_of_puts_no_wait_ += 1;
         }
+
+        // 准备开始写
         uint32_t memtable_id = table->memtableid();
         auto atomic_mem = versions_->mid_table_mapping_[memtable_id];
         atomic_mem->number_of_pending_writes_ += 1;
         atomic_mem->memtable_size_ += (key.size() + value.size());
+        // LogRecordMode一般设为NONE或者log_RDMA local_write一般都是设为false了
         if (nova::NovaConfig::config->log_record_mode ==
             nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) {
-            partition->mutex.Unlock();
-            GenerateLogRecord(options, last_sequence, key, value, memtable_id);
+            partition->mutex.Unlock(); // 需要先上锁
+            GenerateLogRecord(options, last_sequence, key, value, memtable_id); // 这里生成日志！
             partition->mutex.Lock();
         }
         table->Add(last_sequence, ValueType::kTypeValue, key, value);
@@ -2713,6 +2742,7 @@ namespace leveldb {
         return true;
     }
 
+// 只有开启了预load 或者 没开subrange 才会进入这个
     Status DBImpl::WriteStaticPartition(const WriteOptions &options,
                                         const Slice &key, const Slice &val) {
         uint64_t last_sequence = versions_->last_sequence_.fetch_add(1);
@@ -2744,6 +2774,7 @@ namespace leveldb {
         }
     }
 
+// 平常设置进入这里
     Status DBImpl::WriteSubrange(const leveldb::WriteOptions &options,
                                  const leveldb::Slice &key,
                                  const leveldb::Slice &val) {
@@ -2795,19 +2826,19 @@ namespace leveldb {
             emptiest_index = -1;
             all_busy = true;
             atomic_memtable = nullptr;
-            enable_stickness = active_memtables_.size() < 5;
+            enable_stickness = active_memtables_.size() < 5; //stickness的用途??
 
             int number_of_retries = std::min((size_t) 3,
                                              active_memtables_.size());
             NOVA_ASSERT(full_memtables.empty());
             atomic_memtable_index = 0;
             if (!enable_stickness) {
-                atomic_memtable_index = rand_r(options.rand_seed);
+                atomic_memtable_index = rand_r(options.rand_seed); // atomic_memtable_index的用途
             }
 
             uint32_t first_memtable_id = 0;
             if (!active_memtables_.empty()) {
-                first_memtable_id = active_memtables_[0]->memtable_->memtableid();
+                first_memtable_id = active_memtables_[0]->memtable_->memtableid(); // 找到第一个active memtable的memtableid
             }
             for (int i = 0; i < number_of_retries; i++) {
                 atomic_memtable_index =
@@ -3139,19 +3170,21 @@ namespace leveldb {
         }
     }
 
+// 生成日志record
     void DBImpl::GenerateLogRecord(const WriteOptions &options,
                                    SequenceNumber last_sequence,
                                    const Slice &key, const Slice &val,
                                    uint32_t memtable_id) {
+    // 只有这个情况才会生成record
         if (nova::NovaConfig::config->log_record_mode ==
-            nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) {
+            nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) { 
             auto stoc = reinterpret_cast<leveldb::StoCBlockClient *>(options.stoc_client);
             NOVA_ASSERT(stoc);
             LevelDBLogRecord log_record = {};
             log_record.sequence_number = last_sequence;
             log_record.key = key;
             log_record.value = val;
-            NOVA_ASSERT(8 + key.size() + val.size() + 4 + 4 + 1 <=
+            NOVA_ASSERT(8 + key.size() + val.size() + 4 + 4 + 1 <= // 4 + 4 + 1 是附加信息?
                         options.rdma_backing_mem_size);
             options.stoc_client->InitiateReplicateLogRecords(
                     nova::LogFileName(dbid_, memtable_id),
@@ -3315,6 +3348,7 @@ namespace leveldb {
         return WriteMemTablePool(opt, key, value);
     }
 
+// delete实现就是置为空
     Status DB::Delete(const WriteOptions &opt, const Slice &key) {
         return WriteMemTablePool(opt, key, Slice());
     }
@@ -3366,8 +3400,8 @@ namespace leveldb {
             for (int i = 0; i < impl->partitioned_imms_.size(); i++) {
                 impl->partitioned_imms_[i] = 0;
             }
-            uint32_t nslots = options.num_memtables / options.num_memtable_partitions; // slots和remainder是什么? 
-            uint32_t remainder = options.num_memtables % options.num_memtable_partitions;
+            uint32_t nslots = options.num_memtables / options.num_memtable_partitions; // 1个partition容纳多少个memtable 
+            uint32_t remainder = options.num_memtables % options.num_memtable_partitions; 
             uint32_t slot_id = 0;
             for (int i = 0; i < options.num_memtable_partitions; i++) {
                 uint64_t memtable_id = impl->memtable_id_seq_.fetch_add(1);
@@ -3429,7 +3463,7 @@ namespace leveldb {
                                                           &impl->partitioned_active_memtables_,
                                                           &impl->partitioned_imms_);
         }
-        if (options.enable_range_index) { // 开启range index和不开config里面都有
+        if (options.enable_range_index) { // 开启range index和不开
             impl->range_index_manager_ = new RangeIndexManager(&impl->scan_stats, impl->versions_,
                                                                impl->user_comparator_);
         }

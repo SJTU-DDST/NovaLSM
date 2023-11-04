@@ -1158,6 +1158,7 @@ namespace leveldb {
         versions_[version_id]->Ref();
     }
 
+// 从manifest文件中恢复 log 和 subrange 的划分?
     Status VersionSet::Recover(Slice record,
                                std::vector<SubRange> *subrange_edits) {
         uint64_t next_file = 0;

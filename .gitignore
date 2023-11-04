@@ -50,3 +50,5 @@ sync
 YCSB-Nova
 preload_out
 expriments
+.gdb_history
+pm_files/*

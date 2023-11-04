@@ -22,6 +22,8 @@
 #include "slice.h"
 
 namespace leveldb {
+
+// 用于读写或者定位一个文件的信息(大多数是位于stoc的)
     class StoCBlockHandle {
     public:
         uint32_t server_id = 0;

@@ -25,8 +25,8 @@ using namespace std;
 using namespace rdmaio;
 using namespace nova;
 
-DEFINE_string(db_path, "/tmp/db", "level db path");//leveldb的路径???
-DEFINE_string(stoc_files_path, "/tmp/stoc", "StoC files path");//stoc文件的路径
+DEFINE_string(db_path, "/tmp/db", "level db path");// leveldb的路径??? 之前是/db/nova-db-recordcount-valuesize 现在是~/db_files/nova-db-recordcount-valuesize
+DEFINE_string(stoc_files_path, "/tmp/stoc", "StoC files path");//stoc文件的路径 之前是/db/stoc_files 现在是~/db_files/stoc_files
 
 DEFINE_string(all_servers, "localhost:11211", "A list of servers");//server的list
 DEFINE_int64(server_id, -1, "Server id.");//当前这个server的id
@@ -249,7 +249,7 @@ int main(int argc, char *argv[]) {
 //不同的scatter策略
     if (FLAGS_scatter_policy == "random") {
         NovaConfig::config->scatter_policy = ScatterPolicy::RANDOM;
-    } else if (FLAGS_scatter_policy == "power_of_two") {
+    } else if (FLAGS_scatter_policy == "power_of_two") { // power of 2 多一点
         NovaConfig::config->scatter_policy = ScatterPolicy::POWER_OF_TWO;
     } else if (FLAGS_scatter_policy == "power_of_three") {
         NovaConfig::config->scatter_policy = ScatterPolicy::POWER_OF_THREE;
@@ -260,7 +260,7 @@ int main(int argc, char *argv[]) {
         NovaConfig::config->scatter_policy = ScatterPolicy::SCATTER_DC_STATS;
     }
 
-//不同的log策略
+//不同的log策略 none和rdma都有
     if (FLAGS_log_record_mode == "none") {
         NovaConfig::config->log_record_mode = NovaLogRecordMode::LOG_NONE;
     } else if (FLAGS_log_record_mode == "rdma") {
@@ -271,7 +271,7 @@ int main(int argc, char *argv[]) {
     NovaConfig::config->enable_range_index = FLAGS_enable_range_index;
     NovaConfig::config->subrange_sampling_ratio = FLAGS_sampling_ratio;
     NovaConfig::config->zipfian_dist_file_path = FLAGS_zipfian_dist_ref_counts;
-    NovaConfig::config->ReadZipfianDist();
+    NovaConfig::config->ReadZipfianDist(); // zipfian的负载等 这个还不清楚
     NovaConfig::config->client_access_pattern = FLAGS_client_access_pattern;
     NovaConfig::config->enable_detailed_db_stats = FLAGS_enable_detailed_db_stats;
     NovaConfig::config->subrange_num_keys_no_flush = FLAGS_subrange_no_flush_num_keys;
@@ -282,7 +282,7 @@ int main(int argc, char *argv[]) {
     NovaConfig::config->num_migration_threads = FLAGS_num_migration_threads;
     NovaConfig::config->use_ordered_flush = FLAGS_use_ordered_flush;
 
-//ltc的迁移策略
+// ltc的迁移策略 immediate多一些
     if (FLAGS_ltc_migration_policy == "immediate") {
         NovaConfig::config->ltc_migration_policy = LTCMigrationPolicy::IMMEDIATE;
     } else {

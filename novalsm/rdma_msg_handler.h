@@ -80,6 +80,7 @@ namespace nova {
     private:
         int ProcessRequestQueue();
 
+// 用于在rdma handler中记录 一个 请求的上下文信息 这样发过去之后 才知道要处理什么
         struct RequestCtx {
             uint32_t req_id = 0;
             sem_t *sem = nullptr;

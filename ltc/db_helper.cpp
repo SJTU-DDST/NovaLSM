@@ -195,10 +195,10 @@ namespace leveldb {
 //建立这个数据库对应的文件
         std::string db_path = nova::DBName(nova::NovaConfig::config->db_path, db_index);
         nova::mkdirs(db_path.c_str());
-        NOVA_ASSERT(env->NewLogger(db_path + "/LOG-" + std::to_string(db_index), &log).ok());
+        NOVA_ASSERT(env->NewLogger(db_path + "/LOG-" + std::to_string(db_index), &log).ok()); // log的位置在ltc 忘了记录了什么了
         options.info_log = log; //info log是有值的
 //打开这个数据库并且返回
-        leveldb::Status status = leveldb::DB::Open(options, db_path, &db);
+        leveldb::Status status = leveldb::DB::Open(options, db_path, &db); // 唯一一次db_path的出现
         NOVA_ASSERT(status.ok()) << "Open leveldb failed " << status.ToString();
         return db;
     }

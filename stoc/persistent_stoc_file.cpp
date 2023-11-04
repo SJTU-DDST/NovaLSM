@@ -19,6 +19,7 @@ namespace leveldb {
                            size);
     }
 
+// handle 是为了 在block中进行缓存所需要的key
     void StoCBlockHandle::EncodeHandle(char *buf) const {
         EncodeFixed32(buf, server_id);
         EncodeFixed32(buf + 4, stoc_file_id);
@@ -60,6 +61,7 @@ namespace leveldb {
         return true;
     }
 
+// 新建文件并且 分配预先指定的空间
     StoCPersistentFile::StoCPersistentFile(uint32_t file_id,
                                            leveldb::Env *env,
                                            std::string filename,
@@ -541,6 +543,7 @@ namespace leveldb {
         return handle;
     }
 
+    // 释放掉之前为了存储在cache中所申请的空间
     static void DeleteCachedBlock(const Slice &key, void *value) {
         char *block = reinterpret_cast<char *>(value);
         delete block;
@@ -600,11 +603,14 @@ namespace leveldb {
         return true;
     }
 
+// stoc读数据块到 目标buf
     void StocPersistentFileManager::ReadDataBlock(
             const leveldb::StoCBlockHandle &stoc_block_handle, uint64_t offset, uint32_t size, char *scratch,
             Slice *result) {
         StoCPersistentFile *stoc_file = FindStoCFile(stoc_block_handle.stoc_file_id);
         NOVA_ASSERT(stoc_file) << stoc_block_handle.stoc_file_id;
+
+        // 如果设置的是没有cache
         if (!block_cache_) {
             leveldb::FileType type;
             NOVA_ASSERT(ParseFileName(stoc_file->stoc_file_name_, &type));
@@ -633,11 +639,14 @@ namespace leveldb {
         stoc_block_handle.EncodeHandle(cache_key_buffer);
         Slice key(cache_key_buffer, sizeof(cache_key_buffer));
         auto cache_handle = block_cache_->Lookup(key);
+
+        // 找到了就直接 复制到目标位置
         if (cache_handle != nullptr) {
             auto block = reinterpret_cast<char *>(block_cache_->Value(
                     cache_handle));
             memcpy(scratch, block, stoc_block_handle.size);
         } else {
+        // 没找到就读到目标位置 然后把新的插入
             stoc_file->Read(offset, size, scratch, result);
             char *block = new char[size];
             memcpy(block, scratch, size);
@@ -645,7 +654,7 @@ namespace leveldb {
                                                 size,
                                                 &DeleteCachedBlock);
         }
-        block_cache_->Release(cache_handle);
+        block_cache_->Release(cache_handle); //  还要release????
     }
 
     void StocPersistentFileManager::OpenStoCFiles(
@@ -673,6 +682,7 @@ namespace leveldb {
         mutex_.unlock();
     }
 
+// stoc端打开 stocfile 
     StoCPersistentFile *
     StocPersistentFileManager::OpenStoCFile(uint32_t thread_id, std::string &filename) {
         mutex_.lock();

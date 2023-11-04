@@ -81,13 +81,15 @@ namespace leveldb {
             << fmt::format("keys:{},{}", lower_bound_, upper_bound_);
     }
 
+// put的时候先找对应的subrange，然后再put
     int SubRangeManager::SearchSubranges(const leveldb::WriteOptions &options,
                                          const leveldb::Slice &key,
                                          const leveldb::Slice &val,
                                          leveldb::SubRange **subrange) {
         SubRanges *ref = latest_subranges_;
         int subrange_id = -1;
-        if (ref->subranges.size() == options_.num_memtable_partitions || !options_.enable_subrange_reorg) {
+        // 如果已经分裂到了稳定的状态 而且不开reorganize这个选项
+        if (ref->subranges.size() == options_.num_memtable_partitions || !options_.enable_subrange_reorg) { 
             // steady state.
             bool found = ref->BinarySearchWithDuplicate(key,
                                                         options.rand_seed,
@@ -108,17 +110,23 @@ namespace leveldb {
                                                         options.rand_seed,
                                                         &subrange_id,
                                                         user_comparator_);
+            // 如果找到 并且已经分裂到了稳定状态
             if (found &&
-                ref->subranges.size() == options_.num_memtable_partitions) {
+                ref->subranges.size() == options_.num_memtable_partitions) { // subrange size和 num memtable partitioon有什么关系呢????
                 NOVA_ASSERT(subrange_id != -1);
                 break;
             }
-            new_subranges = new SubRanges(*ref);
+            new_subranges = new SubRanges(*ref); // 左值！
+
+            // 找到 但是还没分裂到稳定状态
             if (found &&
                 new_subranges->subranges.size() <
                 options_.num_memtable_partitions) {
                 NOVA_ASSERT(subrange_id != -1);
                 SubRange &sr = new_subranges->subranges[subrange_id];
+
+                // 这里如果要分裂的话 就是 [lower, key, upper) -> [lower, key) [key, upper) 所以key = lower的时候不能分裂
+                // 
                 if (sr.first().lower_inclusive &&
                     user_comparator_->Compare(sr.first().lower, key) == 0) {
                     // Cannot split this subrange since it will create a new subrange with no keys.
@@ -128,7 +136,7 @@ namespace leveldb {
                 // find the key but not enough subranges. Split this subrange.
                 SubRange new_sr = {};
                 int new_subrange_index = 0;
-                if (sr.tiny_ranges.size() == 1) {
+                if (sr.tiny_ranges.size() == 1) { // 初始情况的话 分裂subrange和tinyrange
                     // split the tiny range.
                     // new_sr = [k, sr.upper)
                     Range new_range = {};
@@ -165,6 +173,7 @@ namespace leveldb {
                 break;
             }
 
+            // 还可以没有找到???  没找到，但是已经分裂到稳定状态了 说明要么在最大的右面 要么在最小的左面(实际上不可能发生?)
             if (!found &&
                 new_subranges->subranges.size() ==
                 options_.num_memtable_partitions) {
@@ -203,6 +212,7 @@ namespace leveldb {
                 break;
             }
 
+            // 没有找到 而且 subranges是空的 做一个range(只包含1个key)放进去
             // not found and not enough subranges.
             // no subranges. construct a point.
             if (new_subranges->subranges.empty()) {
@@ -217,6 +227,7 @@ namespace leveldb {
                 break;
             }
 
+            // 没找到 而且subranges只有一个 而且是一个point
             if (new_subranges->subranges.size() == 1 &&
                 new_subranges->first().IsAPoint(user_comparator_)) {
                 if (new_subranges->first().IsSmallerThanLower(key,
@@ -233,6 +244,7 @@ namespace leveldb {
                 break;
             }
 
+            // 没找到 subrange有多个但是还没完全稳定/subrange有1个但是 不是point 扩张
             // key is less than the smallest user key.
             if (new_subranges->first().IsSmallerThanLower(key,
                                                           user_comparator_)) {
@@ -275,7 +287,7 @@ namespace leveldb {
             ref = new_subranges;
         }
         range_lock_.Unlock();
-        *subrange = &ref->subranges[subrange_id];
+        *subrange = &ref->subranges[subrange_id]; //ref会自己析构么??? 应该是会的 我猜
         return subrange_id;
     }
 

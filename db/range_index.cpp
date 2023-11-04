@@ -81,6 +81,7 @@ namespace leveldb {
         }
     }
 
+    //
     RangeIndex::RangeIndex(ScanStats *scan_stats, RangeIndex *current,
                            uint32_t version_id,
                            uint32_t lsm_vid) : ranges_(
@@ -219,6 +220,7 @@ namespace leveldb {
         mutex_.unlock();
     }
 
+// 初始的时候current_设为null 
     RangeIndexManager::RangeIndexManager(ScanStats *scan_stats,
                                          VersionSet *versions,
                                          const Comparator *user_comparator)
@@ -321,6 +323,7 @@ namespace leveldb {
         }
     }
 
+// ???
     void
     RangeIndexManager::AppendNewVersion(ScanStats *scan_stats,
                                         const RangeIndexVersionEdit &edit) {
@@ -329,7 +332,9 @@ namespace leveldb {
         auto new_range_idx = new RangeIndex(scan_stats, current_,
                                             range_index_version_seq_id_,
                                             edit.lsm_version_id);
+        // 如果加memtable的
         if (edit.add_new_memtable) {
+            // 如果有对应的subrange
             if (edit.sr) {
                 int start_id = 0;
                 BinarySearch(new_range_idx->ranges_,
@@ -351,6 +356,7 @@ namespace leveldb {
                         break;
                     }
                 }
+            // 如果没有对应的subrange?? 什么情况下
             } else {
                 for (int i = 0; i < new_range_idx->range_tables_.size(); i++) {
                     auto &table = new_range_idx->range_tables_[i];
@@ -358,6 +364,7 @@ namespace leveldb {
                 }
             }
         }
+        // 如果新增了memtable 但是 没有移除memtable
         if (edit.add_new_memtable && edit.removed_memtables.empty()) {
 
         } else {

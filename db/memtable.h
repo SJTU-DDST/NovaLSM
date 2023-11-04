@@ -123,7 +123,7 @@ namespace leveldb {
         std::string DebugString() const;
     };
 
-//memtable的类，增加了什么呢?
+//version中memtable的类，增加了统计信息
     class AtomicMemTable {
     public:
         void SetMemTable(uint64_t generation_id, MemTable *mem);

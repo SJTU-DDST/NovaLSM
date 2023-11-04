@@ -28,6 +28,8 @@ namespace leveldb {
 
 namespace nova {
     class DBMigration;
+
+// 发送过来的任务 转化为 storage worker的任务的结构体
     struct StorageTask {
         leveldb::StoCRequestType request_type;
         uint32_t rdma_server_thread_id = 0;
@@ -52,6 +54,7 @@ namespace nova {
         std::vector<leveldb::ReplicationPair> replication_pairs;
     };
 
+// storage worker完成后 给rdma server的结构体 标识完成的任务
     struct ServerCompleteTask {
         leveldb::StoCRequestType request_type;
         int remote_server_id = -1;
@@ -74,6 +77,7 @@ namespace nova {
 
     class StorageWorker;
 
+// rdma server用于存储发送过来的请求的上下文的结构体
     struct RequestContext {
         leveldb::StoCRequestType request_type;
         uint32_t remote_server_id;
@@ -150,7 +154,7 @@ namespace nova {
         std::list<ServerCompleteTask> public_cq_;
 
         uint32_t current_worker_id_ = 0;
-        std::unordered_map<uint64_t, RequestContext> request_context_map_;
+        std::unordered_map<uint64_t, RequestContext> request_context_map_; // server+req->requestcontext的映射
     };
 }
 

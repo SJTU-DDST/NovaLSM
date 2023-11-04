@@ -125,13 +125,13 @@ namespace leveldb {
         void IncrementReqId();
 
     private:
-        std::unordered_map<uint32_t, StoCResponse *> req_response;
+        std::unordered_map<uint32_t, StoCResponse *> req_response; //
 
         void AddAsyncTask(const RDMARequestTask &task);
 
         StocPersistentFileManager *stoc_file_manager_;
         uint32_t current_rdma_msg_handler_id_ = 0;
-        uint32_t req_id_ = 1;
+        uint32_t req_id_ = 1; // 用于在block request中记录request id
     };
 
 //这个用来干嘛?????每个worker一个
@@ -234,7 +234,7 @@ namespace leveldb {
         RDMAServer *rdma_server_;
         leveldb::LogCLogWriter *rdma_log_writer_ = nullptr;
 
-        uint32_t current_req_id_ = 1;
+        uint32_t current_req_id_ = 1; // 用于在rdmaclient request中记录request id
         uint32_t lower_req_id_;
         uint32_t upper_req_id_;
         std::unordered_map<uint32_t, StoCRequestContext> request_context_;

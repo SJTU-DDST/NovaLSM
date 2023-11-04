@@ -40,7 +40,7 @@ namespace nova {
         sem_init(&sem_, 0, 0);
     }
 
-//任务加一个，然后信号量赠一进行唤醒
+//任务加一个，然后信号量赠一进行唤醒 storage worker 特有的sem_post
     void StorageWorker::AddTask(
             const nova::StorageTask &task) {
         mutex_.lock();
@@ -140,8 +140,9 @@ namespace nova {
             if (tasks.empty()) {
                 continue;
             }
+            // 先取出 交给这里的task 取到本地
 
-            std::map<uint32_t, std::vector<ServerCompleteTask>> t_tasks;
+            std::map<uint32_t, std::vector<ServerCompleteTask>> t_tasks; // rdma server 编号 到 已经完成的 task的映射
             for (auto &task : tasks) {
                 stat_tasks_ += 1;
                 ServerCompleteTask ct = {};
@@ -152,6 +153,7 @@ namespace nova {
                 ct.ltc_mr_offset = task.ltc_mr_offset;
                 ct.stoc_block_handle = task.stoc_block_handle;
 
+// 读取文件
                 if (task.request_type ==
                     leveldb::StoCRequestType::STOC_READ_BLOCKS) {
                     leveldb::Slice result;

@@ -44,6 +44,7 @@ namespace nova {
         current_worker_id_ = thread_id;
     }
 
+// 添加storage worker完成的任务 交给stoc的任务完成了把任务推进去
     void RDMAServerImpl::AddCompleteTasks(
             const std::vector<nova::ServerCompleteTask> &tasks) {
         mutex_.lock();
@@ -60,6 +61,7 @@ namespace nova {
         mutex_.unlock();
     }
 
+//选一个前台
     void RDMAServerImpl::AddFGStorageTask(const nova::StorageTask &task) {
         uint32_t id =
                 fg_storage_worker_seq_id_.fetch_add(1,
@@ -89,6 +91,8 @@ namespace nova {
     int RDMAServerImpl::ProcessCompletionQueue() {
         int nworks = 0;
         mutex_.lock();
+
+        // 取出public中的任务
         while (!public_cq_.empty()) {
             auto &task = public_cq_.front();
             private_cq_.push_back(task);
@@ -153,12 +157,12 @@ namespace nova {
                 rdma_broker_->PostSend(sendbuf, 13, task.remote_server_id,
                                        task.stoc_req_id);
             } else if (task.request_type ==
-                       leveldb::StoCRequestType::STOC_READ_BLOCKS) {
-                char *sendbuf = rdma_broker_->GetSendBuf(task.remote_server_id);
-                uint64_t wr_id = rdma_broker_->PostWrite(task.rdma_buf,
+                       leveldb::StoCRequestType::STOC_READ_BLOCKS) { // 用write原语发过去
+                char *sendbuf = rdma_broker_->GetSendBuf(task.remote_server_id); // rdma的大buff中的对应的东西
+                uint64_t wr_id = rdma_broker_->PostWrite(task.rdma_buf, // rdma_buf 是本地申请的 装了读出来的数据的buf
                                                          task.size,
                                                          task.remote_server_id,
-                                                         task.ltc_mr_offset,
+                                                         task.ltc_mr_offset, // 远程的内存
                                                          false,
                                                          task.stoc_req_id);
                 NOVA_LOG(rdmaio::DEBUG)
@@ -243,7 +247,7 @@ namespace nova {
         destination_migration_threads_[value]->AddDestMigrateDB(buf, size);
     }
 
-//rdmaserver处理cqe
+//rdmaserver处理cqe server端?? 各种任务的后续工作 需要根据工作类型去看。。
     // No need to flush RDMA requests since Flush will be done after all requests are processed in a receive queue.
     bool
     RDMAServerImpl::ProcessRDMAWC(ibv_wc_opcode type, uint64_t wr_id,
@@ -258,7 +262,7 @@ namespace nova {
 //完成的工作是rdma write类型的
             case IBV_WC_RDMA_WRITE:
 //如果是stoc read blocks类型的，释放掉之前的空间
-                if (buf[0] == leveldb::StoCRequestType::STOC_READ_BLOCKS) {
+                if (buf[0] == leveldb::StoCRequestType::STOC_READ_BLOCKS) { // recover 的 server端的 write的wc
                     uint64_t written_wr_id = leveldb::DecodeFixed64(buf + 1);
                     if (written_wr_id == wr_id) {
                         uint32_t size = leveldb::DecodeFixed32(buf + 9);
@@ -279,11 +283,12 @@ namespace nova {
                 break;
             case IBV_WC_RDMA_READ:
                 break;
-//如果完成的工作是rdma recv类型的
+// 如果完成的工作是rdma recv类型的 什么时候
             case IBV_WC_RECV:
             case IBV_WC_RECV_RDMA_WITH_IMM:
+                // imm_data是来自对面的 rdmaclient的 req_id
                 uint32_t stoc_req_id = imm_data;
-                uint64_t req_id = to_req_id(remote_server_id, stoc_req_id);
+                uint64_t req_id = to_req_id(remote_server_id, stoc_req_id); // req_id 的规律是什么
                 auto context_it = request_context_map_.find(req_id);
                 if (context_it != request_context_map_.end()) {
                     auto &context = context_it->second;
@@ -366,7 +371,7 @@ namespace nova {
                                 thread_id_, nfiles);
                     processed = true;
                 } else if (buf[0] ==
-                           leveldb::StoCRequestType::STOC_READ_BLOCKS) {
+                           leveldb::StoCRequestType::STOC_READ_BLOCKS) { //
                     uint32_t msg_size = 1;
                     uint32_t stoc_file_id = 0;
                     uint64_t offset = 0;

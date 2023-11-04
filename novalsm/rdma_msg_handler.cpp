@@ -31,15 +31,17 @@ namespace nova {
         return size;
     }
 
+// 处理自己这个线程对应的任务
     int RDMAMsgHandler::ProcessRequestQueue() {
-        {
+        // 就是public queue -> private queue -> pending_reqs 处理这个里面的
+        { // 处理之前已经发送过的 留下了 ctx的 请求
             auto it = pending_reqs_.begin();
             while (it != pending_reqs_.end()) {
-                if (stoc_client_->IsDone(it->req_id, it->response, nullptr)) {
+                if (stoc_client_->IsDone(it->req_id, it->response, nullptr)) { // RDMAClient!!!!!!!!!!!!!!!!!!!!!!!!!!!注意！！！
                     if (it->sem) {
                         NOVA_LOG(rdmaio::DEBUG)
                             << fmt::format("Wake up request: {}", it->req_id);
-                        NOVA_ASSERT(sem_post(it->sem) == 0);
+                        NOVA_ASSERT(sem_post(it->sem) == 0); // 这里的sem一般都是block client的sem
                     }
                     it = pending_reqs_.erase(it);
                 } else {
@@ -48,6 +50,7 @@ namespace nova {
             }
         }
 
+        // 取出公共队列中的任务
         mutex_.Lock();
         while (!public_queue_.empty()) {
             private_queue_.push_back(public_queue_.front());
@@ -59,6 +62,8 @@ namespace nova {
         uint32_t size = private_queue_.size();
         auto it = private_queue_.begin();
         std::vector<int> serverids;
+
+        // 处理当前拿到的任务
         while (it != private_queue_.end()) {
             const auto &task = *it;
             serverids.clear();
@@ -71,7 +76,7 @@ namespace nova {
                     uint32_t stoc_server_id = nova::NovaConfig::config->cfgs[0]->stoc_servers[frag->log_replica_stoc_ids[i]];
                     serverids.push_back(stoc_server_id);
                 }
-                if (!admission_control_->CanIssueRequest(serverids)) {
+                if (!admission_control_->CanIssueRequest(serverids)) { // 这里无锁，有问题。。
                     it++;
                     continue;
                 }
@@ -83,7 +88,7 @@ namespace nova {
                 }
             }
             RequestCtx ctx = {};
-            ctx.sem = task.sem;
+            ctx.sem = task.sem; // 一般这里的sem是client的sem client需要串行工作 通过sem结束等待
             ctx.response = task.response;
             bool failed = false;
             switch (task.type) {
@@ -134,7 +139,7 @@ namespace nova {
                             task.rdma_log_record_backing_mem, task.server_id, task.remote_stoc_offset, task.size);
                     break;
                 case leveldb::RDMA_CLIENT_REQ_READ:
-                    ctx.req_id = stoc_client_->InitiateReadDataBlock(
+                    ctx.req_id = stoc_client_->InitiateReadDataBlock( // 这里的client 是 rdmaclient 不是blockclient！！！
                             task.stoc_block_handle,
                             task.offset,
                             task.size,
@@ -197,7 +202,7 @@ namespace nova {
                 }
                 it++;
             } else {
-                pending_reqs_.push_back(ctx);
+                pending_reqs_.push_back(ctx); // 把这个请求的上下文记录到当前正在处理的请求中
                 it = private_queue_.erase(it);
             }
         }
@@ -216,7 +221,7 @@ namespace nova {
         NOVA_LOG(DEBUG) << "Async worker started";
 //初始化连接和qp的各种数据
         if (NovaConfig::config->enable_rdma) {
-            rdma_broker_->Init(rdma_ctrl_);
+            rdma_broker_->Init(rdma_ctrl_); // 初始化与其他机器的rdma的qp链接等
         }
 //添加映射
         nova::NovaConfig::config->add_tid_mapping();
@@ -229,7 +234,7 @@ namespace nova {
         bool should_sleep = true;
         uint32_t timeout = RDMA_POLL_MIN_TIMEOUT_US;
         while (is_running_) {
-            while (should_pause) {
+            while (should_pause) { // 重新初始化 或者关闭stoc文件的时候会停下?
                 paused = true;
 //等待唤醒
                 sem_wait(&sem_);
@@ -245,17 +250,17 @@ namespace nova {
             auto endpoints = rdma_broker_->end_points();
             for (const auto &endpoint : endpoints) {
                 uint32_t new_requests = 0;
-                uint32_t completed_requests = rdma_broker_->PollSQ(
+                uint32_t completed_requests = rdma_broker_->PollSQ( // 获取已经完成的send request的信息
                         endpoint.server_id, &new_requests);
                 new_requests = 0;
-                rdma_broker_->PollRQ(endpoint.server_id, &new_requests);
+                rdma_broker_->PollRQ(endpoint.server_id, &new_requests); // 获取已经完成的recv request的信息 这两个函数不可能产生new request
                 n += completed_requests;
                 n += new_requests;
             }
-            n += rdma_server_->ProcessCompletionQueue();
-            n += ProcessRequestQueue();
+            n += rdma_server_->ProcessCompletionQueue(); // ??? 这个里面的任务全是 storage worker发下来的 总之处理这个里面的任务 一般storage worker发回来的都是 之前完成的工作的回复 rdma server中 之前完成的工作的complete task
+            n += ProcessRequestQueue(); // ??? 处理上层应用交给rdma handler的task 这个是工作请求 (也许会包含poll出来的请求?)
             if (n == 0) {
-                should_sleep = true;
+                should_sleep = true; //不忙就睡
                 timeout *= 2;
                 if (timeout > RDMA_POLL_MAX_TIMEOUT_US) {
                     timeout = RDMA_POLL_MAX_TIMEOUT_US;
@@ -267,14 +272,14 @@ namespace nova {
         }
     }
 
-//处理cqe
+//用于从cq中读取已经完成的request并且进行处理 处理cqe
     bool
     RDMAMsgHandler::ProcessRDMAWC(ibv_wc_opcode opcode,
                                   uint64_t wr_id,
                                   int remote_server_id,
                                   char *buf, uint32_t imm_data,
                                   bool *generate_a_new_request) {
-//如果是发送类型的rdma请求完成了
+//如果是发送类型的rdma请求完成了 这里应该只会来自于 cq_ opcode是主动类型的
         if (opcode == IBV_WC_SEND ||
             opcode == IBV_WC_RDMA_WRITE ||
             opcode == IBV_WC_RDMA_READ) {
@@ -285,10 +290,12 @@ namespace nova {
         if (opcode == IBV_WC_SEND) {
             return true;
         }
-//如果是其它类型的cqe的话，可能需要stoc客户端和rdmaserver都进行处理???
+        //如果是上面的类型 说明是本服务器发给别人的 下面的类型应该是IBV_WC_ERCV 代表别的服务器发送给我的请求
+//如果是其它类型的cqe的话，可能需要stoc客户端和rdmaserver都进行处理??? 下面应该是类似于receiv
+// 看起来是两种智能 stoc client是发起请求端处理 rdmaserver是收到请求server端处理
         bool processed_by_client = stoc_client_->OnRecv(opcode, wr_id, remote_server_id, buf, imm_data, nullptr);
         bool processed_by_server = rdma_server_->ProcessRDMAWC(opcode, wr_id, remote_server_id, buf, imm_data, nullptr);
-        if (processed_by_client && processed_by_server) {
+        if (processed_by_client && processed_by_server) { // 应该只被一个处理 什么被什么处理 ??
             NOVA_ASSERT(false)
                 << fmt::format("Processed by both client and server");
         }

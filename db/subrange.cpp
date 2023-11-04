@@ -67,6 +67,7 @@ namespace leveldb {
         return output;
     }
 
+// 比较两个range是否一样
     bool Range::Equals(const Range &other, const Comparator *comparator) const {
         if (lower_inclusive != other.lower_inclusive) {
             return false;
@@ -226,6 +227,7 @@ namespace leveldb {
         return true;
     }
 
+// 比较两个subrange是否一样 （也就是是否是duplicate
     bool SubRange::Equals(const SubRange &other,
                           const Comparator *comparator) const {
         if (num_duplicates != other.num_duplicates) {
@@ -312,6 +314,7 @@ namespace leveldb {
         return output;
     }
 
+// 验证目前subranges的边界情况
     void SubRanges::AssertSubrangeBoundary(const Comparator *comparator) {
         if (subranges.empty()) {
             return;
@@ -376,6 +379,7 @@ namespace leveldb {
         }
     }
 
+// 找这个key对应的subrange
     bool SubRanges::BinarySearch(
             const leveldb::Slice &key, int *subrange_id,
             const Comparator *user_comparator) const {
@@ -410,6 +414,7 @@ namespace leveldb {
         return false;
     }
 
+// subranges中找
     bool
     SubRanges::BinarySearchWithDuplicate(const leveldb::Slice &key,
                                          unsigned int *rand_seed,
@@ -423,9 +428,10 @@ namespace leveldb {
         NOVA_ASSERT(*subrange_id >= 0);
         const SubRange &sr = subranges[*subrange_id];
         if (sr.num_duplicates == 0) {
-            return true;
+            return true; // 无duplicate的到这里就结束
         }
 
+        // 有duplicate的话 找到起始和结束的subrange
         int i = (*subrange_id) - 1;
         while (i >= 0) {
             if (subranges[i].Equals(sr, user_comparator)) {
@@ -435,6 +441,7 @@ namespace leveldb {
             }
         }
 
+        // 随便找一个 subrange 或者 第一个
         if (rand_seed) {
             *subrange_id = i + 1 +
                            rand_r(rand_seed) % sr.num_duplicates;

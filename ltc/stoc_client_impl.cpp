@@ -14,6 +14,7 @@
 namespace leveldb {
     using namespace rdmaio;
 
+// 这里说明这个类没有什么并发
     void StoCBlockClient::IncrementReqId() {
         req_id_++;
         if (req_id_ == 0) {
@@ -268,11 +269,11 @@ namespace leveldb {
         return reqid;
     }
 
-//查看
+// 查看response
     bool StoCBlockClient::IsDone(uint32_t req_id,
                                  leveldb::StoCResponse *response,
                                  uint64_t *timeout) {
-        auto it = req_response.find(req_id);
+        auto it = req_response.find(req_id); // 这个结构用来储存发过来的response 取出来找到自己的response就好 如果需要response的话会在这里登记
         if (it == req_response.end()) {
             return true;
         }
@@ -398,6 +399,7 @@ namespace leveldb {
         return req_id;
     }
 
+// 将填好的任务下发到rdma线程中 这里都是加入到后台rdma msg handler了
     void StoCBlockClient::AddAsyncTask(
             const leveldb::RDMARequestTask &task) {
         if (task.type == RDMAClientRequestType::RDMA_CLIENT_REQ_LOG_RECORD) {
@@ -410,12 +412,14 @@ namespace leveldb {
         rdma_msg_handlers_[seq]->AddTask(task);
     }
 
+// 下发一个读block的rpc请求 handle是读的一些信息 
     uint32_t StoCBlockClient::InitiateReadDataBlock(
             const leveldb::StoCBlockHandle &block_handle, uint64_t offset, uint32_t size, char *result,
             uint32_t result_size, std::string filename, bool is_foreground_reads) {
         NOVA_ASSERT(size <= result_size)
             << fmt::format("{} {} {} {}", block_handle.DebugString(), filename,
                            size, result_size);
+        // 如果发现这个请求是对自己这个server的 就不用发rpc了                   
         if (block_handle.server_id == nova::NovaConfig::config->my_server_id) {
             StoCBlockHandle converted_handle = {};
             uint32_t stoc_file_id = block_handle.stoc_file_id;
@@ -458,6 +462,7 @@ namespace leveldb {
         return reqid;
     }
 
+// 写日志会落到这里
     uint32_t StoCBlockClient::InitiateReplicateLogRecords(
             const std::string &log_file_name, uint64_t thread_id,
             uint32_t db_id, uint32_t memtable_id,
@@ -770,9 +775,10 @@ namespace leveldb {
         return 0;
     }
 
+// RDMA handler中查看isdone
     bool StoCRDMAClient::IsDone(uint32_t req_id, StoCResponse *response,
                                 uint64_t *timeout) {
-        if (req_id == 0) {
+        if (req_id == 0) { // req_id 什么时候会等于0??
             // local bypass.
             if (response) {
                 response->is_complete = true;
@@ -780,13 +786,15 @@ namespace leveldb {
             return true;
         }
 
+// 如果没有context了(当初根本没有加入?)或者有context 而且done了 那就说明这个req已经做好了
+
         auto context_it = request_context_.find(req_id);
         if (context_it == request_context_.end()) {
             return true;
         }
 
         if (context_it->second.done) {
-            if (response) {
+            if (response) { // response 是否为 null 代表 是否需要回复??
                 response->is_complete = true;
                 response->stoc_file_id = context_it->second.stoc_file_id;
                 response->stoc_block_handles = context_it->second.stoc_block_handles;
@@ -813,7 +821,7 @@ namespace leveldb {
         return false;
     }
 
-//stoc处理cqe。大部分都没懂，需要根据发送和协议等运转机制来看
+//stoc处理cqe。大部分都没懂，需要根据发送和协议等运转机制来看 client端? 需要根据工作类型去看。。
     bool
     StoCRDMAClient::OnRecv(ibv_wc_opcode type, uint64_t wr_id,
                            int remote_server_id,
@@ -917,7 +925,7 @@ namespace leveldb {
                                     req_id);
                         processed = true;
 //如果对应的本地的任务是stoc read block
-                    } else if (context.req_type == StoCRequestType::STOC_READ_BLOCKS) {
+                    } else if (context.req_type == StoCRequestType::STOC_READ_BLOCKS) { // 默认写成功了?????!!!!!!
 //                        if (context.log_file_name.empty()) {
 //                            NOVA_ASSERT(
 //                                    context.backing_mem[context.size - 1] != 0)

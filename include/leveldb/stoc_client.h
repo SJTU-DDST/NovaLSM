@@ -81,6 +81,7 @@ namespace leveldb {
         STOC_REPLICATE_SSTABLES_RESPONSE = 'H',
     };
 
+// 存放于RDMAClient中， 用于记录一个rdma 请求的上下文 以及是否完成等信息
     struct StoCRequestContext {
         StoCRequestType req_type;
         uint32_t remote_server_id = 0;
@@ -130,6 +131,7 @@ namespace leveldb {
         bool is_ready_to_process_requests;
     };
 
+// rdma请求的各种类型
     enum RDMAClientRequestType : char {
         RDMA_CLIENT_REQ_READ = 'a',
         RDMA_CLIENT_REQ_LOG_RECORD = 'b',
@@ -149,12 +151,14 @@ namespace leveldb {
         RDMA_CLIENT_RECONSTRUCT_MISSING_REPLICA = 'p',
     };
 
+// record的结构??
     struct LevelDBLogRecord {
         Slice key;
         Slice value;
         uint64_t sequence_number = 0;
     };
 
+// rdma rpc 发送的时候下发的task 存在于rdma handler中
     struct RDMARequestTask {
         RDMAClientRequestType type;
         sem_t *sem = nullptr;

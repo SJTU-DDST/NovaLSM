@@ -226,7 +226,7 @@ namespace nova {
 //加载数据??
     void NICServer::LoadData() {
 //如果不能用本地磁盘且本机server是stoc的话，直接回
-        if (!NovaConfig::config->use_local_disk) {
+        if (!NovaConfig::config->use_local_disk) { // use local disk都有
             if (NovaConfig::config->cfgs[0]->IsStoC()) {
                 return;
             }
@@ -345,7 +345,7 @@ namespace nova {
         leveldb::PosixEnv *env = new leveldb::PosixEnv;
         env->set_env_option(env_option);
 
-//建立stoc的持久介质中的文件管理器
+//建立stoc的持久介质中的文件管理器 唯一一次stoc_files_path出现
         leveldb::StocPersistentFileManager *stoc_file_manager = new leveldb::StocPersistentFileManager(env, mem_manager,
                                                                                                        NovaConfig::config->stoc_files_path,
                                                                                                        NovaConfig::config->max_stoc_file_size);        

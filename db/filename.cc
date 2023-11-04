@@ -135,6 +135,7 @@ namespace leveldb {
         return true;
     }
 
+// 查看文件的类型
     bool ParseFileName(const std::string &filename,
                        FileType *type) {
         if (filename.rfind("CURRENT") != std::string::npos) {
