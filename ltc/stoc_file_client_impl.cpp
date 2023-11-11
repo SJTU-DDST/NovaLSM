@@ -16,7 +16,7 @@
 #include "common/nova_config.h"
 
 namespace leveldb {
-//用这个函数建立了manifest文件，这个文件应该放置于stoc?
+//用这个函数建立了manifest文件，这个文件应该放置于stoc? 
     StoCWritableFileClient::StoCWritableFileClient(Env *env,
                                                    const Options &options,
                                                    uint64_t file_number,
@@ -36,7 +36,7 @@ namespace leveldb {
               MemFile(nullptr, "", false) {
         NOVA_ASSERT(mem_manager);
         NOVA_ASSERT(stoc_client);
-        meta_block_handles_.resize(nova::NovaConfig::config->number_of_sstable_metadata_replicas); // sstable元数据replica个数
+        meta_block_handles_.resize(nova::NovaConfig::config->number_of_sstable_metadata_replicas); // sstable元数据replica个数 这里应该会存放具体放置在stoc的服务器的具体信息 handle!
         data_replica_status_.resize(nova::NovaConfig::config->number_of_sstable_data_replicas); // sstable数据replica个数
         // Only used for flushing SSTables.
         // Policy.
@@ -74,6 +74,7 @@ namespace leveldb {
         }
     }
 
+// 从文件offset处读n个字节
     Status
     StoCWritableFileClient::Read(uint64_t offset, size_t n,
                                  leveldb::Slice *result,
@@ -96,10 +97,12 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 获得当前写到的地方/下一次写开始的位置
     char *StoCWritableFileClient::Buf() {
         return backing_mem_ + used_size_;
     }
 
+// 当前末尾加一段空数据
     Status StoCWritableFileClient::Append(uint32_t size) {
         NOVA_ASSERT(used_size_ + size < allocated_size_)
             << fmt::format(
@@ -145,6 +148,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 向文件中加一段数据
     Status StoCWritableFileClient::Append(const leveldb::Slice &data) {
         char *buf = backing_mem_ + used_size_;
         NOVA_ASSERT(used_size_ + data.size() < allocated_size_)
@@ -158,6 +162,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 从offset位置 加一段数据
     Status StoCWritableFileClient::Write(char *backing_mem,
                                          uint64_t offset,
                                          const Slice &data,
@@ -171,6 +176,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 从offset位置 加一段数据
     Status
     StoCWritableFileClient::Write(uint64_t offset, const leveldb::Slice &data) {
         assert(offset + data.size() < allocated_size_);
@@ -181,6 +187,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// sync的作用 emmmm 检查加上 完成发送
     Status StoCWritableFileClient::Fsync() {
         NOVA_ASSERT(used_size_ == meta_.file_size) << fmt::format(
                     "ccremotememfile[{}]: fn:{} db:{} alloc_size:{} used_size:{}",
@@ -190,33 +197,33 @@ namespace leveldb {
         return Status::OK();
     }
 
-
+// sync的核心
     void StoCWritableFileClient::Format() {
         Status s;
         int file_size = used_size_;
         Slice footer_input(backing_mem_ + file_size - Footer::kEncodedLength,
-                           Footer::kEncodedLength);
+                           Footer::kEncodedLength); // 提取出文件最后的部分 当作footer
         Footer footer;
-        s = footer.DecodeFrom(&footer_input);
+        s = footer.DecodeFrom(&footer_input); // 把footer从数据中提取出来
         NOVA_ASSERT(s.ok()) << fmt::format("footer", s.ToString());
         // Read the index block
         BlockContents index_block_contents;
         const char *index_block_buf =
-                backing_mem_ + footer.index_handle().offset();
-        Slice contents(index_block_buf, footer.index_handle().size());
-        StoCBlockHandle index_handle = {};
+                backing_mem_ + footer.index_handle().offset(); // 找到index handle指示的index block的地址
+        Slice contents(index_block_buf, footer.index_handle().size()); // 获得index block的内容
+        StoCBlockHandle index_handle = {}; // 获取index handle的内容
         index_handle.offset = footer.index_handle().offset();
         index_handle.size = footer.index_handle().size();
-        s = Table::ReadBlock(index_block_buf, contents, ReadOptions(),
-                             index_handle, &index_block_contents);
+        s = Table::ReadBlock(index_block_buf, contents, ReadOptions(), // 看起来是读到index_block_contents里面
+                             index_handle, &index_block_contents); // 又把index block读到了index block contents里面一份
         NOVA_ASSERT(s.ok());
         index_block_ = new Block(index_block_contents,
                                  file_number_,
-                                 footer.index_handle().offset(), true);
-        if (num_data_blocks_ >= nova::NovaConfig::config->num_stocs_scatter_data_blocks) {
+                                 footer.index_handle().offset(), true); // 把index_block做出来 记录一些元数据
+        if (num_data_blocks_ >= nova::NovaConfig::config->num_stocs_scatter_data_blocks) { // 3或者1比较多 num_data_blocks代表当前文件中含有的数据块数量
             int min_num_data_blocks_in_group =
-                    num_data_blocks_ / nova::NovaConfig::config->num_stocs_scatter_data_blocks;
-            int remaining = num_data_blocks_ % nova::NovaConfig::config->num_stocs_scatter_data_blocks;
+                    num_data_blocks_ / nova::NovaConfig::config->num_stocs_scatter_data_blocks; // 1个stoc应该放的数据块的个数
+            int remaining = num_data_blocks_ % nova::NovaConfig::config->num_stocs_scatter_data_blocks; // 剩下的数据块的个数
             uint32_t assigned_blocks = 0;
             for (int i = 0; i < nova::NovaConfig::config->num_stocs_scatter_data_blocks; i++) {
                 int nblocks = min_num_data_blocks_in_group;
@@ -224,7 +231,7 @@ namespace leveldb {
                     nblocks += 1;
                     remaining -= 1;
                 }
-                nblocks_in_group_.push_back(nblocks);
+                nblocks_in_group_.push_back(nblocks); // 每个stoc对应的放多少个数据块
                 assigned_blocks += nblocks;
             }
             NOVA_ASSERT(assigned_blocks == num_data_blocks_);
@@ -240,7 +247,7 @@ namespace leveldb {
                                    min_num_data_blocks_in_group);
             }
         } else {
-            nblocks_in_group_.push_back(num_data_blocks_);
+            nblocks_in_group_.push_back(num_data_blocks_); // 如果还没到1个stoc的限量 都放在1个里面就好
         }
         Iterator *it = index_block_->NewIterator(options_.comparator);
         it->SeekToFirst();
@@ -251,35 +258,35 @@ namespace leveldb {
         auto client = reinterpret_cast<StoCBlockClient *> (stoc_client_);
 
         uint32_t num_stocs_to_select = 0;
-        if (nova::NovaConfig::config->number_of_sstable_data_replicas > 1) {
+        if (nova::NovaConfig::config->number_of_sstable_data_replicas > 1) { // 如果需要大于1份的数据 好像是要重新组织 绝绝大多数都是1
             nblocks_in_group_.clear();
             nblocks_in_group_.push_back(num_data_blocks_);
             num_stocs_to_select = nova::NovaConfig::config->number_of_sstable_data_replicas;
-        } else {
-            num_stocs_to_select = nblocks_in_group_.size();
-            if (nova::NovaConfig::config->use_parity_for_sstable_data_blocks) {
+        } else { // 不需要备份数据 
+            num_stocs_to_select = nblocks_in_group_.size(); 
+            if (nova::NovaConfig::config->use_parity_for_sstable_data_blocks) { // 如果需要 parity的话 就多一个 很多时候是true
                 num_stocs_to_select += 1;
             }
             num_stocs_to_select = std::max(num_stocs_to_select,
-                                           nova::NovaConfig::config->number_of_sstable_metadata_replicas);
+                                           nova::NovaConfig::config->number_of_sstable_metadata_replicas); // metadata和data取大的 有2
         }
 
         StorageSelector selector(rand_seed_);
         selector.SelectStorageServers(client,
-                                      nova::NovaConfig::config->scatter_policy,
+                                      nova::NovaConfig::config->scatter_policy, // power of 2 多 按 queue长度选取
                                       num_stocs_to_select,
                                       &stocs_to_store_fragments_);
         uint32_t dbid = 0;
         nova::ParseDBIndexFromDBName(dbname_, &dbid);
         std::vector<BlockHandle> data_fragments;
-        while (it->Valid()) {
+        while (it->Valid()) { // 通过index block遍历
             Slice key = it->key();
             Slice value = it->value();
 
             BlockHandle handle;
-            s = handle.DecodeFrom(&value);
+            s = handle.DecodeFrom(&value); // 找到对应的datablock的位置
             // Size + crc.
-            handle.set_size(handle.size() + kBlockTrailerSize);
+            handle.set_size(handle.size() + kBlockTrailerSize); // 加上最后一部分的大小
             NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
             if (n == 0) {
                 offset = handle.offset();
@@ -289,9 +296,9 @@ namespace leveldb {
             NOVA_ASSERT(offset + size == handle.offset() + handle.size());
             it->Next();
 
-            if (n == nblocks_in_group_[group_id]) {
+            if (n == nblocks_in_group_[group_id]) { // 取到了第一个stoc对应数量的data block
                 for (int replica_id = 0; replica_id <
-                                         nova::NovaConfig::config->number_of_sstable_data_replicas; replica_id++) {
+                                         nova::NovaConfig::config->number_of_sstable_data_replicas; replica_id++) { // replica次
                     uint32_t remote_stoc_id = 0;
                     if (nova::NovaConfig::config->number_of_sstable_data_replicas > 1) {
                         remote_stoc_id = stocs_to_store_fragments_[replica_id];
@@ -332,13 +339,13 @@ namespace leveldb {
             // figure out max size.
             // allocate memory.
             // do xor.
-            for (const auto &data_fragment : data_fragments) {
+            for (const auto &data_fragment : data_fragments) { // parity block size 设置为 最大的datafragment
                 if (data_fragment.size() > parity_block_size_) {
                     parity_block_size_ = data_fragment.size();
                 }
             }
             auto scid = mem_manager_->slabclassid(0, parity_block_size_);
-            parity_block_backing_mem_ = mem_manager_->ItemAlloc(0, scid);
+            parity_block_backing_mem_ = mem_manager_->ItemAlloc(0, scid); // 抑或计算
             for (int i = 0; i < parity_block_size_; i++) {
                 uint8_t byte = 0;
                 for (const auto &data_fragment : data_fragments) {
@@ -405,6 +412,7 @@ namespace leveldb {
         return replicas;
     }
 
+// 等待部署的任务完成 写各个data block 以及 parity等
     void StoCWritableFileClient::WaitForPersistingDataBlocks() {
         auto client = reinterpret_cast<StoCBlockClient *> (stoc_client_);
         for (int i = 0; i < nblocks_in_group_.size() * data_replica_status_.size(); i++) {

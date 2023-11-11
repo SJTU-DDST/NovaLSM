@@ -51,6 +51,7 @@ namespace leveldb {
         is_ready_mutex_.Unlock();
     }
 
+// 在这个partition中加入一个active memtable
     void MemTablePartition::AddMemTable(uint64_t generation_id, uint32_t memtableid) {
         NOVA_LOG(rdmaio::DEBUG) << fmt::format("Add memtable {}:{}", generation_id, memtableid);
         auto it = generation_num_memtables_.find(generation_id);
@@ -248,6 +249,7 @@ namespace leveldb {
         return false;
     }
 
+// 在midtable mapping中加入一个membtable 并且登记generation
     void AtomicMemTable::SetMemTable(uint64_t generation_id, leveldb::MemTable *mem) {
         mutex_.lock();
         l0_file_numbers_.clear();

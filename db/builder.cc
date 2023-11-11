@@ -78,14 +78,15 @@ namespace leveldb {
         return s;
     }
 
+// 将immutable memtable转化为
     Status
     BuildTable(const std::string &dbname, Env *env, const Options &options,
                TableCache *table_cache, Iterator *iter, FileMetaData *meta,
-               EnvBGThread *bg_thread, bool prune_memtables) {
+               EnvBGThread *bg_thread, bool prune_memtables) { // true false都有
         Status s;
         meta->file_size = 0;
         iter->SeekToFirst();
-        std::string filename = TableFileName(dbname, meta->number, FileInternalType::kFileData, 0);
+        std::string filename = TableFileName(dbname, meta->number, FileInternalType::kFileData, 0); // 也许要根据 层数做pm化
         if (iter->Valid()) {
             const Comparator *user_comp = reinterpret_cast<const InternalKeyComparator *>(options.comparator)->user_comparator();
             MemManager *mem_manager = bg_thread->mem_manager();
@@ -103,13 +104,14 @@ namespace leveldb {
             WritableFile *file = new MemWritableFile(stoc_writable_file);
             TableBuilder *builder = new TableBuilder(options, file);
 
+            // key都加进去 emmm????
             Slice user_key;
             bool insert = true;
-            meta->smallest.DecodeFrom(iter->key());
+            meta->smallest.DecodeFrom(iter->key()); // 提取出来最小的key
             for (; iter->Valid(); iter->Next()) {
                 insert = true;
                 Slice key = iter->key();
-                if (prune_memtables) {
+                if (prune_memtables) { //如果可以压缩多个memtable的话 就 这里是做了一个去重?? 怎么保证 后遍历到的是旧的
                     Slice ukey = ExtractUserKey(key);
                     if (!user_key.empty() && user_comp->Compare(ukey, user_key) == 0) {
                         insert = false;

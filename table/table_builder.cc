@@ -34,7 +34,7 @@ namespace leveldb {
                   closed(false),
                   filter_block(opt.filter_policy == nullptr
                                ? nullptr
-                               : new FilterBlockBuilder(opt.filter_policy)),
+                               : new FilterBlockBuilder(opt.filter_policy)), //一般不是null
                   pending_index_entry(false) {
             index_block_options.block_restart_interval = 1;
         }
@@ -97,12 +97,13 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 把key和value加入到这个文件中?
     bool TableBuilder::Add(const Slice &key, const Slice &value) {
         Rep *r = rep_;
         assert(!r->closed);
         if (!ok()) return false;
         if (r->num_entries > 0) {
-            if (r->options.comparator->Compare(key, Slice(r->last_key)) <=
+            if (r->options.comparator->Compare(key, Slice(r->last_key)) <= //因为是按顺序家的 所以必然递增 这个情况发生说明有问题
                 0) {
                 ParsedInternalKey ik;
                 ParseInternalKey(key, &ik);
@@ -112,7 +113,7 @@ namespace leveldb {
             }
         }
 
-        if (r->pending_index_entry) {
+        if (r->pending_index_entry) { // 基本都是false 有一个block写进去之后会变true
             assert(r->data_block.empty());
             r->options.comparator->FindShortestSeparator(&r->last_key, key);
             std::string handle_encoding;
@@ -122,7 +123,7 @@ namespace leveldb {
             r->pending_index_entry = false;
         }
 
-        if (r->filter_block != nullptr) {
+        if (r->filter_block != nullptr) { // 基本不是null
             r->filter_block->AddKey(key);
         }
 
@@ -131,12 +132,13 @@ namespace leveldb {
         r->data_block.Add(key, value);
 
         const size_t estimated_block_size = r->data_block.CurrentSizeEstimate();
-        if (estimated_block_size >= r->options.block_size) {
-            Flush();
+        if (estimated_block_size >= r->options.block_size) { // 如果当前的块大小超过config中的值了 或者说完成了一个datablock的编写 4096字节?
+            Flush(); // 进行flush操作?作用:
         }
         return true;
     }
 
+// 完成了1个block的编写
     void TableBuilder::Flush() {
         Rep *r = rep_;
         assert(!r->closed);
@@ -144,15 +146,16 @@ namespace leveldb {
         if (r->data_block.empty()) return;
         assert(!r->pending_index_entry);
         WriteBlock(&r->data_block, &r->pending_handle);
-        if (ok()) {
+        if (ok()) {// 每写好一个block就改一下标识 并且
             r->pending_index_entry = true;
-            r->status = r->file->Flush();
+            r->status = r->file->Flush(); // 这里memwriteble 所以好像是什么都不做
         }
         if (r->filter_block != nullptr) {
-            r->filter_block->StartBlock(r->offset);
+            r->filter_block->StartBlock(r->offset); // 再开始一个 filter block
         }
     }
 
+// 把当前这个block写入，并且开一个新block
     void TableBuilder::WriteBlock(BlockBuilder *block, BlockHandle *handle) {
         // File format contains a sequence of blocks where each block has:
         //    block_data: uint8[n]
@@ -166,7 +169,7 @@ namespace leveldb {
         CompressionType type = r->options.compression;
         // TODO(postrelease): Support more compression options: zlib?
         switch (type) {
-            case kNoCompression:
+            case kNoCompression: //一般都是这个
                 block_contents = raw;
                 break;
 
@@ -189,14 +192,16 @@ namespace leveldb {
         block->Reset();
     }
 
+// 把已经组织好的block(可以直接写入的)写入
     void TableBuilder::WriteRawBlock(const Slice &block_contents,
                                      CompressionType type,
                                      BlockHandle *handle) {
         Rep *r = rep_;
+        // 这里是根据rep里面的记录来制作当前写入的block的
         handle->set_offset(r->offset);
         handle->set_size(block_contents.size());
-        r->status = r->file->Append(block_contents);
-        if (r->status.ok()) {
+        r->status = r->file->Append(block_contents); // 写入文件
+        if (r->status.ok()) { // append之后为每个block加压缩类型和校验码
             char trailer[kBlockTrailerSize];
             trailer[0] = type;
             uint32_t crc = crc32c::Value(block_contents.data(), block_contents.size());
@@ -204,7 +209,7 @@ namespace leveldb {
             EncodeFixed32(trailer + 1, crc32c::Mask(crc));
             // Make sure the last byte is not 0.
             trailer[kBlockTrailerSize - 1] = '!';
-            r->status = r->file->Append(Slice(trailer, kBlockTrailerSize));
+            r->status = r->file->Append(Slice(trailer, kBlockTrailerSize));// 将校验码也写入
             if (r->status.ok()) {
                 r->offset += block_contents.size() + kBlockTrailerSize;
             }
@@ -213,9 +218,10 @@ namespace leveldb {
 
     Status TableBuilder::status() const { return rep_->status; }
 
+// 所有的kv都处理完了 写剩余的数据以及除了数据块的其他东西
     Status TableBuilder::Finish() {
         Rep *r = rep_;
-        Flush();
+        Flush(); // 首先处理剩下的数据块
         assert(!r->closed);
         r->closed = true;
 
@@ -249,7 +255,7 @@ namespace leveldb {
 
         // Write index block
         if (ok()) {
-            if (r->pending_index_entry) {
+            if (r->pending_index_entry) { // 如果刚才结束了一个block的编写
                 r->options.comparator->FindShortSuccessor(&r->last_key);
                 std::string handle_encoding;
                 r->pending_handle.EncodeTo(&handle_encoding);

@@ -161,6 +161,7 @@ namespace leveldb {
         return file_->Read(offset, n, result, scratch);
     }
 
+// 提取了需要的特性 只需要 append sync
     MemWritableFile::MemWritableFile(MemFile *file)
             : file_(file) {
 //        file_->Ref();

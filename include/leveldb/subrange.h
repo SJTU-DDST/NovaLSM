@@ -72,6 +72,7 @@ namespace leveldb {
         uint64_t upper_int() const;
     };
 
+//找到对应的key对应的rangeid(subrange或者tinyrange取决于ranges是subranges还是tinyranges)
     inline bool
     BinarySearch(const std::vector<Range> &ranges, const leveldb::Slice &key,
                  int *range_id, const Comparator *user_comparator) {

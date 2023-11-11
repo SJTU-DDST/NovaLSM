@@ -17,6 +17,7 @@ namespace leveldb {
     Status WriteStringToFileSync(Env *env, const Slice &data,
                                  const std::string &fname);
 
+// 组装文件名 dbname /home/yuhang/NovaLSM/nova-db-10000000/0
     static std::string MakeFileName(const std::string &dbname, uint64_t number,
                                     uint32_t replica_id,
                                     const char *suffix) {
@@ -27,11 +28,13 @@ namespace leveldb {
         return dbname + buf;
     }
 
+// 组装log 的名字
     std::string LogFileName(const std::string &dbname, uint64_t number) {
         assert(number > 0);
         return MakeFileName(dbname, number, 0, "log");
     }
 
+// 建立关于sstable的名字
     std::string TableFileName(const std::string &dbname, uint64_t number,
                               FileInternalType internal_type, uint32_t replica_id) {
         assert(number > 0);

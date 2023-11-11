@@ -104,13 +104,13 @@ namespace leveldb {
         IncrementReqId();
         return reqid;
     }
-
+// 向stoc写sstable 等
     uint32_t StoCBlockClient::InitiateAppendBlock(
             uint32_t stoc_id, uint32_t thread_id, uint32_t *stoc_file_id,
             char *buf, const std::string &dbname, uint64_t file_number,
             uint32_t replica_id,
             uint32_t size, FileInternalType internal_type) {
-        if (stoc_id == nova::NovaConfig::config->my_server_id) {
+        if (stoc_id == nova::NovaConfig::config->my_server_id) { // 如果向自己写 有问题..？
             std::string filename;
             if (file_number == 0) {
                 filename = leveldb::DescriptorFileName(dbname, 0, replica_id);
@@ -126,11 +126,11 @@ namespace leveldb {
             NOVA_ASSERT(stoc_file_off != UINT64_MAX)
                 << fmt::format("{} {}", filename, size);
             char *stoc_file_buf = (char *) stoc_file_off;
-            memcpy(stoc_file_buf, buf, size);
+            memcpy(stoc_file_buf, buf, size);// 写到刚才标识的buf中
             NOVA_ASSERT(stoc_file->MarkOffsetAsWritten(stoc_file->file_id(),
                                                        stoc_file_off))
                 << stoc_id;
-            uint64_t persisted_bytes = stoc_file->Persist(stoc_file->file_id());
+            uint64_t persisted_bytes = stoc_file->Persist(stoc_file->file_id()); // 有问题????
             NOVA_ASSERT(persisted_bytes == size)
                 << fmt::format("persisted bytes:{} written bytes:{}",
                                persisted_bytes, size);
@@ -178,6 +178,7 @@ namespace leveldb {
         return reqid;
     }
 
+// 为了用power of 2选取 所以需要读取queue depth pending信息等
     uint32_t StoCBlockClient::InitiateReadStoCStats(uint32_t stoc_id) {
         if (stoc_id == nova::NovaConfig::config->my_server_id) {
             uint32_t reqid = req_id_;
@@ -462,7 +463,7 @@ namespace leveldb {
         return reqid;
     }
 
-// 写日志会落到这里
+// wal日志日志会落到这里 不加入req response
     uint32_t StoCBlockClient::InitiateReplicateLogRecords(
             const std::string &log_file_name, uint64_t thread_id,
             uint32_t db_id, uint32_t memtable_id,
@@ -647,6 +648,7 @@ namespace leveldb {
         return req_id;
     }
 
+// 读stoc统计信息
     uint32_t StoCRDMAClient::InitiateReadStoCStats(uint32_t server_id) {
         NOVA_ASSERT(server_id != nova::NovaConfig::config->my_server_id);
         uint32_t req_id = current_req_id_;
@@ -689,6 +691,7 @@ namespace leveldb {
         return req_id;
     }
 
+// 向stoc写sstable metadata 或者 parity
     uint32_t StoCRDMAClient::InitiateAppendBlock(uint32_t stoc_id,
                                                  uint32_t thread_id,
                                                  uint32_t *stoc_file_id,
@@ -728,6 +731,7 @@ namespace leveldb {
         return req_id;
     }
 
+// rdmaclient的发送log 日志 记录在request context里面
     uint32_t StoCRDMAClient::InitiateReplicateLogRecords(
             const std::string &log_file_name, uint64_t thread_id,
             uint32_t db_id, uint32_t memtable_id,
@@ -849,7 +853,7 @@ namespace leveldb {
 //是rdma write类型的
             case IBV_WC_RDMA_WRITE: {
 //如果是replicate log record
-                if (buf[0] == leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS) {
+                if (buf[0] == leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS) { // ltc将日志记录写到远程的buf中
                     req_id = leveldb::DecodeFixed32(buf + 1);
                     auto context_it = request_context_.find(req_id);
                     NOVA_ASSERT(context_it != request_context_.end())
@@ -900,7 +904,7 @@ namespace leveldb {
                     // I sent this request a while ago and now it is complete.
                     auto &context = context_it->second;
 //如果对面发送的send是stoc write sstable response类型的
-                    if (buf[0] == STOC_WRITE_SSTABLE_RESPONSE) {
+                    if (buf[0] == STOC_WRITE_SSTABLE_RESPONSE) { // 对面接收到了发送过来的元数据的信息
                         NOVA_ASSERT(context.req_type ==
                                     StoCRequestType::STOC_WRITE_SSTABLE);
                         // StoC file handle.
@@ -978,16 +982,15 @@ namespace leveldb {
                                 buf + 17);
                         context.done = true;
                         processed = true;
-//如果对面发送的是stoc alloc log buffer success类型的
                     } else if (buf[0] ==
-                               StoCRequestType::STOC_ALLOCATE_LOG_BUFFER_SUCC) {
+                               StoCRequestType::STOC_ALLOCATE_LOG_BUFFER_SUCC) { // 收到了stoc发来的回复 说log 空间分配成功
                         uint64_t base = leveldb::DecodeFixed64(buf + 1);
                         uint64_t size = leveldb::DecodeFixed64(buf + 9);
 
                         RDMARequestTask task = {};
                         task.type = RDMA_CLIENT_ALLOCATE_LOG_BUFFER_SUCC;
                         task.server_id = remote_server_id;
-                        task.log_file_name = context.log_file_name;
+                        task.log_file_name = context.log_file_name; // 为什么我没有看到 context加入?? 加入了 第一次log 分配之所以不加 就是因为 第一次的时候block加入的是append
                         task.offset = base;
                         task.size = size;
                         task.rdma_log_record_backing_mem = context.log_record_mem;

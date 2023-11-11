@@ -38,12 +38,14 @@
 
 namespace leveldb {
 
+// 刚开始就设置了restart 现在取消了之前那个缩写的设计
     BlockBuilder::BlockBuilder(const Options *options)
             : options_(options), restarts_(), counter_(0), finished_(false) {
         assert(options->block_restart_interval >= 1);
         restarts_.push_back(0);  // First restart point is at offset 0
     }
 
+// 把block设置为初始状态
     void BlockBuilder::Reset() {
         buffer_.clear();
         restarts_.clear();
@@ -53,12 +55,14 @@ namespace leveldb {
         last_key_.clear();
     }
 
+// 当前的block的大小
     size_t BlockBuilder::CurrentSizeEstimate() const {
         return (buffer_.size() +                       // Raw data buffer
                 restarts_.size() * sizeof(uint32_t) +  // Restart array
                 sizeof(uint32_t));                     // Restart array length
     }
 
+// 结束这个块 把restart放进去 最后放一个restart长度
     Slice BlockBuilder::Finish() {
         // Append restart array
         for (size_t i = 0; i < restarts_.size(); i++) {
@@ -69,6 +73,7 @@ namespace leveldb {
         return Slice(buffer_);
     }
 
+// 向data block中加入一个kv 这里的key value 应该是internelkey和 internel value
     void BlockBuilder::Add(const Slice &key, const Slice &value) {
         Slice last_key_piece(last_key_);
         assert(!finished_);
@@ -76,14 +81,14 @@ namespace leveldb {
         assert(buffer_.empty()  // No values yet?
                || options_->comparator->Compare(key, last_key_piece) > 0);
         size_t shared = 0;
-        if (counter_ < options_->block_restart_interval) {
+        if (counter_ < options_->block_restart_interval) { // 如果小于erstart的interval的话就用对应的方式存 这里都设置为1了
             // See how much sharing to do with previous string
             const size_t min_length = std::min(last_key_piece.size(), key.size());
             while ((shared < min_length) &&
                    (last_key_piece[shared] == key[shared])) {
                 shared++;
             }
-        } else {
+        } else { // 记录restart设置的位置
             // Restart compression
             restarts_.push_back(buffer_.size());
             counter_ = 0;

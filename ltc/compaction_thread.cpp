@@ -48,7 +48,7 @@ namespace leveldb {
 
         rand_seed_ = thread_id_ + 100000;
 
-//首先查看是否需要major compaction??
+// 这个类 有 reorg coord 这两种应该是有db的其余应该是没有db的
         if (db_) {
             leveldb::DB *db = reinterpret_cast<leveldb::DB *>(db_);
             db->CoordinateMajorCompaction();
@@ -72,8 +72,9 @@ namespace leveldb {
 
             num_tasks_ += tasks.size();
 
+// 其余的包括 后台的 compaction 和 flush 
             bool reorg = false;
-            for (auto &task : tasks) {
+            for (auto &task : tasks) { // reorg 的 task
                 if (task.memtable == nullptr &&
                     task.compaction_task == nullptr &&
                     !task.delete_obsolete_files) {
@@ -89,7 +90,7 @@ namespace leveldb {
             }
 
             std::unordered_map<void *, std::vector<EnvBGTask>> db_tasks;
-            for (auto &task : tasks) {
+            for (auto &task : tasks) { // 这里应该是flush和compaction
                 db_tasks[task.db].push_back(task);
                 if (task.memtable) {
                     memtable_size[task.memtable_size_mb] += 1;
@@ -98,7 +99,7 @@ namespace leveldb {
 
             for (auto &it : db_tasks) {
                 auto db = reinterpret_cast<DB *>(it.first);
-                db->PerformCompaction(this, it.second);
+                db->PerformCompaction(this, it.second); // flush imm memtable
             }
         }
     }

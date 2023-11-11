@@ -1223,12 +1223,14 @@ namespace leveldb {
         }
     }
 
+// recover的时候用uniform分布预先处理subtrange
     void SubRangeManager::ConstructSubrangesWithUniform(const Comparator *user_comparator) {
         auto sr = new SubRanges;
         uint32_t cfgid = nova::NovaConfig::config->current_cfg_id;
         auto range = nova::NovaConfig::config->cfgs[cfgid]->fragments[dbindex_];
         int nkeys = range->range.key_end - range->range.key_start;
 
+        // 如果整个数据库的key都没有 要分的分区多的话 (基本不可能出现这种情况)
         if (nkeys < options_.num_memtable_partitions) {
             int num_duplicates = options_.num_memtable_partitions / nkeys;
             int cdup = 0;
@@ -1259,6 +1261,7 @@ namespace leveldb {
                     break;
                 }
             }
+        // 正常情况(
         } else {
             int nkeys_per_range = nkeys / options_.num_memtable_partitions;
             int lower = range->range.key_start;
@@ -1278,6 +1281,16 @@ namespace leveldb {
                 upper = lower + nkeys_per_range;
             }
         }
+        /*
+                    db
+                    |
+                    |
+                ----------------
+                |   ...  | ....
+            subrange
+                |   ...        
+            tinyrange
+        */
         sr->AssertSubrangeBoundary(user_comparator);
         NOVA_ASSERT(sr->first().first().lower_int() == range->range.key_start) << sr->DebugString();
         NOVA_ASSERT(sr->last().last().upper_int() == range->range.key_end) << sr->DebugString();
@@ -1287,6 +1300,7 @@ namespace leveldb {
             << fmt::format("keys:{},{}", lower_bound_, upper_bound_);
     }
 
+// 计算每一个subtrange对应的范围的compaction应该给谁做
     void
     SubRangeManager::ComputeCompactionThreadsAssignment(SubRanges *subranges) {
         if (options_.subrange_no_flush_num_keys == 0 || // config基本100
@@ -1299,10 +1313,11 @@ namespace leveldb {
             return;
         }
 
+// 正常情况
         NOVA_ASSERT(
-                options_.num_compaction_threads >= subranges->subranges.size());
+                options_.num_compaction_threads >= subranges->subranges.size()); // 至少要做到一个subrange有一个cmopaction thread
         int thread_id = 0;
-        // MemTables of a subrange is assigned to only one thread.
+        // MemTables of a subrange is assigned to only one thread. key少的range线程分配少一点
         for (SubRange &subrange : subranges->subranges) {
             if (subrange.keys() <= options_.subrange_no_flush_num_keys) { // no flush num keys代表最少的开启写的key的数量??
                 subrange.merge_memtables_without_flushing = true;
@@ -1312,7 +1327,7 @@ namespace leveldb {
             }
         }
         for (SubRange &subrange : subranges->subranges) { 
-            if (subrange.keys() > options_.subrange_no_flush_num_keys) { // 不懂
+            if (subrange.keys() > options_.subrange_no_flush_num_keys) { // key多的range线程分配多一点
                 subrange.merge_memtables_without_flushing = false; 
                 subrange.start_tid = thread_id;
                 subrange.end_tid = options_.num_compaction_threads - 1;

@@ -25,23 +25,23 @@ namespace leveldb {
     }
 
     Block::Block(const BlockContents &contents, uint64_t file_number,
-                 uint64_t block_id, bool adhoc)
-            : file_number_(file_number),
-              block_id_(block_id),
+                 uint64_t block_id, bool adhoc) 
+            : file_number_(file_number), //
+              block_id_(block_id), // 这里应该是这个block对应的偏移
               data_(contents.data.data()),
               size_(contents.data.size()),
               owned_(contents.heap_allocated), adhoc_(adhoc) {
-        if (size_ < sizeof(uint32_t)) {
+        if (size_ < sizeof(uint32_t)) { // 检查block大小
             size_ = 0;  // Error marker
         } else {
             size_t max_restarts_allowed =
-                    (size_ - sizeof(uint32_t)) / sizeof(uint32_t);
+                    (size_ - sizeof(uint32_t)) / sizeof(uint32_t); // 除去最后一个fixed32的大小最多能用的restart
             if (NumRestarts() > max_restarts_allowed) {
                 // The size is too small for NumRestarts()
                 size_ = 0;
             } else {
                 restart_offset_ =
-                        size_ - (1 + NumRestarts()) * sizeof(uint32_t);
+                        size_ - (1 + NumRestarts()) * sizeof(uint32_t); // restart的offset
             }
         }
     }

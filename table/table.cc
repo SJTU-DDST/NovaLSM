@@ -423,7 +423,7 @@ namespace leveldb {
     }
 
     Status
-    Table::ReadBlock(const char *buf, const Slice &contents,
+    Table::ReadBlock(const char *buf, const Slice &contents, // buf一般是block开始 contents是block内容 handle是对应block的handle
                      const ReadOptions &options,
                      const StoCBlockHandle &handle, BlockContents *result) {
         size_t n = static_cast<size_t>(handle.size);
@@ -431,7 +431,7 @@ namespace leveldb {
 
         // Check the crc of the type and the block contents
         const char *data = contents.data();  // Pointer to where Read put the data
-        if (options.verify_checksums) {
+        if (options.verify_checksums) { // 一般是false
             const uint32_t crc = crc32c::Unmask(DecodeFixed32(data + n + 1));
             const uint32_t actual = crc32c::Value(data, n + 1);
             if (actual != crc) {
@@ -439,9 +439,9 @@ namespace leveldb {
                 return s;
             }
         }
-        char type = data[n];
+        char type = data[n]; // 这里没有越界么??????? 所有的块后面有5B 1B标识压缩类型 4B标识
         switch (type) {
-            case kNoCompression:
+            case kNoCompression: // 基本都是这个
                 if (data != buf) {
                     // File implementation gave us pointer to some other data.
                     // Use it directly under the assumption that it will be live

@@ -199,6 +199,7 @@ namespace leveldb {
         insertion_ratio = ninserts / num_inserts_since_last_major;
     }
 
+// 选一个这个subrange对应的线程出来
     int SubRange::GetCompactionThreadId(std::atomic_int_fast32_t *rr_id,
                                         bool *_merge_memtables_without_flushing) const {
         *_merge_memtables_without_flushing = merge_memtables_without_flushing;

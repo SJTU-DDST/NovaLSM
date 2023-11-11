@@ -22,16 +22,16 @@ namespace leveldb {
               latest_generation_id(INIT_GEN_ID) {
     }
 
-//判断当前这个drange/partition是否可以flush，不懂
+//判断当前这个drange/partition是否可以flush
     bool FlushOrder::IsSafeToFlush(uint32_t drange_idx, uint64_t generation_id) {
-//如果不用管flush的顺序问题
-        if (!nova::NovaConfig::config->use_ordered_flush) {
+        //如果不用管flush的顺序问题
+        if (!nova::NovaConfig::config->use_ordered_flush) { // true和false都有
             return true;
         }
 //如果没有影响的drange的话??
 //         Safe only if older memtables of all overlapping dranges are flushed.
         auto dranges_col = impacted_dranges_.load();
-        if (!dranges_col) {
+        if (!dranges_col) { // 大概只有reorganize的时候会有
             return true;
         }
         bool safe_to_flush = true;

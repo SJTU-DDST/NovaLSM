@@ -81,7 +81,7 @@ namespace leveldb {
         }
     }
 
-    //
+// .
     RangeIndex::RangeIndex(ScanStats *scan_stats, RangeIndex *current,
                            uint32_t version_id,
                            uint32_t lsm_vid) : ranges_(
@@ -303,6 +303,7 @@ namespace leveldb {
         }
     }
 
+// 添加rangeindex的新版本
     void RangeIndexManager::AppendNewVersion(RangeIndex *new_range_idx) {
         new_range_idx->refs_ = 1;
         new_range_idx->next_ = current_->next_;
@@ -323,7 +324,7 @@ namespace leveldb {
         }
     }
 
-// ???
+// 为某个subrange加入一个新的memtable
     void
     RangeIndexManager::AppendNewVersion(ScanStats *scan_stats,
                                         const RangeIndexVersionEdit &edit) {
@@ -343,6 +344,7 @@ namespace leveldb {
                 NOVA_ASSERT(start_id != -1);
                 const std::string &upper = edit.sr->tiny_ranges[
                         edit.sr->tiny_ranges.size() - 1].upper;
+                // 把新的memtable加入到range中
                 while (true) {
                     new_range_idx->range_tables_[start_id].memtable_ids.insert(
                             edit.new_memtable_id);
@@ -364,7 +366,7 @@ namespace leveldb {
                 }
             }
         }
-        // 如果新增了memtable 但是 没有移除memtable
+        // 如果新增了memtable 但是 没有移除memtable 发生于加memtable的时候 还没有占据本partition分配到的所有slots
         if (edit.add_new_memtable && edit.removed_memtables.empty()) {
 
         } else {

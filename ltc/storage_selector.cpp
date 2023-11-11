@@ -13,7 +13,7 @@ namespace leveldb {
             uint32_t req_id = 0;
             StoCResponse *response = nullptr;
         };
-
+// 按queue path 进行排队!
         bool stoc_stats_comparator(const StoCStatsStatus &s1,
                                    const StoCStatsStatus &s2) {
             return s1.response->stoc_queue_depth <
@@ -192,6 +192,7 @@ namespace leveldb {
         NOVA_ASSERT(selected_storages->size() == nstocs);
     }
 
+// 选存sstable的stoc 待
     void
     StorageSelector::SelectStorageServers(StoCBlockClient *client,
                                           nova::ScatterPolicy scatter_policy,
@@ -202,12 +203,12 @@ namespace leveldb {
         selected_storage->resize(num_storage_to_select);
         nova::Servers *available_stocs = available_stoc_servers;
 
-        if (scatter_policy == nova::ScatterPolicy::LOCAL) {
+        if (scatter_policy == nova::ScatterPolicy::LOCAL) { // local只需存在本地? 如果本地不是stoc呢...??
             (*selected_storage)[0] = nova::NovaConfig::config->my_server_id;
             return;
         }
 
-        if (num_storage_to_select == available_stocs->servers.size()) {
+        if (num_storage_to_select == available_stocs->servers.size()) { // 都选上就好
             for (int i = 0; i < num_storage_to_select; i++) {
                 (*selected_storage)[i] = available_stocs->servers[i];
             }
@@ -215,7 +216,7 @@ namespace leveldb {
         }
 
         std::vector<uint32_t> candidate_storage_ids;
-        if (scatter_policy == nova::ScatterPolicy::POWER_OF_TWO) {
+        if (scatter_policy == nova::ScatterPolicy::POWER_OF_TWO) { // 如果是POWER of 2
             uint32_t start_storage_id = rand_r(rand_seed_) %
                                         available_stocs->servers.size();
             uint32_t candidates = 2 * num_storage_to_select;
@@ -223,7 +224,7 @@ namespace leveldb {
                 candidates = available_stocs->servers.size();
             }
             for (int i = 0; i < candidates; i++) {
-                candidate_storage_ids.push_back(start_storage_id);
+                candidate_storage_ids.push_back(start_storage_id); // 这个是 power of 2???? 先选出candidates， 应该进一步选这个里面负载少的
                 start_storage_id = (start_storage_id + 1) %
                                    available_stocs->servers.size();
             }
@@ -231,13 +232,13 @@ namespace leveldb {
             // Random.
             // Select the start storage id then round robin.
             uint32_t start_storage_id =
-                    rand_r(rand_seed_) % available_stocs->servers.size();
+                    rand_r(rand_seed_) % available_stocs->servers.size(); // 直接选好了
             for (int i = 0; i < num_storage_to_select; i++) {
                 (*selected_storage)[i] = available_stocs->servers[start_storage_id];
                 start_storage_id = (start_storage_id + 1) % available_stocs->servers.size();
             }
         }
-        if (!candidate_storage_ids.empty()) {
+        if (!candidate_storage_ids.empty()) { // 从这个里面再选
             std::vector<StoCStatsStatus> storage_stats;
             for (int i = 0; i < candidate_storage_ids.size(); i++) {
                 uint32_t server_id = available_stocs->servers[candidate_storage_ids[i]];
@@ -255,7 +256,7 @@ namespace leveldb {
                 NOVA_ASSERT(client->IsDone(storage_stats[i].req_id, storage_stats[i].response, nullptr));
             }
             // sort the stoc stats.
-            std::sort(storage_stats.begin(), storage_stats.end(), stoc_stats_comparator);
+            std::sort(storage_stats.begin(), storage_stats.end(), stoc_stats_comparator); //
             for (int i = 0; i < num_storage_to_select; i++) {
                 (*selected_storage)[i] = storage_stats[i].remote_stoc_id;
             }

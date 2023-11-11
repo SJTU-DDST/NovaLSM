@@ -106,6 +106,7 @@ namespace nova {
             << fmt::format("Allocate log buf for file:{}", log_file);
     }
 
+// ltc为log文件登记stoc分配的空间所在的地址
     void StoCInMemoryLogFileManager::AddRemoteBuf(const std::string &log_file, uint32_t remote_server_id,
                                                   uint64_t remote_buf_offset) {
         uint32_t db_index;

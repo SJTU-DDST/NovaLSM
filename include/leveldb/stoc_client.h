@@ -151,7 +151,7 @@ namespace leveldb {
         RDMA_CLIENT_RECONSTRUCT_MISSING_REPLICA = 'p',
     };
 
-// record的结构??
+// wal的结构
     struct LevelDBLogRecord {
         Slice key;
         Slice value;

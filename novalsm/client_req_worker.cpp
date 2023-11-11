@@ -606,14 +606,14 @@ namespace nova {
         worker->ResetReplicateState();
         worker->replicate_log_record_states[0].cfgid = server_cfg_id;
         leveldb::WriteOptions option;
-        option.stoc_client = worker->stoc_client_;
+        option.stoc_client = worker->stoc_client_; // writeoption的 stoc client是block client
         option.local_write = false;
         option.thread_id = worker->thread_id_;
         option.rand_seed = &worker->rand_seed;
         option.hash = key;
         option.total_writes = total_writes.fetch_add(1, std::memory_order_relaxed) + 1;
         option.replicate_log_record_states = worker->replicate_log_record_states;
-        option.rdma_backing_mem = worker->rdma_backing_mem;
+        option.rdma_backing_mem = worker->rdma_backing_mem; // 从mem manager中分配的
         option.rdma_backing_mem_size = worker->rdma_backing_mem_size;
         option.is_loading_db = false;
         LTCFragment *frag = NovaConfig::home_fragment(hv, server_cfg_id);
@@ -646,7 +646,7 @@ namespace nova {
         return true;
     }
 
-//处理刚刚这个fd传过来的request
+//处理刚刚这个fd传过来的request ! 核心部分
     bool process_socket_request_handler(int fd, Connection *conn) {
         auto worker = (NICClientReqWorker *) conn->worker;
         char *request_buf = worker->request_buf;
@@ -657,7 +657,7 @@ namespace nova {
             msg_type == RequestType::PUT) {
             uint64_t client_cfg_id = 0;
             request_buf += str_to_int(request_buf, &client_cfg_id);
-//如果client的server id不等于本地server的cfg id的话，装上本地的server信息就直接返回
+//如果client的server id不等于本地server的cfg id的话，装上本地的server信息就直接返回 基本不会发生
             if (client_cfg_id != server_cfg_id) {
                 char *response_buf = worker->buf;
                 int len = int_to_str(response_buf, server_cfg_id);
@@ -669,11 +669,11 @@ namespace nova {
             }
         }
 //如果对面发过来的client server id就是本地server id的话，就进行各种处理
-        if (msg_type == RequestType::GET) {
+        if (msg_type == RequestType::GET) { //!!!! 最重要的三个 从put开始分析
             return process_socket_get(fd, conn, request_buf, server_cfg_id);
-        } else if (msg_type == RequestType::REQ_SCAN) {
+        } else if (msg_type == RequestType::REQ_SCAN) { //!!!!
             return process_socket_scan(fd, conn, request_buf, server_cfg_id);
-        } else if (msg_type == RequestType::PUT) {
+        } else if (msg_type == RequestType::PUT) { //!!!!
             return process_socket_put(fd, conn, request_buf, server_cfg_id);
         } else if (msg_type == RequestType::REINITIALIZE_QP) {
             return process_reintialize_qps(fd, conn);

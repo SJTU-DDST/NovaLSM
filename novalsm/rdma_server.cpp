@@ -203,7 +203,7 @@ namespace nova {
                 delete task.compaction_state->compaction;
                 delete task.compaction_state;
             } else if (task.request_type ==
-                       leveldb::StoCRequestType::STOC_IS_READY_FOR_REQUESTS) {
+                       leveldb::StoCRequestType::STOC_IS_READY_FOR_REQUESTS) { // 来自stoc的请求 接收到直接传到了这里 没有经过storage worker 直接发送回复
                 char *sendbuf = rdma_broker_->GetSendBuf(task.remote_server_id);
                 uint32_t msg_size = 1;
                 sendbuf[0] =
@@ -612,7 +612,7 @@ namespace nova {
                     AddCompactionStorageTask(task);
                     processed = true;
                 } else if (buf[0] ==
-                           leveldb::StoCRequestType::STOC_IS_READY_FOR_REQUESTS) {
+                           leveldb::StoCRequestType::STOC_IS_READY_FOR_REQUESTS) { // 接收到来自stoc的信息 stoc询问ltc是否准备好了数据库
                     processed = true;
                     ServerCompleteTask ct = {};
                     ct.remote_server_id = remote_server_id;

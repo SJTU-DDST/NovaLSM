@@ -68,7 +68,7 @@ namespace nova {
             const auto &task = *it;
             serverids.clear();
             if (task.type == leveldb::RDMA_CLIENT_REQ_CLOSE_LOG ||
-                task.type == leveldb::RDMA_CLIENT_REQ_LOG_RECORD) {
+                task.type == leveldb::RDMA_CLIENT_REQ_LOG_RECORD) { // 要发送log的请求
                 NOVA_ASSERT(task.server_id == -1);
                 // A log record request.
                 nova::LTCFragment *frag = nova::NovaConfig::config->cfgs[0]->fragments[task.dbid];
@@ -92,8 +92,8 @@ namespace nova {
             ctx.response = task.response;
             bool failed = false;
             switch (task.type) {
-                case leveldb::RDMA_CLIENT_ALLOCATE_LOG_BUFFER_SUCC:
-                    rdma_log_writer_->AckAllocLogBuf(task.log_file_name,
+                case leveldb::RDMA_CLIENT_ALLOCATE_LOG_BUFFER_SUCC: // 第一次log空间分配完成后 继续写wal的工作
+                    rdma_log_writer_->AckAllocLogBuf(task.log_file_name, //
                                                      task.server_id,
                                                      task.offset,
                                                      task.size,
@@ -118,7 +118,7 @@ namespace nova {
                     ctx.req_id = task.thread_id;
                 }
                     break;
-                case leveldb::RDMA_CLIENT_WRITE_SSTABLE_RESPONSE:
+                case leveldb::RDMA_CLIENT_WRITE_SSTABLE_RESPONSE: // 发起1个写请求
                     rdma_broker_->PostWrite(
                             task.write_buf,
                             task.size, task.server_id,
@@ -164,7 +164,7 @@ namespace nova {
                     ctx.req_id = stoc_client_->InitiateDeleteTables(
                             task.server_id, task.stoc_file_ids);
                     break;
-                case leveldb::RDMA_CLIENT_READ_STOC_STATS:
+                case leveldb::RDMA_CLIENT_READ_STOC_STATS: // 读stoc端的统计信息
                     ctx.req_id = stoc_client_->InitiateReadStoCStats(
                             task.server_id);
                     break;
@@ -176,7 +176,7 @@ namespace nova {
                     ctx.req_id = stoc_client_->InitiateIsReadyForProcessingRequests(
                             task.server_id);
                     break;
-                case leveldb::RDMA_CLIENT_REQ_LOG_RECORD:
+                case leveldb::RDMA_CLIENT_REQ_LOG_RECORD: // ltc 给 stoc 发 wal日志
                     ctx.req_id = stoc_client_->InitiateReplicateLogRecords(
                             task.log_file_name,
                             task.thread_id,

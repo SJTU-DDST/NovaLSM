@@ -20,6 +20,7 @@ namespace leveldb {
     FilterBlockBuilder::FilterBlockBuilder(const FilterPolicy *policy)
             : policy_(policy) {}
 
+// 为当前数据的block_offset开始建立filter block
     void FilterBlockBuilder::StartBlock(uint64_t block_offset) {
         uint64_t filter_index = (block_offset / kFilterBase);
         assert(filter_index >= filter_offsets_.size());
@@ -28,6 +29,7 @@ namespace leveldb {
         }
     }
 
+// 向filter block中记录一个key
     void FilterBlockBuilder::AddKey(const Slice &key) {
         Slice k = key;
         start_.push_back(keys_.size());
@@ -50,6 +52,7 @@ namespace leveldb {
         return Slice(result_);
     }
 
+// 新生成一个filter block
     void FilterBlockBuilder::GenerateFilter() {
         const size_t num_keys = start_.size();
         if (num_keys == 0) {

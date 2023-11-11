@@ -11,7 +11,7 @@
 namespace leveldb {
 
 
-//每个worker一个的logc，用于向stoc中写入
+// 每个worker一个的logc，用于向stoc中写入wal
     // Create a writer that will append data to "*dest".
 // "*dest" must be initially empty.
 // "*dest" must remain live while this Writer is in use.
@@ -22,14 +22,17 @@ namespace leveldb {
               log_manager_(log_manager) {
     }
 
+// 建立log_file_name到meta的映射 并且把log record填进去 填好要发送的buf中的信息
     void LogCLogWriter::Init(const std::string &log_file_name,
                              uint64_t thread_id,
                              const std::vector<LevelDBLogRecord> &log_records,
                              char *backing_buf) {
+        // 先找这个logfile
         auto it = logfile_last_buf_.find(log_file_name);
+        // 没有找到的话就建立一些结构
         if (it == logfile_last_buf_.end()) {
             LogFileMetadata meta = {};
-            meta.stoc_bufs = new LogFileBuf[nova::NovaConfig::config->servers.size()];
+            meta.stoc_bufs = new LogFileBuf[nova::NovaConfig::config->servers.size()]; // 建立这个logFileMetadata元数据的作用是什么???
             for (int i = 0;
                  i <
                  nova::NovaConfig::config->servers.size(); i++) {
@@ -45,6 +48,7 @@ namespace leveldb {
         }
     }
 
+// 接收到对应的stoc发来的 已经分配log buffer的信息
     void LogCLogWriter::AckAllocLogBuf(const std::string &log_file_name,
                                        int stoc_server_id, uint64_t offset,
                                        uint64_t size,
@@ -67,12 +71,12 @@ namespace leveldb {
                 stoc_server_id,
                 meta->stoc_bufs[stoc_server_id].base +
                 meta->stoc_bufs[stoc_server_id].offset, /*is_remote_offset=*/
-                false, 0);
+                false, 0); //无imm 所以直接写入 stoc端没有反应
         meta->stoc_bufs[stoc_server_id].offset += log_record_size;
         replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
     }
 
-//本地server read write replicate log record后，更改本地任务的状态
+// 本地server read write replicate log record后，更改本地任务的状态
     bool LogCLogWriter::AckWriteSuccess(const std::string &log_file_name,
                                         int remote_sid, uint64_t wr_id,
                                         StoCReplicateLogRecordState *replicate_log_record_states) {
@@ -85,6 +89,7 @@ namespace leveldb {
         return false;
     }
 
+// rdmaclient调用写wal日志 
     bool
     LogCLogWriter::AddRecord(const std::string &log_file_name,
                              uint64_t thread_id,
@@ -97,33 +102,33 @@ namespace leveldb {
         uint32_t cfgid = replicate_log_record_states[0].cfgid;
         auto cfg = nova::NovaConfig::config->cfgs[cfgid];
         nova::LTCFragment *frag = cfg->fragments[dbid];
-        if (frag->log_replica_stoc_ids.empty()) {
+        if (frag->log_replica_stoc_ids.empty()) { // 找到对应的dbwal日志的位置
             return true;
         }
-        // If one of the log buf is intializing, return false.
+        // If one of the log buf is intializing, return false. ??????? isinitializing是什么? 这个buffer如果是现在分配的 那就要先初始化
         Init(log_file_name, thread_id, log_records, rdma_backing_buf);
         for (int i = 0; i < frag->log_replica_stoc_ids.size(); i++) {
             uint32_t stoc_server_id = cfg->stoc_servers[frag->log_replica_stoc_ids[i]];
             auto &it = logfile_last_buf_[log_file_name];
-            if (it.stoc_bufs[stoc_server_id].is_initializing) {
+            if (it.stoc_bufs[stoc_server_id].is_initializing) { // 因为后面会做初始化 这里保证第一次进来的线程(会做初始化)会通过 但是再后面的如果检测到正在初始化就会停住
                 return false;
             }
         }
         uint32_t log_record_size = nova::LogRecordsSize(log_records);
         for (int i = 0; i < frag->log_replica_stoc_ids.size(); i++) {
             uint32_t stoc_server_id = cfg->stoc_servers[frag->log_replica_stoc_ids[i]];
-            auto &it = logfile_last_buf_[log_file_name];
-            if (it.stoc_bufs[stoc_server_id].base == 0) {
-                it.stoc_bufs[stoc_server_id].is_initializing = true;
+            auto &it = logfile_last_buf_[log_file_name]; // it代表要发送到的stoc对应的那个结构
+            if (it.stoc_bufs[stoc_server_id].base == 0) { // base = 0 标识暂时什么都没做过?
+                it.stoc_bufs[stoc_server_id].is_initializing = true; // 所以先要initialize 
                 // Allocate a new buf.
                 char *send_buf = rdma_broker_->GetSendBuf(stoc_server_id);
                 char *buf = send_buf;
-                buf[0] = StoCRequestType::STOC_ALLOCATE_LOG_BUFFER;
+                buf[0] = StoCRequestType::STOC_ALLOCATE_LOG_BUFFER; // 要求先分配 ltc向stoc发送要求先分配log 
                 buf++;
                 leveldb::EncodeFixed32(buf, log_file_name.size());
                 buf += 4;
                 memcpy(buf, log_file_name.data(), log_file_name.size());
-                replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_ALLOC;
+                replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_ALLOC; // 更新状态
                 rdma_broker_->PostSend(
                         send_buf, 1 + 4 + log_file_name.size(),
                         stoc_server_id, client_req_id);

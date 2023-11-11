@@ -132,6 +132,7 @@ namespace leveldb {
         return status;
     }
 
+// 读到指定位置
     Status
     StoCPersistentFile::Read(uint64_t offset, uint32_t size, char *scratch,
                              Slice *result) {
@@ -171,6 +172,7 @@ namespace leveldb {
         return found;
     }
 
+// 再文件中开辟一块空间 (之前已经申请过的)， 标识占用
     uint64_t StoCPersistentFile::AllocateBuf(const std::string &filename,
                                              uint32_t size,
                                              FileInternalType internal_type) {
@@ -213,6 +215,7 @@ namespace leveldb {
         return (uint64_t) (backing_mem_) + off;
     }
 
+// 持久化
     uint64_t
     StoCPersistentFile::Persist(uint32_t given_file_id_for_assertion) {
         NOVA_ASSERT(given_file_id_for_assertion == file_id_)
@@ -474,6 +477,7 @@ namespace leveldb {
         mutex_.unlock();
     }
 
+// 经常调用的函数 ????????????
     void StoCPersistentFile::Seal() {
         bool seal = false;
         if (allocated_bufs_.empty() && is_full_ && persisting_cnt == 0) {
@@ -682,7 +686,7 @@ namespace leveldb {
         mutex_.unlock();
     }
 
-// stoc端打开 stocfile 
+// stoc端打开 stocfile 持久化的文件(
     StoCPersistentFile *
     StocPersistentFileManager::OpenStoCFile(uint32_t thread_id, std::string &filename) {
         mutex_.lock();

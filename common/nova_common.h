@@ -311,6 +311,7 @@ namespace nova {
         return len + 1;
     }
 
+// wal日志的名字
     inline std::string
     LogFileName(uint32_t db_id, uint32_t memtableid) {
         return fmt::format("{}-{}", db_id, memtableid);
@@ -629,6 +630,7 @@ namespace nova {
         }
     };
 
+// 一个wal reocord要发送的长度
     inline uint32_t
     LogRecordSize(const leveldb::LevelDBLogRecord &record) {
         uint32_t size = 0;
@@ -642,6 +644,7 @@ namespace nova {
         return size;
     }
 
+// 一堆要发送的长度
     inline uint32_t
     LogRecordsSize(const std::vector<leveldb::LevelDBLogRecord> &log_records) {
         uint32_t size = 0;
@@ -651,15 +654,16 @@ namespace nova {
         return size;
     }
 
+// 将wal的发送信息填入buf
     inline uint32_t
     EncodeLogRecord(char *buf,
                     const leveldb::LevelDBLogRecord &record) {
         uint32_t size = 0;
         uint32_t record_size = LogRecordSize(record);
-        size += leveldb::EncodeFixed32(buf + size, record_size);
-        size += leveldb::EncodeSlice(buf + size, record.key);
-        size += leveldb::EncodeSlice(buf + size, record.value);
-        size += leveldb::EncodeFixed64(buf + size, record.sequence_number);
+        size += leveldb::EncodeFixed32(buf + size, record_size); // 整体大小
+        size += leveldb::EncodeSlice(buf + size, record.key); // 先是 大小 然后key
+        size += leveldb::EncodeSlice(buf + size, record.value);// 显示大小 然后value
+        size += leveldb::EncodeFixed64(buf + size, record.sequence_number); // 64位置sequencenumber
         // The last byte is 1.
         buf[size] = 1;
         size++;

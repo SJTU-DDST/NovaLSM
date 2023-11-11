@@ -805,7 +805,7 @@ namespace nova {
         stat_thread_->async_compaction_workers_ = bg_rdma_msg_handlers;
         stats_t_.emplace_back(std::thread(&NovaStatThread::Start, stat_thread_));
 
-        NovaGlobalVariables::global.is_ready_to_process_requests = true;
+        NovaGlobalVariables::global.is_ready_to_process_requests = true; // 统计量的线程开启之后说明可以开始接收请求了
         {
             // Wait for LTC to be ready for processing requests.
             leveldb::StoCBlockClient client(0, stoc_file_manager);
