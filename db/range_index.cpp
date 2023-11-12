@@ -275,6 +275,7 @@ namespace leveldb {
         return current;
     }
 
+// 将immutable 转化为 sstable的时候
     void RangeIndexManager::DeleteObsoleteVersions() {
         std::unordered_map<uint32_t, uint32_t> memtable_refs;
         mutex_.lock();

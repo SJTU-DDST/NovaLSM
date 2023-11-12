@@ -16,7 +16,9 @@ namespace leveldb {
 
     }
 
-//只有cfg多于1个的才会开启这个线程，不知道是什么任务
+// 这里面的三个函数都是周期性的任务
+
+//只有cfg多于1个的才会开启这个任务 emmm
     void LSMTreeCleaner::CleanLSM() const {
 //周期性调用本地server管理的，不知道是什么任务???
         while (true) {
@@ -34,6 +36,7 @@ namespace leveldb {
         }
     }
 
+//这个一直会开
     void LSMTreeCleaner::FlushingMemTables() const {
 //定时调用flush memtables
         while (true) {
@@ -51,7 +54,7 @@ namespace leveldb {
         }
     }
 
-//周期性检查是否更新cfg并且有一些compaction log相关的工作
+//周期性检查是否更新cfg并且有一些compaction log相关的工作 只有cfg多于1个才会开启这个任务
     void LSMTreeCleaner::CleanLSMAfterCfgChange() const {
         int current_cfg_id = nova::NovaConfig::config->current_cfg_id;
 

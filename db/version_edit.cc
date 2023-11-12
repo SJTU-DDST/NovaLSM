@@ -39,6 +39,7 @@ namespace leveldb {
         new_subranges_.clear();
     }
 
+// 将变化放进dst中
     uint32_t VersionEdit::EncodeTo(char *dst) const {
         uint32_t msg_size = 0;
         if (has_comparator_) {
@@ -96,6 +97,7 @@ namespace leveldb {
         }
     }
 
+//从dst中解析出来msg的东西
     Status VersionEdit::DecodeFrom(const Slice &src, Slice *result) {
         Clear();
         Slice input = src;

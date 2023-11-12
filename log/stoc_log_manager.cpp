@@ -129,6 +129,7 @@ namespace nova {
         NOVA_LOG(DEBUG) << fmt::format("Allocate log buf for file:{}", log_file);
     }
 
+// 删除
     void StoCInMemoryLogFileManager::DeleteLogBuf(
             const std::vector<std::string> &log_file) {
         uint32_t db_index;

@@ -262,7 +262,7 @@ namespace leveldb {
                             file_block_offset_.find(buf->filename) ==
                             file_block_offset_.end());
                 }
-                StoCPersistStatus &s = file_block_offset_[buf->filename];
+                StoCPersistStatus &s = file_block_offset_[buf->filename]; // 这里file_block_offset_[buf->filename]就相当于用默认构造方法创建了 
                 s.disk_handle.set_offset(current_disk_offset_);
                 s.disk_handle.set_size(buf->size);
                 s.persisted = false;
@@ -294,7 +294,7 @@ namespace leveldb {
             writes.push_back(written_mem_blocks_[i]);
         }
         if (writes.empty()) {
-            Seal();
+            Seal(); // seal到底是干嘛的???
         }
         mutex_.unlock();
 
@@ -507,6 +507,7 @@ namespace leveldb {
         backing_mem_ = nullptr;
     }
 
+// 取得disk handle
     BlockHandle
     StoCPersistentFile::Handle(const std::string &filename,
                                FileInternalType internal_type) {

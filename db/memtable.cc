@@ -58,6 +58,7 @@ namespace leveldb {
         generation_num_memtables_[generation_id].insert(memtableid);
     }
 
+// 移除某个版本的memtable
     void MemTablePartition::RemoveMemTable(uint64_t generation_id, uint32_t memtableid) {
         NOVA_LOG(rdmaio::DEBUG) << fmt::format("Remove memtable {}:{}", generation_id, memtableid);
         auto it = generation_num_memtables_.find(generation_id);

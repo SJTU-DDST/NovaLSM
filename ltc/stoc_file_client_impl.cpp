@@ -114,6 +114,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 把新加的数据加到某个地方
     Status
     StoCWritableFileClient::SyncAppend(const leveldb::Slice &data,
                                        const std::vector<uint32_t> &stoc_ids) {

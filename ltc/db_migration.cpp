@@ -33,6 +33,7 @@ namespace nova {
         sem_init(&sem_, 0, 0);
     }
 
+//只有涉及cfg切换的时候才会增加这几个任务
     void DBMigration::AddSourceMigrateDB(const std::vector<nova::LTCFragment *> &frags) {
         mu.lock();
         for (auto frag: frags) {

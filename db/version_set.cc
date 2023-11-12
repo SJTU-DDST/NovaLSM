@@ -948,7 +948,7 @@ namespace leveldb {
                 std::vector<FileMetaData *>::const_iterator base_end = base_files.end();
                 const FileSet *added_files = levels_[level].added_files;
 
-                if (update_replica_locations_) {
+                if (update_replica_locations_) { // 动态增添服务器相关的
                     v->files_[level].reserve(base_files.size());
                     // Add all files
                     for (; base_iter != base_end; ++base_iter) {
@@ -1107,6 +1107,7 @@ namespace leveldb {
         manifest_lock_.unlock();
     }
 
+//将version v
     Status VersionSet::LogAndApply(VersionEdit *edit, Version *v, bool normal_update, StoCClient *client) {
         {
             Builder builder(this, current_);

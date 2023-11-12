@@ -301,11 +301,12 @@ def shellGet():
 
 def putAlot(novaClient, ops):
     for i in range(0, ops):
-        novaClient.put(0, key, "a" * value_size, 0)
+        novaClient.put(0, i, "a" * value_size, 0)
 def getAlot(novaClient, ops):
     for i in range(0, ops):
-        novaClient.get(0, key, 0)
-    
+        novaClient.get(0, i, 0)
+
+# python scripts/exp/database_shell.py --nova_servers=192.168.98.74:10438
     
     
 if __name__ == "__main__":

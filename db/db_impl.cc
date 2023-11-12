@@ -1085,7 +1085,7 @@ namespace leveldb {
         }
     }
 
-// 用于小一点的subrange的compaction
+// 用于小一点的subrange的compaction 很少?
     bool DBImpl::CompactMultipleMemTablesStaticPartitionToMemTable(
             int partition_id, leveldb::EnvBGThread *bg_thread,
             const std::vector<leveldb::EnvBGTask> &tasks,
@@ -1424,7 +1424,7 @@ namespace leveldb {
         for (auto &task : tasks) {
             if (task.memtable) {
                 if (task.merge_memtables_without_flushing) { // 只有当一个subrange的key很少很少的时候才会为true
-                    pid_mergable_memtables[task.memtable_partition_id].push_back(task); // 也是 flush imm的任务
+                    pid_mergable_memtables[task.memtable_partition_id].push_back(task); // 也是 flush imm的任务 根据不同的分区进行区分
                     continue;
                 }
                 memtable_tasks.push_back(task); // 大一些的subrange的flush imm的任务
@@ -1464,19 +1464,19 @@ namespace leveldb {
             }
             mutex_.Lock();
             Version *v = new Version(&internal_comparator_, table_cache_, &options_,
-                                     versions_->version_id_seq_.fetch_add(1), versions_);
+                                     versions_->version_id_seq_.fetch_add(1), versions_); //新的版本
             for (auto &task : memtable_tasks) {
                 pid_tasks[task.memtable_partition_id].push_back(task);
                 MemTable *imm = reinterpret_cast<MemTable *>(task.memtable);
-                range_edit.replace_memtables[imm->memtableid()] = imm->meta().number;
+                range_edit.replace_memtables[imm->memtableid()] = imm->meta().number; //将原来的memtable的标识转化为sstable的标识
                 NOVA_ASSERT(imm);
                 auto atomic_imm = versions_->mid_table_mapping_[imm->memtableid()];
-                atomic_imm->is_immutable_ = true;
-                atomic_imm->SetFlushed(dbname_, {imm->meta().number}, v->version_id());
+                atomic_imm->is_immutable_ = true; //表示已经做了持久化了??
+                atomic_imm->SetFlushed(dbname_, {imm->meta().number}, v->version_id()); //表示已经做了flush??
             }
             range_edit.lsm_version_id = v->version_id_;
             Status s = versions_->LogAndApply(&edit, v, true);
-            if (range_index_manager_) {
+            if (range_index_manager_) { // 更新range
                 range_index_manager_->AppendNewVersion(&scan_stats, range_edit);
                 range_index_manager_->DeleteObsoleteVersions();
             }
@@ -1533,10 +1533,10 @@ namespace leveldb {
             !closed_memtable_log_files.empty()) {
             std::vector<std::string> logs;
             for (const auto &file : closed_memtable_log_files) {
-                logs.push_back(nova::LogFileName(dbid_, file));
+                logs.push_back(nova::LogFileName(dbid_, file)); // 找到对应的log 名称
             }
-            log_manager_->DeleteLogBuf(logs);
-            bg_thread->stoc_client()->InitiateCloseLogFiles(logs, dbid_);
+            log_manager_->DeleteLogBuf(logs); // 回收本地的logbuf
+            bg_thread->stoc_client()->InitiateCloseLogFiles(logs, dbid_); //然后关闭远端的log文件
         }
         for (const auto &task : sstable_tasks) {
             CompactionState *state = reinterpret_cast<CompactionState *> (task.compaction_task);
@@ -1678,7 +1678,8 @@ namespace leveldb {
     }
 
     void DBImpl::CoordinateMajorCompaction() {
-        while (options_.major_compaction_type == kMajorCoordinated ||
+// 循环检查是否需要major compaction
+        while (options_.major_compaction_type == kMajorCoordinated || // 二者都有 主要是这两个
                options_.major_compaction_type == kMajorCoordinatedStoC) {
             if (terminate_coordinated_compaction_) {
                 break;
@@ -2738,7 +2739,7 @@ namespace leveldb {
                         EnvBGThread::bg_flush_memtable_thread_id_seq.fetch_add(1, std::memory_order_relaxed) %
                         bg_flush_memtable_threads_.size();
             }
-            //  完成flush immtable memtable的工作
+            //  完成flush immtable memtable的工作 这里是immutable -> l0 sstable
             ScheduleFlushMemTableTask(thread_id,
                                       partitioned_imms_[imm_slot],
                                       versions_->mid_table_mapping_[partitioned_imms_[imm_slot]]->memtable_,
@@ -2775,6 +2776,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 开启reorganization
     void DBImpl::PerformSubRangeReorganization() {
         if (options_.enable_subrange_reorg) {
             subrange_manager_->ReorganizeSubranges();

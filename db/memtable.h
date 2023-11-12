@@ -189,7 +189,7 @@ namespace leveldb {
         std::queue<uint32_t> available_slots;
         std::vector<uint32_t> immutable_memtable_ids;
         std::map<uint32_t, uint32_t> slot_imm_id;
-        port::CondVar background_work_finished_signal_ GUARDED_BY(mutex);
+        port::CondVar background_work_finished_signal_ GUARDED_BY(mutex); // 因为没有avalaible 的memtable而等 当有availaible的memtable的时候进行唤醒
     };
 }  // namespace leveldb
 

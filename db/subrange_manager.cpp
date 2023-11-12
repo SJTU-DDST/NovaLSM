@@ -454,6 +454,7 @@ namespace leveldb {
         return true;
     }
 
+// 找到duplicate的subrange
     void SubRangeManager::MoveShareForDuplicateSubRange(int index) {
         SubRange &sr = latest_->subranges[index];
         uint64_t lower = sr.tiny_ranges[0].lower_int();
@@ -601,11 +602,12 @@ namespace leveldb {
         (*ranges->rbegin()).upper = std::to_string(upper);
     }
 
+// 销毁目前subrange中的所有duplicate，以便更好地进行划分?
     bool
     SubRangeManager::DestroyDuplicates(int subrange_id, bool force) {
         SubRange &sr = latest_->subranges[subrange_id];
         double fair_ratio = 1.0 / (double) (options_.num_memtable_partitions);
-        if (sr.num_duplicates == 0) {
+        if (sr.num_duplicates == 0) { //如果没有duplicate 就不用distroy了
             return false;
         }
         if (force) {
@@ -1022,11 +1024,12 @@ namespace leveldb {
         return success;
     }
 
+// 开启reorganize
     void
     SubRangeManager::ReorganizeSubranges() {
         uint32_t cfgid = nova::NovaConfig::config->current_cfg_id;
         auto range = nova::NovaConfig::config->cfgs[cfgid]->fragments[dbindex_];
-        if (range->range.key_end - range->range.key_start <= options_.num_memtable_partitions) {
+        if (range->range.key_end - range->range.key_start <= options_.num_memtable_partitions) { // 如果range本身key很少了 那就不用
             return;
         }
 
@@ -1048,6 +1051,7 @@ namespace leveldb {
         bool subrange_reorged = false;
         bool update_latest_subrange = false;
 
+// 计算各个range的总insert数量和比例
         for (int i = 0; i < subranges.size(); i++) {
             SubRange &sr = subranges[i];
             sr.ninserts = 0;
@@ -1064,6 +1068,7 @@ namespace leveldb {
             sr.insertion_ratio = sr.ninserts / total_num_inserts_since_last_major_;
         }
 
+// 如果到了interval
         if (latest_seq_number - last_minor_reorg_seq_ > SUBRANGE_MINOR_REORG_INTERVAL) {
             int pivot = 0;
             bool success = false;

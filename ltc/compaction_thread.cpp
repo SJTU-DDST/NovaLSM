@@ -79,7 +79,7 @@ namespace leveldb {
                     task.compaction_task == nullptr &&
                     !task.delete_obsolete_files) {
                     auto db = reinterpret_cast<DB *>(tasks[0].db);
-                    db->PerformSubRangeReorganization();
+                    db->PerformSubRangeReorganization(); // 开启reorganization
                     reorg = true;
                     continue;
                 }
