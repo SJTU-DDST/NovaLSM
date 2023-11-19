@@ -213,6 +213,7 @@ namespace leveldb {
         table_.Insert(buf);
     }
 
+// 在memtable里面找
     bool MemTable::Get(const LookupKey &key, std::string *value, Status *s) {
         WaitUntilReady();
         Slice memkey = key.memtable_key();
@@ -359,6 +360,7 @@ namespace leveldb {
         return memtable_exists;
     }
 
+// memtable对应的l0文件加减???????
     void AtomicMemTable::UpdateL0Files(uint32_t version_id, const MemTableL0FilesEdit &edit) {
         mutex_.lock();
         NOVA_ASSERT(is_immutable_) << fmt::format("{}:{},{}", memtable_id_, memtable_size_, edit.DebugString());

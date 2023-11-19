@@ -448,6 +448,7 @@ namespace leveldb {
         }
     }
 
+// 根据改动l0中的edits进行进行更新
     void
     DBImpl::UpdateLookupIndex(uint32_t version_id,
                               const std::unordered_map<uint32_t, MemTableL0FilesEdit> &edits) {
@@ -459,6 +460,7 @@ namespace leveldb {
         }
     }
 
+// 发出要删除的东西的~
     void DBImpl::DeleteFiles(EnvBGThread *bg_thread,
                              std::vector<std::string> &files_to_delete,
                              std::unordered_map<uint32_t, std::vector<SSTableStoCFilePair>> &server_pairs) {
@@ -479,6 +481,7 @@ namespace leveldb {
         }
     }
 
+// 这是什么??????????
     void DBImpl::ObtainObsoleteFiles(EnvBGThread *bg_thread,
                                      std::vector<std::string> *files_to_delete,
                                      std::unordered_map<uint32_t, std::vector<SSTableStoCFilePair>> *server_pairs,
@@ -515,6 +518,7 @@ namespace leveldb {
         }
     }
 
+// 获取到要删除的各种文件的信息
     void DBImpl::ObtainStoCFilesOfSSTable(std::vector<std::string> *files_to_delete,
                                           std::unordered_map<uint32_t, std::vector<SSTableStoCFilePair>> *server_pairs,
                                           const FileMetaData &meta) const {
@@ -1359,6 +1363,7 @@ namespace leveldb {
         }
     }
 
+// 将compaction任务调度给一个线程
     void DBImpl::ScheduleCompactionTask(int thread_id, void *compaction) {
         EnvBGTask task = {};
         task.db = this;
@@ -1367,7 +1372,7 @@ namespace leveldb {
         }
     }
 
-//这是什么任务???
+// 文件删除任务
     void DBImpl::ScheduleFileDeletionTask(int thread_id) {
         if (!start_compaction_) {
             return;
@@ -1415,7 +1420,7 @@ namespace leveldb {
         }
     }
 
-// flush immutable memtable的 实际函数调用 来自 ltc ... thread调用
+// flush immutable memtable的 实际函数调用 来自 ltc ... thread调用 compaction任务也在这里调用
     void DBImpl::PerformCompaction(leveldb::EnvBGThread *bg_thread, const std::vector<EnvBGTask> &tasks) {
         std::vector<EnvBGTask> memtable_tasks;
         std::unordered_map<uint32_t, std::vector<EnvBGTask>> pid_mergable_memtables;
@@ -1538,7 +1543,7 @@ namespace leveldb {
             log_manager_->DeleteLogBuf(logs); // 回收本地的logbuf
             bg_thread->stoc_client()->InitiateCloseLogFiles(logs, dbid_); //然后关闭远端的log文件
         }
-        for (const auto &task : sstable_tasks) {
+        for (const auto &task : sstable_tasks) { // 处理真正的compaction的
             CompactionState *state = reinterpret_cast<CompactionState *> (task.compaction_task);
             NOVA_ASSERT(state);
             auto c = state->compaction;
@@ -1552,6 +1557,7 @@ namespace leveldb {
         }
     }
 
+// 计算需要的compaction
     bool DBImpl::ComputeCompactions(leveldb::Version *current,
                                     std::vector<leveldb::Compaction *> *compactions,
                                     VersionEdit *edit,
@@ -1560,7 +1566,7 @@ namespace leveldb {
                                     std::unordered_map<uint32_t, leveldb::MemTableL0FilesEdit> *memtableid_l0fns) {
         bool moves = false;
         auto frags = nova::NovaConfig::config->cfgs[0];
-        if (nova::NovaConfig::config->cfgs.size() == 1 && frags->fragments.size() == 1 &&
+        if (nova::NovaConfig::config->cfgs.size() == 1 && frags->fragments.size() == 1 && // 如果只有1个数据库 ..
             frags->fragments[frags->fragments.size() - 1]->range.key_end == 1000000000 && is_loading_db_) {
             // 1 TB database with one range.
             std::vector<uint64_t> level_size;
@@ -1600,7 +1606,7 @@ namespace leveldb {
                 }
             }
         } else {
-            current->ComputeNonOverlappingSet(compactions, delete_due_to_low_overlap);
+            current->ComputeNonOverlappingSet(compactions, delete_due_to_low_overlap); // 计算出了应该进行的compaction
         }
 
         if (NOVA_LOG_LEVEL == rdmaio::DEBUG) {
@@ -1617,11 +1623,11 @@ namespace leveldb {
             bool valid = current->AssertNonOverlappingSet(*compactions, &reason);
             NOVA_ASSERT(valid) << fmt::format("assertion failed {}", reason);
         }
-        if (compactions->empty()) {
+        if (compactions->empty()) { // 为空表示????
             return false;
         }
         auto it = compactions->begin();
-        while (it != compactions->end()) {
+        while (it != compactions->end()) { // 这里直接处理简单易懂的情况
             auto c = *it;
             if (!c->IsTrivialMove()) {
                 it++;
@@ -1631,7 +1637,7 @@ namespace leveldb {
             assert(c->num_input_files(0) == 1);
             assert(c->num_input_files(1) == 0);
             FileMetaData *f = c->input(0, 0);
-            edit->DeleteFile(c->level(), f->number);
+            edit->DeleteFile(c->level(), f->number); 
             edit->AddFile(c->target_level(),
                           {},
                           f->number, f->file_size,
@@ -1646,7 +1652,7 @@ namespace leveldb {
             Log(options_.info_log, "%s", output.c_str());
             NOVA_LOG(rdmaio::DEBUG) << output;
 
-            if (c->level() == 0 && c->target_level() == 1) {
+            if (c->level() == 0 && c->target_level() == 1) { // 如果是 l0层到l1层memtable的压缩
                 range_edit->removed_l0_sstables.push_back(f->number);
                 // Compact L0 SSTables to L1.
                 for (int i = 0; i < c->inputs_[0].size(); i++) {
@@ -1662,7 +1668,7 @@ namespace leveldb {
             delete c;
             it = compactions->erase(it);
         }
-        return moves;
+        return moves; //剩下的都是真正的compaction
     }
 
     void DBImpl::ScheduleFileDeletionTask() {
@@ -1677,22 +1683,23 @@ namespace leveldb {
         mutex_.Unlock();
     }
 
+// major compaction发起处 !
     void DBImpl::CoordinateMajorCompaction() {
 // 循环检查是否需要major compaction
-        while (options_.major_compaction_type == kMajorCoordinated || // 二者都有 主要是这两个
+        while (options_.major_compaction_type == kMajorCoordinated || // 二者都有 主要是这两个   major应该是 ltc进行压缩    stoc应该是stoc进行压缩
                options_.major_compaction_type == kMajorCoordinatedStoC) {
-            if (terminate_coordinated_compaction_) {
+            if (terminate_coordinated_compaction_) {  // 是否停止新加compaction任务
                 break;
             }
 
             mutex_.Lock();
             Version *current = versions_->current();
-            if (!start_coordinated_compaction_) {
+            if (!start_coordinated_compaction_) { // 是否停止当前的compaction任务
                 mutex_.Unlock();
                 sleep(1);
                 continue;
             }
-            if (!current->NeedsCompaction()) {
+            if (!current->NeedsCompaction()) { // 99999代表level 0
                 mutex_.Unlock();
                 sleep(1);
                 continue;
@@ -1716,7 +1723,7 @@ namespace leveldb {
                 VersionEdit edit;
                 RangeIndexVersionEdit range_edit;
                 std::unordered_map<uint32_t, MemTableL0FilesEdit> edits;
-                if (ComputeCompactions(current, &compactions, &edit, &range_edit, &delete_due_to_low_overlap, &edits)) {
+                if (ComputeCompactions(current, &compactions, &edit, &range_edit, &delete_due_to_low_overlap, &edits)) { // 如果进行了trival move
                     // Contain moves. Cleanup LSM immediately.
                     CleanupLSMCompaction(nullptr, edit, range_edit, edits, nullptr, current->version_id_);
                 }
@@ -1738,7 +1745,7 @@ namespace leveldb {
                 compactions[i]->complete_signal_ = &completion_signal;
                 cleaned[i] = false;
             }
-            if (!compactions.empty()) {
+            if (!compactions.empty()) { // 开始做真正的compaction的工作
                 if (subrange_manager_) {
                     subs = subrange_manager_->latest_subranges_;
                 }
@@ -1747,7 +1754,7 @@ namespace leveldb {
                     auto state = new CompactionState(compactions[i], subs, smallest_snapshot);
                     states.push_back(state);
                 }
-                if (options_.major_compaction_type == kMajorCoordinated) {
+                if (options_.major_compaction_type == kMajorCoordinated) { // 在ltc端调度compaction
                     for (int i = 0; i < states.size(); i++) {
                         int thread_id =
                                 EnvBGThread::bg_compaction_thread_id_seq.fetch_add(
@@ -1759,7 +1766,7 @@ namespace leveldb {
                         ScheduleCompactionTask(thread_id, states[i]);
                     }
                     // Wait for majors to complete.
-                    for (int i = 0; i < compactions.size(); i++) {
+                    for (int i = 0; i < compactions.size(); i++) { // compaction结束
                         sem_wait(&completion_signal);
                         for (int j = 0; j < compactions.size(); j++) {
                             if (cleaned[j]) {
@@ -1780,7 +1787,7 @@ namespace leveldb {
                             }
                         }
                     }
-                } else {
+                } else { // 在stoc端调度compaction 这两个都很重要
                     auto client = reinterpret_cast<StoCBlockClient *> (compaction_coordinator_thread_->stoc_client());
                     std::vector<uint32_t> selected_storages;
                     StorageSelector selector(&rand_seed_);
@@ -1792,7 +1799,7 @@ namespace leveldb {
                                     "Coordinator schedules compaction on StoC-{} {}@{} + {}@{}", selected_storages[i],
                                     compactions[i]->inputs_[0].size(), compactions[i]->level(),
                                     compactions[i]->inputs_[1].size(), compactions[i]->target_level());
-                        if (selected_storages[i] == nova::NovaConfig::config->my_server_id) {
+                        if (selected_storages[i] == nova::NovaConfig::config->my_server_id) { // 如果选中了自己这个服务器
                             // Schedule on my server.
                             int thread_id =
                                     EnvBGThread::bg_compaction_thread_id_seq.fetch_add(1, std::memory_order_relaxed) %
@@ -1804,7 +1811,7 @@ namespace leveldb {
                             requests.push_back(req);
                             continue;
                         }
-                        auto compaction = compactions[i];
+                        auto compaction = compactions[i]; // 不然就发一个请求过去
                         auto req = new CompactionRequest;
                         req->completion_signal = &completion_signal;
                         req->source_level = compaction->level();
@@ -1818,7 +1825,7 @@ namespace leveldb {
                             req->inputs[which] = compaction->inputs_[which];
                         }
                         req->guides = compaction->grandparents_;
-                        uint32_t req_id = client->InitiateCompaction(
+                        uint32_t req_id = client->InitiateCompaction( // 向stoc端发送请求
                                 selected_storages[i], req);
                         reqs.push_back(req_id);
                         requests.push_back(req);
@@ -1864,7 +1871,7 @@ namespace leveldb {
                                                      current->version_id_);
                             }
                         }
-                    }
+                    } // 到这里compaction和清理都完成了
                     uint64_t input_size = 0;
                     uint64_t output_size = 0;
                     uint32_t ninputs = 0;
@@ -1940,6 +1947,7 @@ namespace leveldb {
         }
     }
 
+// trival move之后会调用? edit是用来记录改动并且应用到log里面的????????????????
     void DBImpl::CleanupLSMCompaction(CompactionState *state,
                                       VersionEdit &edit,
                                       RangeIndexVersionEdit &range_edit,
@@ -1948,7 +1956,7 @@ namespace leveldb {
                                       uint32_t compacting_version_id) {
         std::vector<std::string> files_to_delete;
         std::unordered_map<uint32_t, std::vector<SSTableStoCFilePair> > server_pairs;
-        if (compaction_req && state) {
+        if (compaction_req && state) { // trival move没有
             auto client = reinterpret_cast<StoCBlockClient *> (compaction_coordinator_thread_->stoc_client());
             std::vector<const FileMetaData *> metafiles;
             for (auto f : compaction_req->outputs) {
@@ -2077,6 +2085,7 @@ namespace leveldb {
         return internal_iter;
     }
 
+// 实际的读方法 需要分析一下各部分的时间
     Status DBImpl::Get(const ReadOptions &options, const Slice &key,
                        std::string *value) {
         number_of_gets_ += 1;
@@ -2128,6 +2137,7 @@ namespace leveldb {
         return Status::NotFound("");
     }
 
+// 开启了lookupindex的查找
     Status
     DBImpl::GetWithLookupIndex(const ReadOptions &options, const Slice &key,
                                std::string *value) {
@@ -2137,23 +2147,56 @@ namespace leveldb {
         AtomicMemTable *memtable = nullptr;
         std::vector<uint64_t> l0fns;
 
+        timeval getwithlookupindexStart{};
+        timeval memtablegetStart{0, 0};
+        timeval memtablegetEnd{0, 0};
+        timeval getwithlookupindexEnd{};
+        timeval waitStart{};
+        timeval waitEnd{};
+        timeval l0getStart{};
+        timeval l0getEnd{};
+        timeval l1uppergetStart{};
+        timeval l1uppergetEnd{};
+
+        gettimeofday(&getwithlookupindexStart, nullptr);
+
         NOVA_ASSERT(lookup_index_);
         uint32_t memtableid = lookup_index_->Lookup(key, options.hash);
-        if (memtableid != 0) {
+        if (memtableid != 0) { // 找到了 memtable
             NOVA_ASSERT(memtableid < MAX_LIVE_MEMTABLES) << memtableid;
             memtable = versions_->mid_table_mapping_[memtableid]->RefMemTable();
         }
         LookupKey lkey(key, snapshot);
-        if (memtable != nullptr) {
+        if (memtable != nullptr) { // 如果找到了memtable 那就直接在里面找
             NOVA_ASSERT(memtable->memtable_->memtableid() == memtableid);
 //            NOVA_ASSERT()
 //                << fmt::format("key:{} memtable:{} s:{}",
 //                               key.ToString(),
 //                               memtable->memtable_->memtableid(),
 //                               s.ToString());
-
+            
+            gettimeofday(&memtablegetStart, nullptr);
+            
             bool found = memtable->memtable_->Get(lkey, value, &s);
+            
+            gettimeofday(&memtablegetEnd, nullptr);
+            
             versions_->mid_table_mapping_[memtableid]->Unref(dbname_);
+            
+            gettimeofday(&getwithlookupindexEnd, nullptr);
+
+            NOVA_LOG(rdmaio::INFO)
+                        << fmt::format("get type: {}, total time: {}s{}ms, memtable get time: {}s{}ms", 
+                                        std::string("get in memtable"), 
+                                        getwithlookupindexEnd.tv_sec - getwithlookupindexStart.tv_sec,
+                                        getwithlookupindexEnd.tv_usec - getwithlookupindexStart.tv_usec,
+                                        memtablegetEnd.tv_sec - memtablegetStart.tv_sec,
+                                        memtablegetEnd.tv_usec - memtablegetStart.tv_usec);
+                        
+                        //"t[{}]: Load {} entries took {}", tid_,
+                                       //loaded_keys,
+                                       //(now.tv_sec - start.tv_sec));
+
             if (found) {
                 number_of_memtable_hits_ += 1;
                 return Status::OK();
@@ -2161,24 +2204,29 @@ namespace leveldb {
                 return Status::NotFound("");
             }
         }
-
+        // 没有在lookupindex里面找到
         Version *current = nullptr;
         uint32_t vid = 0;
         SequenceNumber latest_seq = 0;
-        auto atomic_memtable = versions_->mid_table_mapping_[memtableid];
+        auto atomic_memtable = versions_->mid_table_mapping_[memtableid]; // 0?
+
+        bool wait = false;
+        
+        gettimeofday(&waitStart, nullptr);
+
         while (true) {
             current = nullptr;
             l0fns.clear();
             while (current == nullptr) {
                 vid = versions_->current_version_id();
                 NOVA_ASSERT(vid < MAX_LIVE_MEMTABLES) << vid;
-                current = versions_->versions_[vid]->Ref();
+                current = versions_->versions_[vid]->Ref(); // 找到当前版本
             }
             NOVA_ASSERT(current->version_id() == vid);
             atomic_memtable->mutex_.lock();
-            if (vid >= atomic_memtable->last_version_id_) {
+            if (vid >= atomic_memtable->last_version_id_) { // 当前version的版本比较新??
                 // good to go.
-                l0fns.insert(l0fns.end(), atomic_memtable->l0_file_numbers_.begin(),
+                l0fns.insert(l0fns.end(), atomic_memtable->l0_file_numbers_.begin(), // 总而言之就是把这个range的所有l0的文件加进来
                              atomic_memtable->l0_file_numbers_.end());
                 atomic_memtable->mutex_.unlock();
                 break;
@@ -2186,22 +2234,72 @@ namespace leveldb {
             // A major compaction is installing a new version. Retry.
             atomic_memtable->mutex_.unlock();
             versions_->versions_[vid]->Unref(dbname_);
+            wait = true;
         }
+        
+        gettimeofday(&waitEnd, nullptr);
 
+        bool found = false;
+// 在l0中找
         if (!l0fns.empty()) {
+            
+            gettimeofday(&l0getStart, nullptr);
             s = current->Get(options, l0fns, lkey, &latest_seq, value, &number_of_files_to_search_for_get_);
+            
+            gettimeofday(&l0getEnd, nullptr);
+
+            gettimeofday(&getwithlookupindexEnd, nullptr);
+
+            if (!s.IsNotFound()){
+                NOVA_LOG(rdmaio::INFO)
+                        << fmt::format("get type: {}, total time: {}s{}ms, memtable get time: {}s{}ms, wait time: {}s{}ms, wait for major compaction: {}, l0 sstable get time: {}s{}ms", 
+                                        std::string("get in l0 sstable"), 
+                                        getwithlookupindexEnd.tv_sec - getwithlookupindexStart.tv_sec,
+                                        getwithlookupindexEnd.tv_usec - getwithlookupindexStart.tv_usec,
+                                        memtablegetEnd.tv_sec - memtablegetStart.tv_sec,
+                                        memtablegetEnd.tv_usec - memtablegetStart.tv_usec,
+                                        waitEnd.tv_sec - waitStart.tv_sec,
+                                        waitEnd.tv_usec - waitStart.tv_usec,
+                                        wait,
+                                        l0getEnd.tv_sec - l0getStart.tv_sec,
+                                        l0getEnd.tv_usec - l0getStart.tv_usec);
+
+            }
         }
         NOVA_ASSERT(!s.IsIOError())
             << fmt::format("v:{} status:{} mid:{} version:{}", vid, s.ToString(), memtableid, current->DebugString());
+// 在l1及以上中找       
         if (s.IsNotFound()) {
             // Search L1 files.
             Version::GetStats stats = {};
             SequenceNumber l1seq;
-            s = current->Get(options, lkey, &l1seq, value, &stats, GetSearchScope::kL1AndAbove,
+            
+            gettimeofday(&l1uppergetStart, nullptr);
+            s = current->Get(options, lkey, &l1seq, value, &stats, GetSearchScope::kL1AndAbove, // 在l1及以上层中找
                              &number_of_files_to_search_for_get_);
+            
+            gettimeofday(&l1uppergetEnd, nullptr);
+
+            gettimeofday(&getwithlookupindexEnd, nullptr);
 //            if (l1seq > latest_seq) {
 //                value->assign(l1val);
 //            }
+
+            NOVA_LOG(rdmaio::INFO)
+                        << fmt::format("get type: {}, total time: {}s{}ms, memtable get time: {}s{}ms, wait time: {}s{}ms, wait for major compaction: {}, l0 sstable get time: {}s{}ms, l1 upper get time: {}s{}ms", 
+                                        std::string("get in l1 sstable or upper"), 
+                                        getwithlookupindexEnd.tv_sec - getwithlookupindexStart.tv_sec,
+                                        getwithlookupindexEnd.tv_usec - getwithlookupindexStart.tv_usec,
+                                        memtablegetEnd.tv_sec - memtablegetStart.tv_sec,
+                                        memtablegetEnd.tv_usec - memtablegetStart.tv_usec,
+                                        waitEnd.tv_sec - waitStart.tv_sec,
+                                        waitEnd.tv_usec - waitStart.tv_usec,
+                                        wait,
+                                        l0getEnd.tv_sec - l0getStart.tv_sec,
+                                        l0getEnd.tv_usec - l0getStart.tv_usec,
+                                        l1uppergetEnd.tv_sec - l1uppergetStart.tv_sec,
+                                        l1uppergetEnd.tv_usec - l1uppergetStart.tv_usec
+                                        );
         }
         NOVA_ASSERT(s.ok())
             << fmt::format("key:{} val:{} seq:{} status:{} version:{}",
@@ -2794,7 +2892,7 @@ namespace leveldb {
             // wake up reorg thread.
             EnvBGTask task = {};
             task.db = this;
-            reorg_thread_->Schedule(task); // !!! 重要 有待于分析
+            reorg_thread_->Schedule(task); // !!! 重要 有待于分析 唯一入口
         }
         SubRange *subrange = nullptr;
         int subrange_id = subrange_manager_->SearchSubranges(options, key, val,

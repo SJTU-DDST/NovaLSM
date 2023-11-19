@@ -187,7 +187,7 @@ namespace nova {
                 rdma_broker_->PostSend(sendbuf, msg_size, task.remote_server_id,
                                        task.stoc_req_id);
             } else if (task.request_type ==
-                       leveldb::StoCRequestType::STOC_COMPACTION) {
+                       leveldb::StoCRequestType::STOC_COMPACTION) { // compaction完毕 发送回复
                 char *sendbuf = rdma_broker_->GetSendBuf(task.remote_server_id);
                 sendbuf[0] = leveldb::StoCRequestType::STOC_COMPACTION_RESPONSE;
                 uint32_t msg_size = 1;
@@ -599,7 +599,7 @@ namespace nova {
                                 thread_id_, fn_stocfile.size());
                     processed = true;
                 } else if (buf[0] ==
-                           leveldb::StoCRequestType::STOC_COMPACTION) {
+                           leveldb::StoCRequestType::STOC_COMPACTION) { // 来自ltc的compaction
                     auto req = new leveldb::CompactionRequest;
                     req->DecodeRequest(buf + 1,
                                        nova::NovaConfig::config->max_msg_size);

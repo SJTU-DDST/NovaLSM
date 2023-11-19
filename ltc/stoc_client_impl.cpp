@@ -86,6 +86,7 @@ namespace leveldb {
         return reqid;
     }
 
+// ltc向stoc端发送压缩请求
     uint32_t StoCBlockClient::InitiateCompaction(uint32_t remote_server_id,
                                                  leveldb::CompactionRequest *compaction_request) {
         NOVA_ASSERT(remote_server_id != nova::NovaConfig::config->my_server_id);
@@ -565,6 +566,7 @@ namespace leveldb {
         return req_id;
     }
 
+// ltc向stoc发送压缩请求
     uint32_t StoCRDMAClient::InitiateCompaction(uint32_t stoc_id,
                                                 leveldb::CompactionRequest *compaction_request) {
         NOVA_ASSERT(stoc_id !=
@@ -1046,7 +1048,7 @@ namespace leveldb {
                         processed = true;
 //对面发送的是stoc compaction response类型的
                     } else if (buf[0] ==
-                               StoCRequestType::STOC_COMPACTION_RESPONSE) {
+                               StoCRequestType::STOC_COMPACTION_RESPONSE) { // stoc端compaction完成发来回复
                         uint32_t num_outputs = leveldb::DecodeFixed32(buf + 1);
                         Slice outputs(buf + 5,
                                       nova::NovaConfig::config->max_msg_size);

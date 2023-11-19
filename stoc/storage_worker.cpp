@@ -194,7 +194,7 @@ namespace nova {
                            leveldb::StoCRequestType::STOC_REPLICATE_SSTABLES) {
                     ct.replication_results = ReplicateSSTables(task.dbname, task.replication_pairs);
                 } else if (task.request_type ==
-                           leveldb::StoCRequestType::STOC_COMPACTION) {
+                           leveldb::StoCRequestType::STOC_COMPACTION) { // 来自ltc的compaction请求
                     leveldb::TableCache table_cache(
                             task.compaction_request->dbname, options_, 0,
                             nullptr);
@@ -223,7 +223,7 @@ namespace nova {
                     leveldb::CompactionState *state = new leveldb::CompactionState(
                             compaction, &srs,
                             task.compaction_request->smallest_snapshot);
-                    std::function<uint64_t(void)> fn_generator = []() {
+                    std::function<uint64_t(void)> fn_generator = []() { // 前面是本server的id后面是真正的文件标号
                         uint32_t fn = storage_file_number_seq.fetch_add(1);
                         uint64_t stocid = nova::NovaConfig::config->my_server_id + 1;
                         return (stocid << 32) | fn;
@@ -235,7 +235,7 @@ namespace nova {
                                 files.push_back(compaction->input(which, i));
                             }
                         }
-                        FetchMetadataFilesInParallel(files,
+                        FetchMetadataFilesInParallel(files, // 抓取文件的metadata
                                                      task.compaction_request->dbname,
                                                      options_,
                                                      reinterpret_cast<leveldb::StoCBlockClient *>(client_),

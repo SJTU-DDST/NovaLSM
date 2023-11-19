@@ -18,6 +18,7 @@ namespace leveldb {
         Table *table = nullptr;
     };
 
+// 删掉记录
     static void DeleteEntry(const Slice &key, void *value) {
         TableAndFile *tf = reinterpret_cast<TableAndFile *>(value);
         delete tf->table;
@@ -60,6 +61,7 @@ namespace leveldb {
 //        return false;
 //    }
 
+// 在指定的文件中找指定的key
     Status
     TableCache::FindTable(AccessCaller caller, const ReadOptions &options,
                           const FileMetaData *meta,
@@ -106,13 +108,13 @@ namespace leveldb {
             return s;
         }
 
-        auto fname = TableFileName(dbname_, file_number, FileInternalType::kFileData, 0);
+        auto fname = TableFileName(dbname_, file_number, FileInternalType::kFileData, 0); // 
         if (nova::NovaConfig::config->cfgs.size() > 1) {
             NOVA_ASSERT(env_->LockFile(fname, file_number).ok());
         }
-        *handle = cache_->Lookup(key);
+        *handle = cache_->Lookup(key); // 首先在cache中查找这个key
         bool cache_hit = true;
-        if (*handle) {
+        if (*handle) { // 在cache中找到了
             cache_hit = true;
             // Check if the file is deleted.
             TableAndFile *tf = reinterpret_cast<TableAndFile *>(cache_->Value(*handle));
@@ -121,10 +123,10 @@ namespace leveldb {
             cache_hit = false;
         }
 
-        if (!cache_hit) {
+        if (!cache_hit) { // table cache中没有找到的话
             Table *table = nullptr;
             bool prefetch_all = false;
-            if (caller == AccessCaller::kCompaction) {
+            if (caller == AccessCaller::kCompaction) { // 如果是为了compaction的话就全部取过来?
                 prefetch_all = true;
             }
             std::string filename = TableFileName(dbname_, file_number, FileInternalType::kFileData, replica_id);
@@ -137,15 +139,15 @@ namespace leveldb {
                                                       options.thread_id,
                                                       prefetch_all,
                                                       filename);
-            s = Table::Open(options_, options, meta, file, file_size, level,
+            s = Table::Open(options_, options, meta, file, file_size, level, // 读取这个sstable的东西?? 大概是raw的内容进行分析
                             file_number, replica_id, &table, db_profiler_);
             NOVA_ASSERT(s.ok())
                 << fmt::format("file:{} status:{}", meta->DebugString(),
                                s.ToString());
             TableAndFile *tf = new TableAndFile;
-            tf->file = file;
-            tf->table = table;
-            *handle = cache_->Insert(key, tf, 1, &DeleteEntry);
+            tf->file = file; // raw的内容
+            tf->table = table; // parse之后的内容
+            *handle = cache_->Insert(key, tf, 1, &DeleteEntry); // 把新找到的加进去 然后重新加入
         }
         NOVA_LOG(rdmaio::DEBUG)
             << fmt::format("table cache hit {} fn:{} cs:{} ltc:{}", cache_hit,
@@ -182,6 +184,7 @@ namespace leveldb {
         return result;
     }
 
+// 用于在1个文件中查找指定的key
     Status TableCache::Get(const ReadOptions &options, const FileMetaData *meta,
                            uint64_t file_number, uint32_t replica_id,
                            uint64_t file_size, int level,
@@ -196,7 +199,7 @@ namespace leveldb {
                     handle));
             Table *t = tf->table;
             s = t->InternalGet(options, k, arg, handle_result);
-            cache_->Release(handle);
+            cache_->Release(handle); // 释放这个
         }
         return s;
     }

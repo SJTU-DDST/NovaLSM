@@ -9,6 +9,7 @@
 
 namespace leveldb {
     void
+// 成批次的抓取metadata
     FetchMetadataFilesInParallel(const std::vector<const FileMetaData *> &files,
                                  const std::string &dbname,
                                  const Options &options,
@@ -18,7 +19,7 @@ namespace leveldb {
         std::vector<const FileMetaData *> batch;
         for (int i = 0; i < files.size(); i++) {
             if (batch.size() == FETCH_METADATA_BATCH_SIZE &&
-                files.size() - i > FETCH_METADATA_BATCH_SIZE) {
+                files.size() - i > FETCH_METADATA_BATCH_SIZE) { // 如果当前已经积累够了1个batch 而且剩下的可以凑多余1gebatch
                 fetched_files += batch.size();
                 FetchMetadataFiles(batch, dbname, options, client, env);
                 batch.clear();
@@ -32,12 +33,13 @@ namespace leveldb {
         NOVA_ASSERT(fetched_files == files.size());
     }
 
+// 抓取一个批次的文件的metadata
     void
     FetchMetadataFiles(const std::vector<const FileMetaData *> &files,
                        const std::string &dbname, const Options &options,
                        StoCBlockClient *client, Env *env) {
         // Fetch all metadata files in parallel.
-        char *backing_mems[files.size() * nova::NovaConfig::config->number_of_sstable_metadata_replicas];
+        char *backing_mems[files.size() * nova::NovaConfig::config->number_of_sstable_metadata_replicas]; // 一次抓取一个批次的metadata文件
         int index = 0;
         for (int i = 0; i < files.size(); i++) {
             auto meta = files[i];
@@ -91,6 +93,7 @@ namespace leveldb {
         }
     }
 
+// 1个compaction的任务
     Compaction::Compaction(VersionFileMap *input_version,
                            const InternalKeyComparator *icmp,
                            const Options *options, int level, int target_level)
@@ -139,6 +142,7 @@ namespace leveldb {
         return debug;
     }
 
+// 这种情况代表只是移动过去就好
     bool Compaction::IsTrivialMove() const {
 //         Avoid a move if there is lots of overlapping grandparent data.
 //         Otherwise, the move could create a parent file that will require
@@ -196,7 +200,7 @@ namespace leveldb {
         return stats;
     }
 
-
+// 初始化实际的compaction工作
     CompactionJob::CompactionJob(std::function<uint64_t(void)> &fn_generator,
                                  leveldb::Env *env, const std::string &dbname,
                                  const leveldb::Comparator *user_comparator,
@@ -209,6 +213,7 @@ namespace leveldb {
               bg_thread_(bg_thread), table_cache_(table_cache) {
     }
 
+// 开一个新的输出compaction的结果的的文件
     Status CompactionJob::OpenCompactionOutputFile(CompactionState *compact) {
         assert(compact != nullptr);
         assert(compact->builder == nullptr);
@@ -243,10 +248,11 @@ namespace leveldb {
                 bg_thread_->rand_seed(),
                 filename);
         compact->outfile = new MemWritableFile(stoc_writable_file);
-        compact->builder = new TableBuilder(options_, compact->outfile);
+        compact->builder = new TableBuilder(options_, compact->outfile); // 做一个出来
         return Status::OK();
     }
 
+// 结束当前正在compact的file
     Status
     CompactionJob::FinishCompactionOutputFile(const ParsedInternalKey &ik,
                                               CompactionState *compact,
@@ -306,6 +312,7 @@ namespace leveldb {
         return s;
     }
 
+// compaction的实际工作 可选input和outputtype 分为sstable和memtable
     Status
     CompactionJob::CompactTables(CompactionState *compact,
                                  Iterator *input,
@@ -317,12 +324,12 @@ namespace leveldb {
                                          const Slice &value)> &add_to_memtable) {
         const uint64_t start_micros = env_->NowMicros();
         std::string output;
-        if (input_type == CompactInputType::kCompactInputMemTables) {
+        if (input_type == CompactInputType::kCompactInputMemTables) { // 输入是memtable
             output = fmt::format(
                     "bg[{}] Flushing {} memtables",
                     bg_thread_->thread_id(),
                     stats->input_source.num_files);
-        } else {
+        } else { // 输入是sstable
             output = fmt::format(
                     "bg[{}] Major Compacting {}@{} + {}@{} files",
                     bg_thread_->thread_id(),
@@ -346,11 +353,11 @@ namespace leveldb {
         SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
         std::vector<std::string> keys;
         uint64_t memtable_size = 0;
-        while (input->Valid()) {
+        while (input->Valid()) { // 遍历
             Slice key = input->key();
-            NOVA_ASSERT(ParseInternalKey(key, &ikey));
+            NOVA_ASSERT(ParseInternalKey(key, &ikey)); // 取出key
 
-            if (output_type == kCompactOutputSSTables &&
+            if (output_type == kCompactOutputSSTables && // 
                 compact->ShouldStopBefore(key, user_comparator_) &&
                 compact->builder != nullptr &&
                 compact->builder->NumEntries() > 0) {
@@ -364,7 +371,7 @@ namespace leveldb {
             bool drop = false;
             if (!has_current_user_key ||
                 user_comparator_->Compare(ikey.user_key,
-                                          Slice(current_user_key)) !=
+                                          Slice(current_user_key)) != // 一个key第一次出现
                 0) {
                 // First occurrence of this user key
                 current_user_key.assign(ikey.user_key.data(),
@@ -373,7 +380,7 @@ namespace leveldb {
                 last_sequence_for_key = kMaxSequenceNumber;
             }
 
-            if (last_sequence_for_key <= compact->smallest_snapshot) {
+            if (last_sequence_for_key <= compact->smallest_snapshot) { // 如果这个key的sequence值小于这个最小的snapshot值的话
                 // Hidden by an newer entry for same user key
                 drop = true;  // (A)
             }
@@ -387,28 +394,28 @@ namespace leveldb {
                 compact->compaction->IsBaseLevelForKey(ikey.user_key),
                 (int)last_sequence_for_key, (int)compact->smallest_snapshot);
 #endif
-            if (drop && drop_duplicates) {
+            if (drop && drop_duplicates) { // 发现sequence不合以及要换掉duplicate的的话 就直接
 //                RDMA_LOG(rdmaio::DEBUG)
 //                    << fmt::format("drop key-{}", ikey.FullDebugString());
                 input->Next();
                 continue;
             } else {
                 // Open output file if necessary
-                if (output_type == kCompactOutputSSTables &&
+                if (output_type == kCompactOutputSSTables && // 如果要求输出sstable文件 就开一个
                     compact->builder == nullptr) {
                     status = OpenCompactionOutputFile(compact);
                     if (!status.ok()) {
                         break;
                     }
                 }
-                if (output_type == kCompactOutputSSTables &&
+                if (output_type == kCompactOutputSSTables && // 如果当前key是第一个key的话
                     compact->builder->NumEntries() == 0) {
-                    compact->current_output()->smallest.DecodeFrom(key);
+                    compact->current_output()->smallest.DecodeFrom(key); // 加一个最小值
                 }
 //                RDMA_LOG(rdmaio::DEBUG)
 //                    << fmt::format("add key-{}", ikey.FullDebugString());
 //                keys.push_back(ikey.DebugString());
-                if (output_type == kCompactOutputSSTables) {
+                if (output_type == kCompactOutputSSTables) { // 如果要求输出的是sstable
                     compact->current_output()->largest.DecodeFrom(key);
                     if (!compact->builder->Add(key, input->value())) {
                         std::string added_keys;
@@ -430,7 +437,7 @@ namespace leveldb {
 
                 // Close output file if it is big enough
                 if (output_type == kCompactOutputSSTables &&
-                    compact->builder->FileSize() >= options_.max_file_size) {
+                    compact->builder->FileSize() >= options_.max_file_size) { // 如果已经达到了output key的大小
                     status = FinishCompactionOutputFile(ikey, compact, input);
                     if (!status.ok()) {
                         break;

@@ -205,7 +205,7 @@ namespace nova {
         read_options.rdma_backing_mem_size = worker->rdma_backing_mem_size;
         read_options.cfg_id = server_cfg_id;
 
-        leveldb::Status s = db->Get(read_options, key, &value);
+        leveldb::Status s = db->Get(read_options, key, &value); //读出来
         NOVA_ASSERT(s.ok())
             << fmt::format("k:{} status:{}", key.ToString(), s.ToString());
 

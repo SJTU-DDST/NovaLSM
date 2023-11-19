@@ -158,6 +158,7 @@ namespace leveldb {
         // Files produced by compaction
         FileMetaData *current_output() { return &outputs[outputs.size() - 1]; }
 
+// 目前压缩的结果
         explicit CompactionState(Compaction *c, SubRanges *s, SequenceNumber n)
                 : compaction(c),
                   subranges(s),
@@ -171,13 +172,14 @@ namespace leveldb {
 
         CompactionStats BuildStats();
 
+//
         bool ShouldStopBefore(const Slice &internal_key,
                               const Comparator *user_comparator) {
             bool subrange_stop = false;
             bool compaction_stop = false;
             if (subranges) {
                 Slice userkey = ExtractUserKey(internal_key);
-                if (subrange_index == -1) {
+                if (subrange_index == -1) { // 找到包含internal key的subrange
                     // Returns the first subrange that has its userkey < upper.
                     while (subrange_index < subranges->subranges.size()) {
                         const SubRange &sr = subranges->subranges[subrange_index];
@@ -220,6 +222,7 @@ namespace leveldb {
         uint64_t total_bytes = 0;
     };
 
+// major compaction的实质类??
     class CompactionJob {
     public:
         CompactionJob(std::function<uint64_t(void)> &fn_generator,

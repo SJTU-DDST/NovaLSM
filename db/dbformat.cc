@@ -239,6 +239,7 @@ namespace leveldb {
                DecodeFixed32(ptr, &replica_id) && DecodeFixed32(ptr, &dest_stoc_file_id);
     }
 
+// 选一个replica
     int FileMetaData::SelectReplica() const {
         if (block_replica_handles.size() == 1) {
             return 0;

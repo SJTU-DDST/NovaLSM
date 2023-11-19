@@ -181,6 +181,7 @@ namespace leveldb {
         NOVA_ASSERT(selected_storages->size() == nstocs);
     }
 
+// nstoc是需要进行的compaction的个数
     void StorageSelector::SelectAvailableStoCsForCompaction(std::vector<uint32_t> *selected_storages, uint32_t nstocs) {
         nova::Servers *available_stocs = available_stoc_servers;
         for (int i = 0; i < nstocs; i++) {

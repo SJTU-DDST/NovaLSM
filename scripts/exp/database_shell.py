@@ -300,11 +300,17 @@ def shellGet():
     pass
 
 def putAlot(novaClient, ops):
+    
+    keys = list(range(0, ops))
+    
     for i in range(0, ops):
-        novaClient.put(0, i, "a" * value_size, 0)
+        novaClient.put(0, keys[i], "a" * value_size, 0)
 def getAlot(novaClient, ops):
+    
+    keys = list(range(0, ops))
+    
     for i in range(0, ops):
-        novaClient.get(0, i, 0)
+        novaClient.get(0, keys[i], 0)
 
 # python scripts/exp/database_shell.py --nova_servers=192.168.98.74:10438
     

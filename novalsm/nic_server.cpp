@@ -687,7 +687,7 @@ namespace nova {
             storage_worker_threads.emplace_back(&StorageWorker::Start, compaction_storage_workers[i]);
         }
 
-//开启migrate线程
+//开启migrate线程 use order flush 看情况
         if (NovaConfig::config->enable_subrange_reorg && NovaConfig::config->use_ordered_flush) {
             auto client = new leveldb::StoCBlockClient(0, stoc_file_manager);
             client->rdma_msg_handlers_ = bg_rdma_msg_handlers;
@@ -795,15 +795,15 @@ namespace nova {
         }
 
 //开启统计量的线程
-        stat_thread_ = new NovaStatThread;
-        stat_thread_->bg_storage_workers_ = bg_storage_workers;
-        stat_thread_->fg_storage_workers_ = fg_storage_workers;
-        stat_thread_->compaction_storage_workers_ = compaction_storage_workers;
-        stat_thread_->bgs_ = bg_flush_memtable_threads;
+        // stat_thread_ = new NovaStatThread;
+        // stat_thread_->bg_storage_workers_ = bg_storage_workers;
+        // stat_thread_->fg_storage_workers_ = fg_storage_workers;
+        // stat_thread_->compaction_storage_workers_ = compaction_storage_workers;
+        // stat_thread_->bgs_ = bg_flush_memtable_threads;
 
-        stat_thread_->async_workers_ = fg_rdma_msg_handlers;
-        stat_thread_->async_compaction_workers_ = bg_rdma_msg_handlers;
-        stats_t_.emplace_back(std::thread(&NovaStatThread::Start, stat_thread_));
+        // stat_thread_->async_workers_ = fg_rdma_msg_handlers;
+        // stat_thread_->async_compaction_workers_ = bg_rdma_msg_handlers;
+        // stats_t_.emplace_back(std::thread(&NovaStatThread::Start, stat_thread_));
 
         NovaGlobalVariables::global.is_ready_to_process_requests = true; // 统计量的线程开启之后说明可以开始接收请求了
         {

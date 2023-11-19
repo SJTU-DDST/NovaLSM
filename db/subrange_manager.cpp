@@ -291,15 +291,16 @@ namespace leveldb {
         return subrange_id;
     }
 
+// major reorganization 核心调用
     bool SubRangeManager::MajorReorg() {
         std::vector<double> insertion_rates;
         std::vector<SubRange> &subranges = latest_->subranges;
         // Perform major reorg.
-        std::vector<std::vector<AtomicMemTable *>> subrange_imms;
-        uint32_t nslots = options_.num_memtables / options_.num_memtable_partitions;
+        std::vector<std::vector<AtomicMemTable *>> subrange_imms; // 每个subrange的memtable
+        uint32_t nslots = options_.num_memtables / options_.num_memtable_partitions; // 应该是重新计算各种分配??
         uint32_t remainder = options_.num_memtables % options_.num_memtable_partitions;
         uint32_t slot_id = 0;
-        for (int i = 0; i < options_.num_memtable_partitions; i++) {
+        for (int i = 0; i < options_.num_memtable_partitions; i++) { //处理每个partition
             std::vector<AtomicMemTable *> memtables;
             (*partitioned_active_memtables_)[i]->mutex.Lock();
             MemTable *m = (*partitioned_active_memtables_)[i]->active_memtable;
@@ -312,7 +313,7 @@ namespace leveldb {
                 slots += 1;
                 remainder--;
             }
-            for (int j = 0; j < slots; j++) {
+            for (int j = 0; j < slots; j++) { //找到自己partition对应的memtable 以及 immutable memtable??
                 uint32_t imm_id = (*partitioned_imms_)[slot_id + j];
                 if (imm_id == 0) {
                     continue;
@@ -330,12 +331,12 @@ namespace leveldb {
         // We have all memtables now.
         // Determine the number of samples to retrieve from each subrange.
         uint32_t sample_size_per_subrange = UINT32_MAX;
-        std::vector<uint32_t> subrange_nputs;
-        std::vector<std::vector<uint32_t>> subrange_mem_nputs;
-        for (int i = 0; i < subrange_imms.size(); i++) {
+        std::vector<uint32_t> subrange_nputs; // 每个subrange对应的记录数量
+        std::vector<std::vector<uint32_t>> subrange_mem_nputs; // 每个subrange对应的memtable的记录数量
+        for (int i = 0; i < subrange_imms.size(); i++) { // 每一个partition / subrange
             uint32_t nputs = 0;
             std::vector<uint32_t> ns;
-            for (int j = 0; j < subrange_imms[i].size(); j++) {
+            for (int j = 0; j < subrange_imms[i].size(); j++) { // subrange种每一个memtable中的记录数量
                 uint32_t n = subrange_imms[i][j]->nentries_.load(std::memory_order_relaxed);
                 ns.push_back(n);
                 nputs += n;
@@ -346,24 +347,25 @@ namespace leveldb {
                 sample_size_per_subrange = std::min(sample_size_per_subrange, nputs);
             }
         }
+        // 这里是为了决定采样的数量?????????
 
         // Sample from each memtable.
         sample_size_per_subrange = (double) (sample_size_per_subrange) * options_.subrange_reorg_sampling_ratio;
-        std::map<uint64_t, double> userkey_rate;
-        double total_rate = 0;
-        for (int i = 0; i < subrange_imms.size(); i++) {
+        std::map<uint64_t, double> userkey_rate; // 某个key对应的insertion_ratio的和 emmm 表征了key的插入频次
+        double total_rate = 0; // keyrate中所有项频次之和
+        for (int i = 0; i < subrange_imms.size(); i++) { // 每一个subrange/partition
             SubRange &sr = subranges[i];
             uint32_t total_puts = subrange_nputs[i];
             double insertion_ratio = subranges[i].insertion_ratio;
 
-            for (int j = 0; j < subrange_imms[i].size(); j++) {
+            for (int j = 0; j < subrange_imms[i].size(); j++) { // subrange种每一个memtable 
                 AtomicMemTable *mem = subrange_imms[i][j];
                 uint32_t sample_size = 0;
-                if (total_puts <= sample_size_per_subrange) {
+                if (total_puts <= sample_size_per_subrange) { // 如果当前subrange的总记录数还没有要sample的数量多
                     // sample everything.
                     sample_size = sample_size_per_subrange;
                 } else {
-                    sample_size = ((double) subrange_mem_nputs[i][j] / (double) total_puts) * sample_size_per_subrange;
+                    sample_size = ((double) subrange_mem_nputs[i][j] / (double) total_puts) * sample_size_per_subrange; // 当前的memtable要sample的数量
                 }
                 uint32_t samples = 0;
                 leveldb::Iterator *it = mem->memtable_->NewIterator(
@@ -390,6 +392,7 @@ namespace leveldb {
             }
         }
 
+        // 如果采样出来的key的总数小于partition个数的2倍 就不进行major reorganization了 这里的做法是为什么
         if (userkey_rate.size() <= options_.num_memtable_partitions * 2) {
             num_skipped_major_reorgs++;
             // Unref all immutable memtables.
@@ -398,28 +401,28 @@ namespace leveldb {
                     subrange_imms[i][j]->Unref(dbname_);
                 }
             }
-            delete latest_;
+            delete latest_; // ???? 删了旧的 subrange..?????????????
             latest_ = nullptr;
             return false;
         }
 
-        num_major_reorgs++;
-        subranges.clear();
+        num_major_reorgs++; // 开始进行major reorganization
+        subranges.clear(); // 基本还原了
 
         // First, construct subranges with each subrange containing one tiny
         // range.
         std::vector<Range> tmp_subranges;
-        ConstructRanges(userkey_rate, total_rate, lower_bound_, upper_bound_,
+        ConstructRanges(userkey_rate, total_rate, lower_bound_, upper_bound_, // key对应的插入频次， 总的插入频次， 上下限，  
                         options_.num_memtable_partitions, true, &tmp_subranges);
         // Second, break each subrange that contains more than one value into
         // alpha tiny ranges.
         for (int i = 0; i < tmp_subranges.size(); i++) {
-            std::map<uint64_t, double> sub_userkey_rate;
+            std::map<uint64_t, double> sub_userkey_rate; // 1个subrange内key和频次
             uint64_t lower = tmp_subranges[i].lower_int();
             uint64_t upper = tmp_subranges[i].upper_int();
             SubRange sr = {};
-            if (upper - lower > 1) {
-                double sub_total_share = 0;
+            if (upper - lower > 1) { // 如果当前的subrange有多于1个的key
+                double sub_total_share = 0; // 1个
                 for (auto it : userkey_rate) {
                     if (it.first < lower) {
                         continue;
@@ -432,10 +435,10 @@ namespace leveldb {
                 }
                 ConstructRanges(sub_userkey_rate, sub_total_share,
                                 lower, upper,
-                                options_.num_tiny_ranges_per_subrange,
-                                false, &sr.tiny_ranges);
+                                options_.num_tiny_ranges_per_subrange, // 一般是10
+                                false, &sr.tiny_ranges); // 用同样的方法做tiny ranges
             } else {
-                sr.tiny_ranges.push_back(std::move(tmp_subranges[i]));
+                sr.tiny_ranges.push_back(std::move(tmp_subranges[i])); // 只有1个key就直接放进去就好
             }
             sr.num_duplicates = sr.first().num_duplicates;
             subranges.push_back(std::move(sr));
@@ -461,7 +464,7 @@ namespace leveldb {
         int remaining_num_duplicates = 0;
         int start = -1;
         int end = -1;
-        for (int i = 0; i < latest_->subranges.size(); i++) {
+        for (int i = 0; i < latest_->subranges.size(); i++) { // 找到index对应的范围的起始subrange和结束subrange
             SubRange &r = latest_->subranges[i];
             if (r.num_duplicates == 0) {
                 continue;
@@ -476,9 +479,9 @@ namespace leveldb {
             }
         }
 
-        remaining_num_duplicates = end - start;
+        remaining_num_duplicates = end - start; // 这个duplicate数量等于 这个range的subrange数量-1
         NOVA_ASSERT(sr.num_duplicates == remaining_num_duplicates + 1);
-        double share = sr.ninserts / remaining_num_duplicates;
+        double share = sr.ninserts / remaining_num_duplicates; // 把index对应的subrange的东西分给别的duplicate
         for (int i = start; i <= end; i++) {
             SubRange &r = latest_->subranges[i];
             r.tiny_ranges[0].ninserts += share;
@@ -493,25 +496,26 @@ namespace leveldb {
         }
     }
 
+// major reorganization重新做subrange
     void SubRangeManager::ConstructRanges(
             const std::map<uint64_t, double> &userkey_rate, double total_rate,
-            uint64_t lower, uint64_t upper, uint32_t num_ranges_to_construct,
+            uint64_t lower, uint64_t upper, uint32_t num_ranges_to_construct, // 一般就是partition的数量
             bool is_constructing_subranges,
             std::vector<leveldb::Range> *ranges) {
         NOVA_ASSERT(upper - lower > 1);
         NOVA_ASSERT(num_ranges_to_construct > 1);
-        double share_per_range = total_rate / (double) num_ranges_to_construct;
-        double fair_rate = total_rate / (double) num_ranges_to_construct;
+        double share_per_range = total_rate / (double) num_ranges_to_construct; // 每个subrange对应的比例 (应该动态计算 这个看起来是针对range
+        double fair_rate = total_rate / (double) num_ranges_to_construct; // 一个key平均应该对应的比例 这个用于计算key应该dupliate几个
         double total = total_rate;
 
         uint32_t current_lower = lower;
         uint32_t current_upper = 0;
         double current_rate = 0.0;
-        for (auto it : userkey_rate) {
+        for (auto it : userkey_rate) { // 遍历这个抽样产生的key和频次
             NOVA_ASSERT(it.first >= lower);
             NOVA_ASSERT(it.first < upper);
-            double rate = it.second;
-            if (rate >= fair_rate && is_constructing_subranges) {
+            double rate = it.second; // key对应的插入频次
+            if (rate >= fair_rate && is_constructing_subranges) { // 如果这个key的rate高于正常的rate 而且 正在做?
                 if (options_.enable_detailed_stats) {
                     NOVA_LOG(rdmaio::INFO)
                         << fmt::format("hot key {}:{}:{}", it.first,
@@ -519,7 +523,7 @@ namespace leveldb {
                                        fair_rate / total);
                 }
                 // close the current subrange.
-                if (current_lower < it.first) {
+                if (current_lower < it.first) { // 如果当前在做的这个subrange 的lower低于key， 那么就直接先放一个subrange进去?? (这样是不包括这个key的)
                     current_upper = it.first;
                     Range r = {};
                     r.lower = std::to_string(current_lower);
@@ -528,7 +532,7 @@ namespace leveldb {
                     (*ranges).push_back(std::move(r));
                 }
 
-                int num_duplicates = (int) std::ceil(rate / fair_rate);
+                int num_duplicates = (int) std::ceil(rate / fair_rate); // 看看需要放几个这个range
                 for (int i = 0; i < num_duplicates; i++) {
                     Range r = {};
                     r.lower = std::to_string(it.first);
@@ -537,16 +541,16 @@ namespace leveldb {
                     r.insertion_ratio = rate / num_duplicates;
                     (*ranges).push_back(std::move(r));
                 }
-                current_lower = it.first + 1;
-                total_rate -= it.second;
+                current_lower = it.first + 1; // 为
+                total_rate -= it.second; // 
                 current_rate = 0;
                 share_per_range =
-                        total_rate / (num_ranges_to_construct - ranges->size());
+                        total_rate / (num_ranges_to_construct - ranges->size()); // 更新以下剩下的range应该分配到的比例??
                 continue;
             }
 
-            if (current_rate + rate > share_per_range) {
-                if (current_lower == it.first) {
+            if (current_rate + rate > share_per_range) { // 如果当前积累的比例可以做一个subrange了
+                if (current_lower == it.first) { // 当前的lower就是这个key
                     current_upper = it.first + 1;
                     Range r = {};
                     r.lower = std::to_string(current_lower);
@@ -555,7 +559,7 @@ namespace leveldb {
                     (*ranges).push_back(std::move(r));
 
                     current_lower = it.first + 1;
-                    if (ranges->size() + 1 == num_ranges_to_construct) {
+                    if (ranges->size() + 1 == num_ranges_to_construct) { // 如果就剩1个subrange的容量了 
                         break;
                     }
                     current_rate = 0;
@@ -563,7 +567,7 @@ namespace leveldb {
                     share_per_range = total_rate / (num_ranges_to_construct -
                                                     ranges->size());
                     continue;
-                } else {
+                } else {// ~
                     current_upper = it.first;
                     Range r = {};
                     r.lower = std::to_string(current_lower);
@@ -584,9 +588,9 @@ namespace leveldb {
             total_rate -= rate;
         }
 
-        if (is_constructing_subranges) {
+        if (is_constructing_subranges) { // major reorganization的时候为真
             Range r = {};
-            r.lower = std::to_string(current_lower);
+            r.lower = std::to_string(current_lower); // ????????????????
             ranges->push_back(std::move(r));
             NOVA_ASSERT(ranges->size() == num_ranges_to_construct);
         } else {
@@ -601,12 +605,13 @@ namespace leveldb {
         (*ranges)[0].lower = std::to_string(lower);
         (*ranges->rbegin()).upper = std::to_string(upper);
     }
+// 这里的处理好低效
 
 // 销毁目前subrange中的所有duplicate，以便更好地进行划分?
     bool
     SubRangeManager::DestroyDuplicates(int subrange_id, bool force) {
         SubRange &sr = latest_->subranges[subrange_id];
-        double fair_ratio = 1.0 / (double) (options_.num_memtable_partitions);
+        double fair_ratio = 1.0 / (double) (options_.num_memtable_partitions); // 每个partition应该承担的访问比例
         if (sr.num_duplicates == 0) { //如果没有duplicate 就不用distroy了
             return false;
         }
@@ -617,7 +622,7 @@ namespace leveldb {
         }
 
         double percent = sr.insertion_ratio / fair_ratio;
-        if (percent >= 0.5) {
+        if (percent >= 0.5) { // 如果占据了正常比例的50%以上 就不用改动它以及它的duplicate?
             return false;
         }
         num_minor_reorgs_for_dup++;
@@ -627,21 +632,22 @@ namespace leveldb {
         }
         // destroy this duplicate.
         MoveShareForDuplicateSubRange(subrange_id);
-        latest_->subranges.erase(latest_->subranges.begin() + subrange_id);
+        latest_->subranges.erase(latest_->subranges.begin() + subrange_id); // 把当前的subrange删除掉
         latest_->AssertSubrangeBoundary(user_comparator_);
         return true;
     }
 
+// 查看是否需要对目前subrange进行分裂
     bool SubRangeManager::CreateDuplicates(int subrange_id) {
         SubRange &sr = latest_->subranges[subrange_id];
-        if (!sr.IsAPoint(user_comparator_)) {
+        if (!sr.IsAPoint(user_comparator_)) { // 不是point就不需要分裂? 查看是不是point
             return false;
         }
-        if (sr.insertion_ratio <= 1.5 * fair_ratio_) {
+        if (sr.insertion_ratio <= 1.5 * fair_ratio_) { // 如果访问的比例小于1.5倍的平均比例
             return false;
         }
         int new_num_duplicates =
-                (int) std::floor(sr.insertion_ratio / fair_ratio_) - 1;
+                (int) std::floor(sr.insertion_ratio / fair_ratio_) - 1; // 看看应该分为几个subrange
         if (new_num_duplicates == 0) {
             return false;
         }
@@ -650,12 +656,12 @@ namespace leveldb {
         uint64_t upper = sr.tiny_ranges[0].upper_int();
         // Update num duplicates.
         uint32_t total_num_dups = sr.num_duplicates + new_num_duplicates + 1;
-        if (sr.num_duplicates == 0) {
+        if (sr.num_duplicates == 0) { // 这里duplicate计算有点emmmm ..
             total_num_dups = sr.num_duplicates + new_num_duplicates + 1;
         } else {
             total_num_dups = sr.num_duplicates + new_num_duplicates;
         }
-        if (sr.num_duplicates > 0) {
+        if (sr.num_duplicates > 0) { // 如果原来这个subrange是有duplicate的 
             int start = -1;
             int end = -1;
             for (int i = 0; i < latest_->subranges.size(); i++) {
@@ -676,9 +682,9 @@ namespace leveldb {
                 if (start == -1) {
                     start = i;
                 }
-            }
+            }// 找到这个subrange对应的开始点和结束点
             NOVA_ASSERT(start != -1 && end != -1);
-            for (int i = start; i <= end; i++) {
+            for (int i = start; i <= end; i++) { // 更新新的duplicate数量
                 SubRange &r = latest_->subranges[i];
                 r.tiny_ranges[0].num_duplicates = total_num_dups;
                 r.num_duplicates = total_num_dups;
@@ -704,7 +710,7 @@ namespace leveldb {
             new_sr.tiny_ranges.push_back(std::move(tinyrange));
             latest_->subranges.insert(
                     latest_->subranges.begin() + subrange_id + 1, new_sr);
-        }
+        } // 将新加的subrange加入到对应的subrange后面
         {
             SubRange &sr = latest_->subranges[subrange_id];
             sr.num_duplicates = total_num_dups;
@@ -721,7 +727,7 @@ namespace leveldb {
         // Remove subranges if the number of subranges exceeds max.
         // For each removed subrange, move its tiny ranges to its neighboring
         // subranges.
-        while (latest_->subranges.size() > options_.num_memtable_partitions) {
+        while (latest_->subranges.size() > options_.num_memtable_partitions) { // 由于新增了subrange 所以要检查
             // remove the subrange that has the lowest insertion rate.
             double min_ratio = 1.0;
             int min_range_id = -1;
@@ -733,18 +739,18 @@ namespace leveldb {
                         continue;
                     }
                 }
-                if (min_sr.insertion_ratio < min_ratio) {
+                if (min_sr.insertion_ratio < min_ratio) { // 找到操作最小的那个subrange
                     min_ratio = min_sr.insertion_ratio;
                     min_range_id = i;
                 }
             }
             NOVA_ASSERT(min_range_id != -1);
-            if (latest_->subranges[min_range_id].num_duplicates > 0) {
+            if (latest_->subranges[min_range_id].num_duplicates > 0) { //如果这个range有duplicate 对这个range做处理
                 DestroyDuplicates(min_range_id, true);
                 continue;
             }
 
-            int left = min_range_id - 1;
+            int left = min_range_id - 1; // 这个subtange 不是duplicate的 这个subrange操作很少 或许可以合并
             int right = min_range_id + 1;
             bool merge_left = true;
             if (left >= 0 && right < latest_->subranges.size()) {
@@ -758,13 +764,13 @@ namespace leveldb {
                 merge_left = true;
             } else {
                 merge_left = false;
-            }
-            if (merge_left && latest_->subranges[left].num_duplicates > 0) {
+            } // 看看可不可以与左边的合并
+            if (merge_left && latest_->subranges[left].num_duplicates > 0) { // 如果左边是duplicate的 先压缩
                 DestroyDuplicates(left, true);
             } else if (!merge_left &&
-                       latest_->subranges[right].num_duplicates > 0) {
+                       latest_->subranges[right].num_duplicates > 0) { // 如果右边是 先压缩
                 DestroyDuplicates(right, true);
-            } else {
+            } else { // 这里想合并的部分
                 bool dummy;
                 int nranges = latest_->subranges[min_range_id].tiny_ranges.size();
                 int pushed_ranges = PushTinyRanges(min_range_id, false, &dummy);
@@ -781,9 +787,10 @@ namespace leveldb {
         return true;
     }
 
+// 将目前的subrange push到邻居的subrange
     int
     SubRangeManager::PushTinyRanges(int subrangeId, bool stopWhenBelowFair,
-                                    bool *updated_prior) {
+                                    bool *updated_prior) { 
         // Push its tiny ranges to its neighbors.
         int left = subrangeId - 1;
         int right = subrangeId + 1;
@@ -792,7 +799,9 @@ namespace leveldb {
         SubRange *right_sr = nullptr;
         SubRange *min_sr = &latest_->subranges[subrangeId];
 
-        if (left >= 0 && latest_->subranges[left].num_duplicates == 0) {
+        // 选要合并的subrange
+
+        if (left >= 0 && latest_->subranges[left].num_duplicates == 0) { 
             left_sr = &latest_->subranges[left];
         }
         if (right < latest_->subranges.size() &&
@@ -811,9 +820,9 @@ namespace leveldb {
         if (right_sr) {
             right_ratio = right_sr->insertion_ratio;
         }
-        if (left_ratio != 1.0 || right_ratio != 1.0) {
+        if (left_ratio != 1.0 || right_ratio != 1.0) { // 如果两侧有一侧存在
             int direction = rand() % 2;
-            while (!min_sr->tiny_ranges.empty()) {
+            while (!min_sr->tiny_ranges.empty()) { // 将当前的subrange种tinyrange
                 Range &first = min_sr->first();
                 Range &last = min_sr->last();
                 bool push_left = false;
@@ -824,7 +833,7 @@ namespace leveldb {
                     } else {
                         push_left = false;
                     }
-                    direction = -1;
+                    direction = -1; //第一次push的时候选个随机的..??
                 } else {
                     if (left_ratio + first.insertion_ratio <
                         right_ratio + last.insertion_ratio) {
@@ -858,7 +867,7 @@ namespace leveldb {
                         }
                     }
                 }
-
+                // 到这里终于决定了 push到哪里
                 if (push_left) {
                     // move to left.
                     left_ratio += first.insertion_ratio;
@@ -888,12 +897,13 @@ namespace leveldb {
         return moved;
     }
 
+// minor reorganization的sample?
     std::vector<AtomicMemTable *>
     SubRangeManager::MinorSampling(int subrange_id) {
         SubRange &sr = latest_->subranges[subrange_id];
-        double fair = 1.0 / sr.tiny_ranges.size();
+        double fair = 1.0 / sr.tiny_ranges.size(); // 每个tiny range应该分得的份额
         uint32_t unfair_ranges = 0;
-        for (int i = 0; i < sr.tiny_ranges.size(); i++) {
+        for (int i = 0; i < sr.tiny_ranges.size(); i++) { // 计算下不平衡的tinyrange数量
             Range &r = sr.tiny_ranges[i];
             double diff = (r.insertion_ratio - fair) * 100.0 / fair;
             if (std::abs(diff) > SUBRANGE_REORG_DIFF_FROM_FAIR_THRESHOLD) {
@@ -902,7 +912,7 @@ namespace leveldb {
         }
         std::vector<AtomicMemTable *> subrange_imms;
         if ((double) unfair_ranges / (double) sr.tiny_ranges.size() >
-            SUBRANGE_MAJOR_REORG_THRESHOLD) {
+            SUBRANGE_MAJOR_REORG_THRESHOLD) { // 如果不平衡的tiny range数量很多
             // higher share.
             // Perform major reorg.
             uint32_t nslots = options_.num_memtables / options_.num_memtable_partitions;
@@ -989,16 +999,17 @@ namespace leveldb {
         return subrange_imms;
     }
 
+// 属于minor reorganization? 用于处理最不平衡的那个subrange 没到major reorganize的标准
     bool
     SubRangeManager::MinorRebalancePush(int subrange_id, bool *updated_prior) {
         SubRange &sr = latest_->subranges[subrange_id];
-        double totalRemoveInserts = (sr.insertion_ratio - fair_ratio_) * total_num_inserts_since_last_major_;
+        double totalRemoveInserts = (sr.insertion_ratio - fair_ratio_) * total_num_inserts_since_last_major_; // 需要移动的记录/inserts数量
 
-        if (totalRemoveInserts >= sr.ninserts) {
+        if (totalRemoveInserts >= sr.ninserts) { // ??????
             return false;
         }
 
-        if (sr.tiny_ranges.size() == 1) {
+        if (sr.tiny_ranges.size() == 1) { // 只有1个tiny range的话就拆不了
             return false;
         }
         NOVA_ASSERT(sr.insertion_ratio > fair_ratio_);
@@ -1024,7 +1035,7 @@ namespace leveldb {
         return success;
     }
 
-// 开启reorganize
+// 开启reorganize 核心调用 这里既包括了minor也包括了major
     void
     SubRangeManager::ReorganizeSubranges() {
         uint32_t cfgid = nova::NovaConfig::config->current_cfg_id;
@@ -1043,7 +1054,7 @@ namespace leveldb {
         latest_ = new SubRanges(*ref);
         range_lock_.Unlock();
         total_num_inserts_since_last_major_ = 0;
-        fair_ratio_ = 1.0 / (double) (options_.num_memtable_partitions);
+        fair_ratio_ = 1.0 / (double) (options_.num_memtable_partitions); // 正常情况下每个partition应该分得的访问比例
         edit_.Clear();
 
         std::vector<SubRange> &subranges = latest_->subranges;
@@ -1051,7 +1062,7 @@ namespace leveldb {
         bool subrange_reorged = false;
         bool update_latest_subrange = false;
 
-// 计算各个range的总insert数量和比例
+// 计算各个subrange的总insert数量和比例
         for (int i = 0; i < subranges.size(); i++) {
             SubRange &sr = subranges[i];
             sr.ninserts = 0;
@@ -1068,13 +1079,13 @@ namespace leveldb {
             sr.insertion_ratio = sr.ninserts / total_num_inserts_since_last_major_;
         }
 
-// 如果到了interval
+// 如果到了interval 一般要么是到了interval 要么是到了warmup 如果现在的seq number与上次minor reorganization 的 interval到了
         if (latest_seq_number - last_minor_reorg_seq_ > SUBRANGE_MINOR_REORG_INTERVAL) {
             int pivot = 0;
             bool success = false;
             while (pivot < subranges.size()) {
                 SubRange &sr = subranges[pivot];
-                if (DestroyDuplicates(pivot, false)) {
+                if (DestroyDuplicates(pivot, false)) { // true删了 false 没删 如果删了那么pivot就是下一个要处理的subrange 删掉duplicate中share过小的部分
                     // No need to update pivot since it already points to the
                     // next range.
                     success = true;
@@ -1099,21 +1110,23 @@ namespace leveldb {
                 last_minor_reorg_seq_ = now;
             }
         }
+        // 以上完成了 minor reorganization
+        // 以下应该是 major reorganization 
 
         double most_unfair = 0;
         int most_unfair_subrange = -1;
         for (int i = 0; i < subranges.size(); i++) {
             SubRange &sr = subranges[i];
-            double diff = (sr.insertion_ratio - fair_ratio_) * 100.0 / fair_ratio_;
+            double diff = (sr.insertion_ratio - fair_ratio_) * 100.0 / fair_ratio_; // 在20%的话 就是一个unfair sburange
             if (std::abs(diff) > SUBRANGE_REORG_DIFF_FROM_FAIR_THRESHOLD &&
                 !sr.IsAPoint(user_comparator_)) {
                 unfair_subranges += 1;
             }
             bool eligble_for_minor =
-                    sr.ninserts > 100 && latest_seq_number - last_minor_reorg_seq_ > SUBRANGE_MINOR_REORG_INTERVAL;
+                    sr.ninserts > 100 && latest_seq_number - last_minor_reorg_seq_ > SUBRANGE_MINOR_REORG_INTERVAL; //如果足够的insert之后还是这个结果 说明不能忽略这个分布不均匀
             if (eligble_for_minor) {
                 if (diff > SUBRANGE_REORG_DIFF_FROM_FAIR_THRESHOLD &&
-                    diff > most_unfair) {
+                    diff > most_unfair) { // 记录下目前最不平衡的subrange
                     most_unfair = diff;
                     most_unfair_subrange = i;
                 }
@@ -1122,18 +1135,18 @@ namespace leveldb {
 
         ImpactedDranges impacted_dranges;
         impacted_dranges.generation_id = flush_order_ ? flush_order_->latest_generation_id.load() + 1 : 0;
-        if (unfair_subranges / (double) subranges.size() > SUBRANGE_MAJOR_REORG_THRESHOLD &&
-            latest_seq_number - last_major_reorg_seq_ > SUBRANGE_MAJOR_REORG_INTERVAL) {
-            subrange_reorged = MajorReorg();
+        if (unfair_subranges / (double) subranges.size() > SUBRANGE_MAJOR_REORG_THRESHOLD && // 如果不平衡的subrange达到了30%
+            latest_seq_number - last_major_reorg_seq_ > SUBRANGE_MAJOR_REORG_INTERVAL) { // 且已经到了major reorganization的次数
+            subrange_reorged = MajorReorg(); // 完成major reorganization 如果是false的话也会清空??
             update_latest_subrange = subrange_reorged;
             impacted_dranges.lower_drange_index = 0;
             impacted_dranges.upper_drange_index = partitioned_active_memtables_->size() - 1;
-            if (subrange_reorged) {
+            if (subrange_reorged) { // reorganize成功 / 也可能没有进行reorganization
                 uint64_t now = versions_->last_sequence_;
                 last_major_reorg_seq_ = now;
                 last_minor_reorg_seq_ = now;
             }
-        } else if (most_unfair != 0) {
+        } else if (most_unfair != 0) { // 不然的话还是再做一次minor reorganization就好
             // Perform minor.
             bool updated_prior = false;
             subrange_reorged = MinorRebalancePush(most_unfair_subrange, &updated_prior);
@@ -1146,14 +1159,14 @@ namespace leveldb {
             }
         }
 
-        if (subrange_reorged) {
+        if (subrange_reorged) { // 如果经过了minor reorganization或者major reorganization
             ComputeCompactionThreadsAssignment(latest_);
             for (int i = 0; i < latest_->subranges.size(); i++) {
                 edit_.UpdateSubRange(i, latest_->subranges[i].tiny_ranges, latest_->subranges[i].num_duplicates);
             }
             versions_->AppendChangesToManifest(&edit_, manifest_file_, options_.manifest_stoc_ids);
         }
-        if (update_latest_subrange) {
+        if (update_latest_subrange) { // 如果更新了subranges
             if (ref->subranges.size() != latest_->subranges.size() ||
                 ref->subranges.size() < options_.num_memtable_partitions) {
                 impacted_dranges.lower_drange_index = 0;

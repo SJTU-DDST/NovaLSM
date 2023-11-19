@@ -19,6 +19,7 @@ namespace leveldb {
             << fmt::format("Create lookup index of size {}", size);
     }
 
+// 查找key处于哪个memtable中
     uint64_t LookupIndex::Lookup(const leveldb::Slice &key, uint64_t hash) {
 //        NOVA_ASSERT(hash >= 0 && hash <= size_);
         TableLocation &loc = table_locator_[hash % size_];

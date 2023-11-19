@@ -48,6 +48,7 @@ namespace leveldb {
         Block *index_block;
     };
 
+// 打开???这个sstable文件????
     Status Table::Open(const Options &options,
                        const ReadOptions &read_options,
                        const FileMetaData *meta,
@@ -67,7 +68,7 @@ namespace leveldb {
         h.size = Footer::kEncodedLength;
 
         auto f = reinterpret_cast<StoCRandomAccessFileClient *>(file);
-        Status s = f->Read(read_options, h, size - Footer::kEncodedLength,
+        Status s = f->Read(read_options, h, size - Footer::kEncodedLength, // 将footer的部分读出来
                            Footer::kEncodedLength,
                            &footer_input, footer_space);
         NOVA_ASSERT(footer_input.size() == Footer::kEncodedLength)
@@ -87,7 +88,7 @@ namespace leveldb {
             h.offset = footer.index_handle().offset();
             h.size = footer.index_handle().size();
             s = (*table)->ReadBlock(file, read_options, h,
-                                    &index_block_contents);
+                                    &index_block_contents); // 读出index block
         }
 
         if (s.ok()) {
@@ -333,6 +334,7 @@ namespace leveldb {
         return it->second + handle.offset;
     }
 
+// 在cache中找到的table里面找指定的key
     Status
     Table::InternalGet(const ReadOptions &options, const Slice &k, void *arg,
                        void (*handle_result)(void *, const Slice &,

@@ -733,6 +733,7 @@ namespace leveldb {
     }
 
 
+// 一般是ltc端建立一个访问文件的方式 这个也是文件
     StoCRandomAccessFileClientImpl::StoCRandomAccessFileClientImpl(
             Env *env, const Options &options, const std::string &dbname,
             uint64_t file_number, uint32_t replica_id,
@@ -758,7 +759,7 @@ namespace leveldb {
         NOVA_ASSERT(stoc_block_client);
         {
             auto metafile = TableFileName(dbname, file_number, FileInternalType::kFileData, replica_id);
-            if (!env_->FileExists(metafile)) {
+            if (!env_->FileExists(metafile)) { // 如果本地不存在 就去远端
                 NOVA_LOG(rdmaio::INFO)
                     << fmt::format("Fetch missing metadata db:{} fd:{} file {}", dbname, file_number,
                                    meta->DebugString());
@@ -850,6 +851,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 将之前指定的文件的所有都读进来
     Status StoCRandomAccessFileClientImpl::ReadAll(StoCClient *stoc_client) {
         uint32_t scid = mem_manager_->slabclassid(thread_id_, meta_->file_size);
         backing_mem_table_ = mem_manager_->ItemAlloc(thread_id_, scid);

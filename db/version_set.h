@@ -112,6 +112,7 @@ namespace leveldb {
             int seek_file_level;
         };
 
+// 当前是否需要major compaction
         bool NeedsCompaction() {
             if (compaction_score_ >= 1.0) {
                 NOVA_ASSERT(compaction_level_ >= 0 &&
@@ -237,9 +238,9 @@ namespace leveldb {
                 const Slice &begin,  // nullptr means before all keys
                 const Slice &end,    // nullptr means after all keys
                 std::vector<FileMetaData *> *outputs,
-                uint32_t limit = UINT32_MAX,
-                const std::set<uint64_t> &skip_files = {},
-                bool contained = false);
+                uint32_t limit = UINT32_MAX, // 默认能加多少加多少
+                const std::set<uint64_t> &skip_files = {}, // 默认不跳过
+                bool contained = false); // false默认
 
         void GetRange(const std::vector<FileMetaData *> &inputs,
                       Slice *smallest,
