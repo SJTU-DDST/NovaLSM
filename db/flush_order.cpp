@@ -17,12 +17,13 @@ namespace leveldb {
         return msg;
     }
 
+// 与subrange 的flush以及 各种generatio有关
     FlushOrder::FlushOrder(std::vector<MemTablePartition *> *partitioned_active_memtables)
             : partitioned_active_memtables_(partitioned_active_memtables), impacted_dranges_(nullptr),
               latest_generation_id(INIT_GEN_ID) {
     }
 
-//判断当前这个drange/partition是否可以flush，不懂
+// 判断当前这个drange/partition是否可以flush，不懂
     bool FlushOrder::IsSafeToFlush(uint32_t drange_idx, uint64_t generation_id) {
 //如果不用管flush的顺序问题
         if (!nova::NovaConfig::config->use_ordered_flush) {
@@ -67,6 +68,7 @@ namespace leveldb {
         return safe_to_flush;
     }
 
+// reorganization的时候可能会更新这个 
     void FlushOrder::UpdateImpactedDranges(const ImpactedDranges &impacted_dranges) {
         if (!nova::NovaConfig::config->use_ordered_flush) {
             return;
@@ -103,6 +105,6 @@ namespace leveldb {
         new_col->impacted_dranges.push_back(impacted_dranges);
         NOVA_LOG(rdmaio::INFO) << "Latest flush order: " << new_col->DebugString();
         impacted_dranges_.store(new_col);
-        latest_generation_id += 1;
+        latest_generation_id += 1; 
     }
 }

@@ -175,7 +175,7 @@ namespace leveldb {
                 std::unordered_map<uint64_t, FileMetaData *> *files,
                 std::vector<OverlappingStats> *num_overlapping);
 
-        void ComputeNonOverlappingSet(std::vector<Compaction *> *compactions, bool *delete_due_to_low_overlap);
+        void ComputeNonOverlappingSet(std::vector<Compaction *> *compactions, bool *delete_due_to_low_overlap, int levels_in_pm);
 
         bool
         AssertNonOverlappingSet(const std::vector<Compaction *> &compactions,
@@ -237,9 +237,9 @@ namespace leveldb {
                 const Slice &begin,  // nullptr means before all keys
                 const Slice &end,    // nullptr means after all keys
                 std::vector<FileMetaData *> *outputs,
-                uint32_t limit = UINT32_MAX,
-                const std::set<uint64_t> &skip_files = {},
-                bool contained = false);
+                uint32_t limit = UINT32_MAX, // 默认的话 能找多少找多少
+                const std::set<uint64_t> &skip_files = {}, // 默认不跳过
+                bool contained = false); // 默认不包含
 
         void GetRange(const std::vector<FileMetaData *> &inputs,
                       Slice *smallest,
@@ -296,6 +296,7 @@ namespace leveldb {
 
         Version *Ref();
 
+// done
         void Unref(const std::string &dbname);
 
         bool SetCompaction();
@@ -308,7 +309,8 @@ namespace leveldb {
 
     class VersionSet {
     public:
-        VersionSet(const std::string &dbname, const Options *options,
+// done
+        VersionSet(const std::string &dbname, const std::string &pmname, int levels_in_pm, const Options *options,
                    TableCache *table_cache, const InternalKeyComparator *);
 
         VersionSet(const VersionSet &) = delete;
@@ -389,8 +391,8 @@ namespace leveldb {
         }
 
         std::atomic_uint_fast64_t last_sequence_;
-        AtomicMemTable *mid_table_mapping_[MAX_LIVE_MEMTABLES];
-        AtomicVersion *versions_[MAX_LIVE_MEMTABLES];
+        AtomicMemTable *mid_table_mapping_[MAX_LIVE_MEMTABLES]; // memtableid -> memtable的映射
+        AtomicVersion *versions_[MAX_LIVE_MEMTABLES]; // version id -> version的映射
         std::atomic_int_fast32_t version_id_seq_;
         std::atomic_int_fast64_t next_file_number_;
         std::mutex manifest_lock_;
@@ -409,7 +411,10 @@ namespace leveldb {
         void Finalize(Version *v);
 
         Env *const env_;
+// done
         const std::string dbname_;
+        const std::string pmname_;
+        int levels_in_pm_;
         const Options *const options_;
         TableCache *const table_cache_;
         const InternalKeyComparator icmp_;

@@ -217,13 +217,13 @@ namespace nova {
         return fmt::format("[{},{}): {}-{}", range.key_start, range.key_end, ltc_server_id, dbid);
     }
 
-//获取各个db文件的文件名
+//获取各个db文件的文件名 也适用于pm done
     std::string
     DBName(const std::string &dbname, uint32_t index) {
         return dbname + "/" + std::to_string(index);
     }
 
-//从数据库的名字里面找到dbid/db_index 这两个其实是一样的(在config的实现中
+//从数据库的名字里面找到dbid/db_index 这两个其实是一样的(在config的实现中 也适用于pm done
     void ParseDBIndexFromDBName(const std::string &dbname, uint32_t *index) {
         int iend = dbname.size() - 1;
         int istart = dbname.find_last_of('/') + 1;

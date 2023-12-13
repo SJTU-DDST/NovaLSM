@@ -67,7 +67,7 @@ namespace leveldb {
         options.enable_range_index = nova::NovaConfig::config->enable_range_index;
         options.num_recovery_thread = nova::NovaConfig::config->number_of_recovery_threads;
         options.num_compaction_threads = bg_flush_memtable_threads.size();
-//这里为什么??
+//这里为什么?? 这里留出了一些以防压缩之后变得很大 emmm
         options.max_stoc_file_size = std::max(options.write_buffer_size, options.max_file_size) +
                                      LEVELDB_TABLE_PADDING_SIZE_MB * 1024 * 1024;
         options.env = env;
@@ -78,7 +78,7 @@ namespace leveldb {
         options.bg_flush_memtable_threads = bg_flush_memtable_threads;
         options.enable_tracing = false;
         options.comparator = new YCSBKeyComparator();
-//这个是干嘛的
+//这个是干嘛的 决定插入等时候的配置
         if (nova::NovaConfig::config->memtable_type == "pool") {
             options.memtable_type = leveldb::MemTableType::kMemTablePool;
         } else {
@@ -94,7 +94,7 @@ namespace leveldb {
         options.enable_subrange_reorg = nova::NovaConfig::config->enable_subrange_reorg;
         options.level = nova::NovaConfig::config->level;
 
-//这个东西的用处??
+//这个东西的用处?? 压缩的位置
         if (nova::NovaConfig::config->major_compaction_type == "no") {
             options.major_compaction_type = leveldb::MajorCompactionType::kMajorDisabled;
         } else if (nova::NovaConfig::config->major_compaction_type == "st") {
@@ -110,8 +110,8 @@ namespace leveldb {
         options.lower_key = nova::NovaConfig::config->cfgs[0]->fragments[db_index]->range.key_start;
         options.upper_key = nova::NovaConfig::config->cfgs[0]->fragments[db_index]->range.key_end;
         auto cfg = nova::NovaConfig::config->cfgs[0];
-//如果开了用本地的磁盘，我猜这个manifest——stoc_ids是存manifest文件存在哪个stoc里面的
-        if (nova::NovaConfig::config->use_local_disk) {
+//如果开了用本地的磁盘，我猜这个manifest——stoc_ids是存manifest文件存在哪个stoc里面的 manifest只需存在本地一份
+        if (nova::NovaConfig::config->use_local_disk) { // 主要是关于一些log和文件的放置
             options.manifest_stoc_ids.push_back(nova::NovaConfig::config->my_server_id);
         } else {
 //如果没开用本地的磁盘，那就通过这个方式选出manifest存放的stoc的id
@@ -126,7 +126,7 @@ namespace leveldb {
         return options;
     }
 
-//设置了关于存储的选项
+//设置了关于存储的选项 最大的重点在于sstable_mem
     leveldb::Options BuildStorageOptions(leveldb::MemManager *mem_manager, leveldb::Env *env) {
         leveldb::Options options;
         options.block_cache = nullptr;
@@ -192,13 +192,15 @@ namespace leveldb {
                                                   compaction_coord_thread,
                                                   env);
         leveldb::Logger *log = nullptr;
-//建立这个数据库对应的文件
+//建立这个数据库对应的文件 done
         std::string db_path = nova::DBName(nova::NovaConfig::config->db_path, db_index);
         nova::mkdirs(db_path.c_str());
-        NOVA_ASSERT(env->NewLogger(db_path + "/LOG-" + std::to_string(db_index), &log).ok()); // log的位置在ltc 忘了记录了什么了
+        std::string pm_path = nova::DBName(nova::NovaConfig::config->pm_path, db_index);
+        nova::mkdirs(pm_path.c_str());
+        NOVA_ASSERT(env->NewLogger(db_path + "/LOG-" + std::to_string(db_index), &log).ok()); // log的位置在ltc 忘了记录了什么了 也许也可以放在pm里面? 再看
         options.info_log = log; //info log是有值的
 //打开这个数据库并且返回
-        leveldb::Status status = leveldb::DB::Open(options, db_path, &db); // 唯一一次db_path的出现
+        leveldb::Status status = leveldb::DB::Open(options, db_path, pm_path, nova::NovaConfig::config->levels_in_pm, &db); // 唯一一次db_path的出现 !!!
         NOVA_ASSERT(status.ok()) << "Open leveldb failed " << status.ToString();
         return db;
     }

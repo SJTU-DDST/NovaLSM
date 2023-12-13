@@ -17,6 +17,7 @@ namespace leveldb {
     Status WriteStringToFileSync(Env *env, const Slice &data,
                                  const std::string &fname);
 
+// dbname + number + replica_id done
     static std::string MakeFileName(const std::string &dbname, uint64_t number,
                                     uint32_t replica_id,
                                     const char *suffix) {
@@ -27,22 +28,35 @@ namespace leveldb {
         return dbname + buf;
     }
 
+// dbname + number + 0 + log 本质上是wal 预设 done
     std::string LogFileName(const std::string &dbname, uint64_t number) {
         assert(number > 0);
         return MakeFileName(dbname, number, 0, "log");
     }
 
-    std::string TableFileName(const std::string &dbname, uint64_t number,
+// 根据level来判断这个放置于哪里 done
+    std::string TableFileName(const std::string &dbname, const std::string &pmname,
+                              uint64_t number, int level, int levels_in_pm, 
                               FileInternalType internal_type, uint32_t replica_id) {
         assert(number > 0);
-        if (internal_type == FileInternalType::kFileMetadata) {
-            return MakeFileName(dbname, number, replica_id, "ldb-meta");
-        } else if (internal_type == FileInternalType::kFileParity) {
-            return MakeFileName(dbname, number, replica_id, "ldb-parity");
+        if (level <= levels_in_pm){ // 放到pm上
+            if (internal_type == FileInternalType::kFileMetadata) {
+                return MakeFileName(pmname, number, replica_id, "ldb-meta");
+            } else if (internal_type == FileInternalType::kFileParity) {
+                return MakeFileName(pmname, number, replica_id, "ldb-parity");
+            }
+            return MakeFileName(pmname, number, replica_id, "ldb");
+        }else{
+            if (internal_type == FileInternalType::kFileMetadata) {
+                return MakeFileName(dbname, number, replica_id, "ldb-meta");
+            } else if (internal_type == FileInternalType::kFileParity) {
+                return MakeFileName(dbname, number, replica_id, "ldb-parity");
+            }
+            return MakeFileName(dbname, number, replica_id, "ldb");
         }
-        return MakeFileName(dbname, number, replica_id, "ldb");
     }
 
+// 预先准备好是pm还是磁盘 done
     std::string DescriptorFileName(const std::string &dbname, uint64_t number,
                                    uint32_t replica_id) {
         char buf[100];
@@ -51,24 +65,24 @@ namespace leveldb {
                  static_cast<unsigned long long>(replica_id));
         return dbname + buf;
     }
-
+// 预先准备好是pm还是磁盘 done
     std::string CurrentFileName(const std::string &dbname) {
         return dbname + "/CURRENT";
     }
-
+// 预先准备好是pm还是磁盘 done
     std::string LockFileName(const std::string &dbname) {
         return dbname + "/LOCK";
     }
-
+// 预先准备好是pm还是磁盘 done
     std::string TempFileName(const std::string &dbname, uint64_t number) {
         assert(number > 0);
         return MakeFileName(dbname, number, 0, "dbtmp");
     }
-
+// 预先准备好是pm还是磁盘 done
     std::string InfoLogFileName(const std::string &dbname) {
         return dbname + "/LOG";
     }
-
+// 预先准备好是pm还是磁盘 done
 // Return the name of the old info log file for "dbname".
     std::string OldInfoLogFileName(const std::string &dbname) {
         return dbname + "/LOG.old";

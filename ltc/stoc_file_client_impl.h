@@ -18,7 +18,8 @@
 
 namespace leveldb {
 
-//从ltc向stoc写的抽象类
+// 从ltc向stoc写的抽象类 相当于一个远程文件 用于manifest和sstable的写 只抽象了写!
+// 区别
     // A stoc writable file client is implemented based on memfile.
     // It first writes data to its memory and then RDMA WRITEs to StoCs.
     class StoCWritableFileClient : public MemFile {
@@ -29,6 +30,9 @@ namespace leveldb {
                                MemManager *mem_manager,
                                StoCClient *stoc_client,
                                const std::string &dbname,
+                               const std::string &pmname,
+                               int level,
+                               int levels_in_pm,
                                uint64_t thread_id,
                                uint64_t file_size, unsigned int *rand_seed,
                                std::string &filename);
@@ -113,6 +117,10 @@ namespace leveldb {
         MemManager *mem_manager_ = nullptr;
         StoCClient *stoc_client_ = nullptr;
         const std::string &dbname_;
+        const std::string &pmname_;
+        int level_;
+        int levels_in_pm_;
+
         FileMetaData meta_;
         uint64_t thread_id_ = 0;
 
@@ -140,10 +148,15 @@ namespace leveldb {
         std::vector<FileReplicaPersistStatus> data_replica_status_;
     };
 
+// dbname 这里上面是writablefile done
+// dbname 这里下面是randomaccess 这里负责的是get的时候进行读 done
     class StoCRandomAccessFileClientImpl : public StoCRandomAccessFileClient {
     public:
         StoCRandomAccessFileClientImpl(Env *env, const Options &options,
                                        const std::string &dbname,
+                                       const std::string &pmname,
+                                       int level,
+                                       int levels_in_pm,
                                        uint64_t file_number,
                                        uint32_t replica_id,
                                        const FileMetaData *meta,
@@ -175,6 +188,9 @@ namespace leveldb {
         };
 
         const std::string &dbname_;
+        const std::string &pmname_;
+        int levels_in_pm_;
+        int level_;
         uint64_t file_number_;
         const FileMetaData *meta_;
         const std::string filename;
@@ -192,8 +208,9 @@ namespace leveldb {
         RandomAccessFile *local_ra_file_ = nullptr;
     };
 
-    struct DeleteTableRequest {
-        std::string dbname;
+// 没有使用过 done
+    struct DeleteTableRequest { 
+        std::string dbname; // 这里是?? done
         uint32_t file_number;
     };
 }

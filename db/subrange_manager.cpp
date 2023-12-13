@@ -9,6 +9,8 @@
 
 //这个是用来管理什么的呢????
 namespace leveldb {
+
+// done
     SubRangeManager::SubRangeManager(leveldb::StoCWritableFileClient *manifest_file,
                                      FlushOrder *flush_order,
                                      const std::string &dbname,
@@ -36,8 +38,8 @@ namespace leveldb {
         auto range = nova::NovaConfig::config->cfgs[cfgid]->fragments[dbindex_];
         if (range->range.key_end - range->range.key_start <= options_.num_memtable_partitions) { // 如果这个key的范围小于active memtable的数量， 开始的时候基本不会发生，也许后面会有duplicate的情况??
             int nkeys = range->range.key_end - range->range.key_start;
-            int num_duplicates = options_.num_memtable_partitions / nkeys;
-            int cdup = 0;
+            int num_duplicates = options_.num_memtable_partitions / nkeys; // 有多少duplicate的东西 
+            int cdup = 0; 
             int lower = range->range.key_start;
             int upper = range->range.key_start + 1;
 
@@ -1022,6 +1024,7 @@ namespace leveldb {
         return success;
     }
 
+// reorganize
     void
     SubRangeManager::ReorganizeSubranges() {
         uint32_t cfgid = nova::NovaConfig::config->current_cfg_id;
@@ -1036,7 +1039,7 @@ namespace leveldb {
         uint64_t latest_seq_number = versions_->last_sequence_;
         SubRanges *ref = latest_subranges_;
         // Make a copy.
-        range_lock_.Lock();
+        range_lock_.Lock(); // copy时候需要range_lock
         latest_ = new SubRanges(*ref);
         range_lock_.Unlock();
         total_num_inserts_since_last_major_ = 0;
@@ -1179,7 +1182,7 @@ namespace leveldb {
                      drange_id <= impacted_dranges.upper_drange_index; drange_id++) {
                     MemTablePartition *partition = (*partitioned_active_memtables_)[drange_id];
                     uint32_t next_imm_slot = -1;
-                    partition->mutex.Lock();
+                    partition->mutex.Lock(); // 修改一个partition状态或者什么的时候需要 mutex
                     MemTable *table = partition->active_memtable;
                     if (table) {
                         auto atomic_table = versions_->mid_table_mapping_[table->memtableid()];
@@ -1213,7 +1216,7 @@ namespace leveldb {
                 flush_order_->UpdateImpactedDranges(impacted_dranges);
             }
 
-            range_lock_.Lock();
+            range_lock_.Lock(); //修改latest
             latest_->AssertSubrangeBoundary(user_comparator_);
             latest_subranges_.store(latest_);
             range_lock_.Unlock();
@@ -1223,6 +1226,7 @@ namespace leveldb {
         }
     }
 
+// recover的时候预建立均匀分布的subrange 按partition个数分，分了之后tiny range只做一个
     void SubRangeManager::ConstructSubrangesWithUniform(const Comparator *user_comparator) {
         auto sr = new SubRanges;
         uint32_t cfgid = nova::NovaConfig::config->current_cfg_id;
@@ -1260,7 +1264,7 @@ namespace leveldb {
                 }
             }
         } else {
-            int nkeys_per_range = nkeys / options_.num_memtable_partitions;
+            int nkeys_per_range = nkeys / options_.num_memtable_partitions; // 每个subrange的key的间隔
             int lower = range->range.key_start;
             int upper = range->range.key_start + nkeys_per_range;
 
@@ -1287,6 +1291,7 @@ namespace leveldb {
             << fmt::format("keys:{},{}", lower_bound_, upper_bound_);
     }
 
+// 每个subrange有相应的线程对其进行服务
     void
     SubRangeManager::ComputeCompactionThreadsAssignment(SubRanges *subranges) {
         if (options_.subrange_no_flush_num_keys == 0 || // config基本100
@@ -1320,6 +1325,7 @@ namespace leveldb {
         }
     }
 
+// 通过收集的频次计算 负载相关的统计
     void SubRangeManager::ComputeLoadImbalance(const std::vector<double> &loads,
                                                leveldb::DBStats *db_stats) {
         double fair = 1.0 / (double) loads.size();
@@ -1338,6 +1344,7 @@ namespace leveldb {
         db_stats->load_imbalance.stdev = std::sqrt(stdev / (double) loads.size()) / 100.0;
     }
 
+// 收集关于subrange的统计
     void SubRangeManager::QueryDBStats(leveldb::DBStats *db_stats) {
         SubRanges *ref = latest_subranges_;
         db_stats->num_major_reorgs = num_major_reorgs;
@@ -1348,18 +1355,18 @@ namespace leveldb {
         db_stats->num_minor_reorgs_samples = num_minor_reorgs_samples;
         std::vector<double> loads;
         uint64_t totalkeys = upper_bound_ - lower_bound_;
-        if (nova::NovaConfig::config->client_access_pattern == "uniform") {
+        if (nova::NovaConfig::config->client_access_pattern == "uniform") { //如果跑的benchmark是uniform
             for (int i = 0; i < ref->subranges.size(); i++) {
                 SubRange &sr = ref->subranges[i];
                 uint64_t lower = sr.first().lower_int();
                 uint64_t upper = sr.last().upper_int();
                 uint64_t keys = upper - lower;
-                loads.push_back((double) keys / (double) totalkeys);
+                loads.push_back((double) keys / (double) totalkeys); // 每部分subrange的key的比例 emmm??
             }
-        } else {
+        } else { // zipfian 分布才会进行 同一个range的duplicate??????? 应该是
             // Zipfian.
-            std::map<uint64_t, uint64_t> duplicated_keys;
-            for (int i = 0; i < ref->subranges.size(); i++) {
+            std::map<uint64_t, uint64_t> duplicated_keys; // lower -> 这个范围的个数
+            for (int i = 0; i < ref->subranges.size(); i++) { // 先统计 duplicate的subrange个数
                 SubRange &sr = ref->subranges[i];
                 if (sr.num_duplicates == 0) {
                     continue;
@@ -1376,7 +1383,7 @@ namespace leveldb {
                 uint64_t lower = sr.first().lower_int();
                 uint64_t upper = sr.last().upper_int();
 
-                for (uint64_t key = lower; key < upper; key++) {
+                for (uint64_t key = lower; key < upper; key++) { // 访问的信息
                     if (duplicated_keys.find(key) !=
                         duplicated_keys.end()) {
                         accesses += nova::NovaConfig::config->zipfian_dist.accesses[key] / duplicated_keys[key];

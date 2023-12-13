@@ -253,6 +253,8 @@ namespace leveldb {
     class DBTest {
     public:
         std::string dbname_;
+        std::string pmname_;
+        int levels_in_pm_;
         SpecialEnv *env_;
         DB *db_;
 
@@ -262,14 +264,15 @@ namespace leveldb {
                    option_config_(kDefault) {
             filter_policy_ = NewBloomFilterPolicy(10);
             dbname_ = test::TmpDir() + "/db_test";
-            DestroyDB(dbname_, Options());
+            pmname_ = test::TmpDir() + "/pm_test";
+            DestroyDB(dbname_, pmname, Options());
             db_ = nullptr;
             Reopen();
         }
 
         ~DBTest() {
             delete db_;
-            DestroyDB(dbname_, Options());
+            DestroyDB(dbname_, pmname_, Options());
             delete env_;
             delete filter_policy_;
         }
@@ -320,7 +323,7 @@ namespace leveldb {
         void DestroyAndReopen(Options *options = nullptr) {
             delete db_;
             db_ = nullptr;
-            DestroyDB(dbname_, Options());
+            DestroyDB(dbname_, pmname_, Options());
             ASSERT_OK(TryReopen(options));
         }
 
@@ -538,7 +541,7 @@ namespace leveldb {
             for (size_t i = 0; i < filenames.size(); i++) {
                 if (ParseFileName(filenames[i], &number, &type) &&
                     type == kTableFile) {
-                    ASSERT_OK(env_->DeleteFile(TableFileName(dbname_, number)));
+                    ASSERT_OK(env_->DeleteFile(TableFileName(dbname_, pmname_, number)));
                     return true;
                 }
             }

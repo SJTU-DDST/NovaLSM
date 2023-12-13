@@ -35,7 +35,10 @@ namespace leveldb {
                         StocPersistentFileManager *stoc_file_manager);
 
         uint32_t InitiateReplicateSSTables(uint32_t stoc_server_id,
-                                           const std::string& dbname,
+                                           const std::string& dbname, // replicate
+                                           const std::string& pmname,
+                                           int level,
+                                           int levels_in_pm,
                                            const std::vector<leveldb::ReplicationPair> &pairs) override;
 
         uint32_t
@@ -75,12 +78,16 @@ namespace leveldb {
                                     uint64_t remote_offset,
                                     uint64_t size) override;
 
+// 用于远程file 如stocwritable file 向远程写一段数据
         // file_number = 0 means manifest file.
         uint32_t
         InitiateAppendBlock(uint32_t stoc_id,
                             uint32_t thread_id,
                             uint32_t *stoc_file_id, char *buf,
-                            const std::string &dbname,
+                            const std::string &dbname, // InitiateAppendBlock done
+                            const std::string &pmname,
+                            int level,
+                            int levels_in_pm,
                             uint64_t file_number,
                             uint32_t replica_id,
                             uint32_t size,
@@ -151,7 +158,10 @@ namespace leveldb {
         }
 
         uint32_t InitiateReplicateSSTables(uint32_t stoc_server_id,
-                                           const std::string&  dbname,
+                                           const std::string&  dbname, // replicate
+                                           const std::string&  pmname,
+                                           int level,
+                                           int levels_in_pm,
                                            const std::vector<leveldb::ReplicationPair> &pairs) override;
 
         uint32_t
@@ -194,7 +204,10 @@ namespace leveldb {
         uint32_t
         InitiateAppendBlock(uint32_t stoc_id, uint32_t thread_id,
                             uint32_t *stoc_file_id, char *buf,
-                            const std::string &dbname,
+                            const std::string &dbname, // InitiateAppendBlock done
+                            const std::string &pmname,
+                            int level,
+                            int levels_in_pm,
                             uint64_t file_number,
                             uint32_t replica_id,
                             uint32_t size,

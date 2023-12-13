@@ -199,6 +199,7 @@ namespace leveldb {
         insertion_ratio = ninserts / num_inserts_since_last_major;
     }
 
+// 开了subtange就从之前计算出来的分配一个线程id 如果这个subrange key比阈值少就是true
     int SubRange::GetCompactionThreadId(std::atomic_int_fast32_t *rr_id,
                                         bool *_merge_memtables_without_flushing) const {
         *_merge_memtables_without_flushing = merge_memtables_without_flushing;
@@ -281,6 +282,7 @@ namespace leveldb {
     SubRanges::SubRanges(const SubRanges &other) : SubRanges(other.subranges) {
     }
 
+// 从manifest恢复了subrange的话 就完全按照恢复的重建
     SubRanges::SubRanges(const std::vector<SubRange> &other) {
         for (int i = 0; i < other.size(); i++) {
             SubRange sr = {};

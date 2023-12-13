@@ -131,12 +131,14 @@ namespace {
 
         leveldb::Logger *log = nullptr;
         std::string db_path = DBName(NovaConfig::config->db_path, db_index);
+        std::string pm_path = DBName(NovaConfig::config->pm_path, db_index);
         mkdirs(db_path.c_str());
+        mkdirs(pm_path.c_str());
 
         NOVA_ASSERT(env->NewLogger(
                 db_path + "/LOG-" + std::to_string(db_index), &log).ok());
         options.info_log = log;
-        leveldb::Status status = leveldb::DB::Open(options, db_path, &db);
+        leveldb::Status status = leveldb::DB::Open(options, db_path, pm_path, NovaConfig::config->levels_in_pm, &db);
         NOVA_ASSERT(status.ok()) << "Open leveldb failed "
                                  << status.ToString();
 
@@ -179,10 +181,12 @@ void TestSubRanges() {
     NovaConfig::config->nnovabuf = ntotal;
     NOVA_ASSERT(buf != NULL) << "Not enough memory";
     int ret = system(fmt::format("exec rm -rf {}/*", NovaConfig::config->db_path).data());
+    ret = system(fmt::format("exec rm -rf {}/*", NovaConfig::config->pm_path).data());
     ret = system(fmt::format("exec rm -rf {}/*",
                        NovaConfig::config->stoc_files_path).data());
 
     mkdirs(NovaConfig::config->stoc_files_path.data());
+    mkdirs(NovaConfig::config->pm_path.data());
     mkdirs(NovaConfig::config->db_path.data());
 
     std::vector<leveldb::EnvBGThread *> bgs;
@@ -298,6 +302,8 @@ int main(int argc, char *argv[]) {
     NovaConfig::config->memtable_size_mb = 16;
 
     NovaConfig::config->db_path = "/tmp/db";
+    NovaConfig::config->pm_path = "/tmp/pm";
+    NovaConfig::config->levels_in_pm = 0;
     NovaConfig::config->enable_rdma = false;
     NovaConfig::config->enable_load_data = true;
 

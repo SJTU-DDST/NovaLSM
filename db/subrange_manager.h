@@ -21,6 +21,9 @@
 #define SUBRANGE_REORG_DIFF_FROM_FAIR_THRESHOLD 20
 #define SUBRANGE_MAJOR_REORG_THRESHOLD 0.3
 
+// subrangemanager所指的dbname都代表数据库名称 并且只是一种代号 done
+
+// done
 namespace leveldb {
     class SubRangeManager {
     public:
@@ -97,6 +100,8 @@ namespace leveldb {
         FlushOrder *flush_order_ = nullptr;
         port::Mutex range_lock_;
         StoCWritableFileClient *manifest_file_ = nullptr;
+
+// done
         std::string dbname_;
         VersionSet *versions_ = nullptr;
         const Options options_;

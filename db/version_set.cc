@@ -321,6 +321,7 @@ namespace leveldb {
         return a->number > b->number;
     }
 
+// 对指定的层级的文件 有范围重叠的文件 进行某个操作
     void
     Version::ForEachOverlapping(Slice user_key, Slice internal_key, void *arg,
                                 bool (*func)(void *, int, FileMetaData *),
@@ -370,13 +371,14 @@ namespace leveldb {
         }
     }
 
+// l0层的找 从fns是对应的文件号
     Status Version::Get(const leveldb::ReadOptions &options,
                         std::vector<uint64_t> &fns,
                         const leveldb::LookupKey &key,
                         SequenceNumber *seq,
                         std::string *val, uint64_t *num_searched_files) {
         bool found = false;
-        for (int i = fns.size() - 1; i >= 0; i--) {
+        for (int i = fns.size() - 1; i >= 0; i--) { // 从后向前 这里是因为后加入的更新
             auto fn = fns[i];
             if (fn_files_.find(fn) == fn_files_.end()) {
                 return Status::IOError(fmt::format("fn {} not found", fn));
@@ -394,6 +396,8 @@ namespace leveldb {
                     file->largest.user_key(), key.user_key()) < 0) {
                 continue;
             }
+
+            // 在要找的范围内
             *num_searched_files += 1;
             SequenceNumber tmp_seq;
             Saver saver;
@@ -402,7 +406,7 @@ namespace leveldb {
             saver.user_key = key.user_key();
             saver.value = val;
             saver.seq = &tmp_seq;
-            Status s = table_cache_->Get(options,
+            Status s = table_cache_->Get(options, // 通过table_cache去找
                                          file,
                                          file->number,
                                          file->SelectReplica(),
@@ -426,6 +430,7 @@ namespace leveldb {
         return Status::NotFound("Not found in L0");
     }
 
+// l1层的找
     Status Version::Get(const ReadOptions &options, const LookupKey &k,
                         SequenceNumber *seq,
                         std::string *value, GetStats *stats,
@@ -447,6 +452,7 @@ namespace leveldb {
             bool found;
             uint64_t *num_searched_files;
 
+// 第一个是state 用于记录查找到的信息 第二个是这个文件的level 第三个是~
             static bool Match(void *arg, int level, FileMetaData *f) {
                 State *state = reinterpret_cast<State *>(arg);
                 if (state->stats->seek_file == nullptr &&
@@ -526,11 +532,12 @@ namespace leveldb {
         return refs;
     }
 
+// 统计file中重叠的个数
     void Version::ComputeOverlappingFilesPerTable(
             std::unordered_map<uint64_t, leveldb::FileMetaData *> *files,
             std::vector<leveldb::OverlappingStats> *num_overlapping) {
         for (auto pivot_it = files->begin();
-             pivot_it != files->end(); pivot_it++) {
+             pivot_it != files->end(); pivot_it++) { // 遍历文件
             Slice lower = pivot_it->second->smallest.user_key();
             Slice upper = pivot_it->second->largest.user_key();
 
@@ -538,7 +545,7 @@ namespace leveldb {
             stats.num_overlapping_tables = 1;
             stats.total_size = pivot_it->second->file_size;
             nova::str_to_int(lower.data(), &stats.smallest, lower.size());
-            nova::str_to_int(upper.data(), &stats.largest, upper.size());
+            nova::str_to_int(upper.data(), &stats.largest, upper.size()); // 将当前文件的各种信息装入
 
             for (auto comp_it = files->begin();
                  comp_it != files->end(); comp_it++) {
@@ -559,7 +566,7 @@ namespace leveldb {
                 stats.total_size += comp_it->second->file_size;
             }
             num_overlapping->push_back(stats);
-        }
+        } // 结果是每一项对应一个file 以及和他有重叠的文件个数
 
         {
             auto comp = [&](const OverlappingStats &a,
@@ -568,9 +575,10 @@ namespace leveldb {
             };
             std::sort(num_overlapping->begin(), num_overlapping->end(),
                       comp);
-        }
+        } // 然后按顺序排一下
     }
 
+// 找文件中在范围内的
     Version::OverlappingFileResult Version::ComputeOverlappingFilesInRange(
             std::vector<FileMetaData *> *files,
             int which,
@@ -601,7 +609,7 @@ namespace leveldb {
 
             // overlap.
             result = OVERLAP_FOUND_NEW_TABLES;
-            compaction->inputs_[which].push_back(file);
+            compaction->inputs_[which].push_back(file); // 找到了推进去就好
             // Take the smallest user key.
             if (icmp_->user_comparator()->Compare(file->smallest.user_key(),
                                                   *new_lower) <
@@ -614,7 +622,7 @@ namespace leveldb {
                 *new_upper = file->largest.user_key();
             }
             if (compaction->inputs_[which].size() >
-                options_->max_num_sstables_in_nonoverlapping_set) {
+                options_->max_num_sstables_in_nonoverlapping_set) { // 如果已经
                 return OVERLAP_EXCEED_MAX;
             }
             it = files->erase(it);
@@ -622,6 +630,7 @@ namespace leveldb {
         return result;
     }
 
+// 计算两层文件的重叠的文件 放到compaction里面
     void Version::ComputeOverlappingFilesForRange(
             std::vector<FileMetaData *> *l0inputs,
             std::vector<FileMetaData *> *l1inputs,
@@ -631,7 +640,7 @@ namespace leveldb {
         Slice new_lower = lower;
         Slice new_upper = upper;
 
-        while (true) {
+        while (true) { // 循环地去找
             OverlappingFileResult l0_result = ComputeOverlappingFilesInRange(
                     l0inputs, 0,
                     compaction,
@@ -651,7 +660,7 @@ namespace leveldb {
 
             if (compaction->num_input_files(0) +
                 compaction->num_input_files(1) >
-                options_->max_num_sstables_in_nonoverlapping_set) {
+                options_->max_num_sstables_in_nonoverlapping_set) { // 如果已经超过了
                 break;
             }
             if (l0_result == OVERLAP_EXCEED_MAX ||
@@ -666,6 +675,7 @@ namespace leveldb {
         }
     }
 
+// 统计files中 按范围拓展 重叠的区域和范围 
     void Version::ComputeOverlappingFilesStats(
             std::unordered_map<uint64_t, leveldb::FileMetaData *> *files,
             std::vector<OverlappingStats> *num_overlapping) {
@@ -728,9 +738,10 @@ namespace leveldb {
         }
     }
 
+// 收集关于db本身的统计
     void Version::QueryStats(leveldb::DBStats *stats, bool detailed_stats) {
         stats->needs_compaction = NeedsCompaction();
-        if (!detailed_stats) {
+        if (!detailed_stats) { // 如果不需要细节的统计 就获取l0层文件的个数以及文件的总大小就可以
             for (int level = 0; level < options_->level; level++) {
                 const std::vector<FileMetaData *> &files = files_[level];
                 if (level == 0) {
@@ -746,6 +757,7 @@ namespace leveldb {
             }
             return;
         }
+        // 下面的是detailed stats
         std::unordered_map<uint64_t, FileMetaData *> all_fnfile;
         std::unordered_map<uint64_t, FileMetaData *> new_fnfile;
         for (int level = 0; level < options_->level; level++) {
@@ -762,22 +774,22 @@ namespace leveldb {
                     if (last_fnfile.find(files[i]->number) ==
                         last_fnfile.end()) {
                         new_fnfile[files[i]->number] = files[i];
-                        last_fnfile[files[i]->number] = files[i];
+                        last_fnfile[files[i]->number] = files[i]; // 只在这里被用到 ? 没什么作用 用来区分是不是新产生的???
                     }
                 }
             }
         }
 
-        stats->new_l0_sstables_since_last_query = new_fnfile.size();
-        ComputeOverlappingFilesPerTable(&all_fnfile,
+        stats->new_l0_sstables_since_last_query = new_fnfile.size(); // 上一次stat之后新产生的 l0层的sstable
+        ComputeOverlappingFilesPerTable(&all_fnfile, // 查询l0层
                                         &stats->num_overlapping_sstables_per_table);
-        ComputeOverlappingFilesStats(&all_fnfile,
+        ComputeOverlappingFilesStats(&all_fnfile, // 查询l0层
                                      &stats->num_overlapping_sstables);
         NOVA_ASSERT(all_fnfile.empty());
 
-        ComputeOverlappingFilesPerTable(&new_fnfile,
+        ComputeOverlappingFilesPerTable(&new_fnfile, //查询新的l0层
                                         &stats->num_overlapping_sstables_per_table_since_last_query);
-        ComputeOverlappingFilesStats(&new_fnfile,
+        ComputeOverlappingFilesStats(&new_fnfile, // 查询新的l0层
                                      &stats->num_overlapping_sstables_since_last_query);
         NOVA_ASSERT(new_fnfile.empty());
     }
@@ -892,6 +904,7 @@ namespace leveldb {
             vset_->versions_[base_->version_id_]->Unref(vset_->dbname_);
         }
 
+// 将manifest记载的edit整理 只负责恢复文件的
         // Apply all of the edits in *edit to the current state.
         void Apply(VersionEdit *edit) {
             // Update compaction pointers
@@ -900,16 +913,16 @@ namespace leveldb {
 //                vset_->compact_pointer_[level] =
 //                        edit->compact_pointers_[i].second.Encode().ToString();
 //            }
-            update_replica_locations_ = edit->update_replica_locations_;
+            update_replica_locations_ = edit->update_replica_locations_; // 基本没有
             // Delete files
             for (const auto &deleted_file_set_kvp : edit->deleted_files_) {
                 const int level = deleted_file_set_kvp.first;
                 const uint64_t number = deleted_file_set_kvp.second.fnumber;
-                levels_[level].deleted_files.insert(number);
+                levels_[level].deleted_files.insert(number); // 删除过的文件
             }
 
             // Add new files
-            for (size_t i = 0; i < edit->new_files_.size(); i++) {
+            for (size_t i = 0; i < edit->new_files_.size(); i++) { //新的文件
                 const int level = edit->new_files_[i].first;
                 FileMetaData *f = new FileMetaData(edit->new_files_[i].second);
                 f->refs = 1;
@@ -936,6 +949,7 @@ namespace leveldb {
             }
         }
 
+// 把由manifest整理来的edit应用到version上
         // Save the current state in *v.
         void SaveTo(Version *v) {
             BySmallestKey cmp;
@@ -943,7 +957,7 @@ namespace leveldb {
             for (int level = 0; level < levels_.size(); level++) {
                 // Merge the set of added files with the set of pre-existing files.
                 // Drop any deleted files.  Store the result in *v.
-                const std::vector<FileMetaData *> &base_files = base_->files_[level];
+                const std::vector<FileMetaData *> &base_files = base_->files_[level]; // base 相当于build新的version基于的version
                 std::vector<FileMetaData *>::const_iterator base_iter = base_files.begin();
                 std::vector<FileMetaData *>::const_iterator base_end = base_files.end();
                 const FileSet *added_files = levels_[level].added_files;
@@ -961,24 +975,24 @@ namespace leveldb {
                         }
                     }
                 } else {
-                    v->files_[level].reserve(base_files.size() + added_files->size());
-                    for (const auto &added_file : *added_files) {
+                    v->files_[level].reserve(base_files.size() + added_files->size()); // base_files为上一个version中文件 added_files为这个edit中新加的 
+                    for (const auto &added_file : *added_files) { 
                         // Add all smaller files listed in base_
                         for (std::vector<FileMetaData *>::const_iterator bpos =
-                                std::upper_bound(base_iter, base_end, added_file, cmp);
+                                std::upper_bound(base_iter, base_end, added_file, cmp); // 由小到大
                              base_iter != bpos; ++base_iter) {
                             MaybeAddFile(v, level, *base_iter);
-                        }
+                        }//上一个version的固有文件加入
                         NOVA_ASSERT(added_file->compaction_status !=
                                     FileCompactionStatus::COMPACTING)
                             << fmt::format("{}@{}", added_file->number, level);
-                        MaybeAddFile(v, level, added_file);
+                        MaybeAddFile(v, level, added_file);//上一个version的新文件
                     }
 
                     // Add remaining base files
                     for (; base_iter != base_end; ++base_iter) {
                         MaybeAddFile(v, level, *base_iter);
-                    }
+                    }//上一个version的edit中新增的文件
                 }
 #ifndef NDEBUG
                 // Make sure there is no overlap in levels > 0
@@ -999,6 +1013,7 @@ namespace leveldb {
             }
         }
 
+// 将文件加入某个level 如果也发现这个文件又被删除了 那就不做
         void MaybeAddFile(Version *v, int level, FileMetaData *f) {
             if (levels_[level].deleted_files.count(f->number) > 0) {
                 // File is deleted: do nothing
@@ -1022,15 +1037,18 @@ namespace leveldb {
         }
     };
 
-    VersionSet::VersionSet(const std::string &dbname, const Options *options,
+// mvcc的链表
+    VersionSet::VersionSet(const std::string &dbname, const std::string &pmname, int levels_in_pm, const Options *options,
                            TableCache *table_cache,
-                           const InternalKeyComparator *cmp)
+                           const InternalKeyComparator *cmp) // TO BE DONE FOR THIS CLASS
             : env_(options->env),
-              dbname_(dbname),
+              dbname_(dbname), // 大部分是标识 小部分有关文件
+              pmname_(pmname),
+              levels_in_pm_(levels_in_pm),
               options_(options),
               table_cache_(table_cache),
               icmp_(*cmp),
-              next_file_number_(2),
+              next_file_number_(2), // 为了与manifest避嫌 文件号从2开始
               last_sequence_(1),
               descriptor_file_(nullptr),
               descriptor_log_(nullptr),
@@ -1059,6 +1077,7 @@ namespace leveldb {
         delete descriptor_file_;
     }
 
+// 将version应用到versionset上
     void VersionSet::AppendVersion(Version *v) {
         // Make "v" current
         assert(v->refs_ == 0);
@@ -1078,6 +1097,7 @@ namespace leveldb {
         current_version_id_.store(v->version_id_);
     }
 
+// 把改变的东西写入到manifest文件中
     void VersionSet::AppendChangesToManifest(leveldb::VersionEdit *edit,
                                              StoCWritableFileClient *manifest_file,
                                              const std::vector<uint32_t> &stoc_id) {
@@ -1107,6 +1127,7 @@ namespace leveldb {
         manifest_lock_.unlock();
     }
 
+// 将edit中的东西应用到新的version中
     Status VersionSet::LogAndApply(VersionEdit *edit, Version *v, bool normal_update, StoCClient *client) {
         {
             Builder builder(this, current_);
@@ -1123,7 +1144,7 @@ namespace leveldb {
             options.stoc_client = client;
 
             for (auto &file : edit->new_files_) {
-                auto fname = TableFileName(dbname_, file.second.number, FileInternalType::kFileData, 0);
+                auto fname = TableFileName(dbname_, pmname_, file.second.number, file.second.level, levels_in_pm_, FileInternalType::kFileData, 0); // TO BE DONE！！！！ 有关文件位置的真正
                 NOVA_ASSERT(env_->LockFile(fname, file.second.number).ok());
                 env_->DeleteFile(fname);
                 auto new_meta = v->fn_files_.find(file.second.number);
@@ -1159,6 +1180,7 @@ namespace leveldb {
     }
 
 // 从manifest文件中恢复 log 和 subrange 的划分?
+// subrange edits 保存了最后一次整理之后 subrange的情况
     Status VersionSet::Recover(Slice record,
                                std::vector<SubRange> *subrange_edits) {
         uint64_t next_file = 0;
@@ -1183,7 +1205,7 @@ namespace leveldb {
                 << fmt::format("stats:{} edit:{}", s.ToString(),
                                edit.DebugString());
 
-            builder.Apply(&edit);
+            builder.Apply(&edit); // 对当前也就是初始的使用version edit 恢复关于filemetadata的信息 
             if (edit.has_next_file_number_) {
                 next_file = std::max(next_file, edit.next_file_number_);
             }
@@ -1191,27 +1213,27 @@ namespace leveldb {
                 last_sequence = std::max(last_sequence,
                                          edit.last_sequence_);
             }
-            if (edit.new_subranges_.empty()) {
+            if (edit.new_subranges_.empty()) { // 应该是 如果subrange有变化 edit才会记下来
                 continue;
             }
             subrange_edits->clear();
             subrange_edits->resize(edit.new_subranges_.size());
             for (int i = 0; i < edit.new_subranges_.size(); i++) {
                 SubRange &sr = edit.new_subranges_[i];
-                (*subrange_edits)[sr.decoded_subrange_id] = sr;
+                (*subrange_edits)[sr.decoded_subrange_id] = sr; // decoded subrange id??
             }
         }
 
-        Version *v = new Version(&icmp_, table_cache_, options_,
+        Version *v = new Version(&icmp_, table_cache_, options_, // 新建一个version
                                  version_id_seq_++, this);
-        builder.SaveTo(v);
+        builder.SaveTo(v); // 将manifest中读出来的应用到新的version中 总的来说就是文件的元信息
         // Install recovered version
-        Finalize(v);
+        Finalize(v); // 计算compaction相关的东西
         AppendVersion(v);
         next_file_number_ = next_file + 1;
         last_sequence_ = last_sequence;
-        for (auto file : v->fn_files_) {
-            file.second->memtable_ids.clear();
+        for (auto file : v->fn_files_) { // 遍历每一个file元信息，清除其中的memtable id信息
+            file.second->memtable_ids.clear(); // ??????? 这里变成sstable了就不用保存memtbale_ids了??
         }
         return Status::OK();
     }
@@ -1222,6 +1244,7 @@ namespace leveldb {
         }
     }
 
+// 新的version组织好之后 计算出这个version的应该进行的compaction所在的level
     void VersionSet::Finalize(Version *v) {
         // Precomputed best level for next compaction
         int best_level = -1;
@@ -1304,6 +1327,7 @@ namespace leveldb {
 
     }
 
+// 找到指定的version的有效文件
     void VersionSet::AddLiveFiles(std::set<uint64_t> *live,
                                   uint32_t compacting_version_id) {
         NOVA_LOG(rdmaio::DEBUG)
@@ -1416,6 +1440,7 @@ namespace leveldb {
         }
     }
 
+// 建立起compacted_table的映射?? 之前不是已经建立好了么
     void VersionSet::AddCompactedInputs(leveldb::Compaction *c,
                                         std::unordered_map<uint64_t, leveldb::FileMetaData> *map) {
         for (int which = 0; which < 2; which++) {
@@ -1483,6 +1508,7 @@ namespace leveldb {
         return result;
     }
 
+// 确保各个compaction符合要求并且不重叠
     bool Version::AssertNonOverlappingSet(
             const std::vector<leveldb::Compaction *> &compactions,
             std::string *reason) {
@@ -1578,7 +1604,7 @@ namespace leveldb {
     }
 
     void Version::ComputeNonOverlappingSet(
-            std::vector<leveldb::Compaction *> *compactions_result, bool *delete_due_to_low_overlap) {
+            std::vector<leveldb::Compaction *> *compactions_result, bool *delete_due_to_low_overlap, int levels_in_pm) {
         std::vector<FileMetaData *> l0files;
         std::vector<FileMetaData *> l1files;
         std::vector<Compaction *> compactions;
@@ -1593,19 +1619,19 @@ namespace leveldb {
                     l1files.push_back(files_[level + which][i]);
                 }
             }
-        }
+        } // 全部收进来
         NOVA_LOG(rdmaio::INFO)
             << fmt::format("Compacting level {} {}:{}", level, l0files.size(), l1files.size());
         int set_index = 0;
         uint64_t input_size = 64;
-        uint64_t compaction_size = options_->max_num_coordinated_compaction_nonoverlapping_sets;
-        while (!l0files.empty() && compactions.size() < input_size) {
-            auto compaction = new Compaction(this, icmp_, options_, level, level + 1);
+        uint64_t compaction_size = options_->max_num_coordinated_compaction_nonoverlapping_sets; //32 1 等
+        while (!l0files.empty() && compactions.size() < input_size) { // 这一层所有都compact下去
+            auto compaction = new Compaction(this, icmp_, options_, level, level + 1, levels_in_pm);
             // Make a copy.
             {
                 std::vector<FileMetaData *> l0copy(l0files);
                 std::vector<FileMetaData *> l1copy(l1files);
-                ComputeOverlappingFilesForRange(&l0copy, &l1copy, compaction);
+                ComputeOverlappingFilesForRange(&l0copy, &l1copy, compaction); // 找到两个level之间互相重叠的部分
                 NOVA_LOG(rdmaio::DEBUG)
                     << fmt::format("Original set {}: {}", set_index,
                                    compaction->DebugString(
@@ -1619,7 +1645,7 @@ namespace leveldb {
             // Too many tables in a set.
             // Remove files in a set so that its number of files does not exceed max.
             if (num_l0files + num_l1files >
-                options_->max_num_sstables_in_nonoverlapping_set) {
+                options_->max_num_sstables_in_nonoverlapping_set) { // 如果文件太多了
                 update_reason = fmt::format("Set too large l0:{} l1:{}",
                                             num_l0files, num_l1files);
 
@@ -1629,7 +1655,7 @@ namespace leveldb {
                 Slice smallest = compaction->inputs_[0][0]->smallest.user_key();
                 Slice largest = compaction->inputs_[0][0]->largest.user_key();
                 GetOverlappingInputs(l1files, smallest, largest,
-                                     &compaction->inputs_[1]);
+                                     &compaction->inputs_[1]); // 只用一个level 0做基准去找 找到的放在input1里面
                 int new_l1files = compaction->num_input_files(1);
 
                 std::set<uint64_t> skip_files;
@@ -1637,25 +1663,25 @@ namespace leveldb {
                 NOVA_ASSERT(compaction->num_input_files(0) == 1);
 
                 if (1 + new_l1files >
-                    options_->max_num_sstables_in_nonoverlapping_set) {
+                    options_->max_num_sstables_in_nonoverlapping_set) { // 如果还是多
                     update_reason += fmt::format(" Merge wide sstable l1:{}",
                                                  new_l1files);
                     remove_overlapping_tables = false;
                     // Merge this wide L0 SSTable.
-                    GetOverlappingInputs(l0files, smallest, largest,
+                    GetOverlappingInputs(l0files, smallest, largest, // 在l0中找一堆压上去
                                          &compaction->inputs_[0],
                                          options_->max_num_sstables_in_nonoverlapping_set -
                                          1, skip_files);
 
                     // User overlapping L1 SSTables as a guide to rebuild these L0 SSTables.
-                    for (auto l1o : compaction->inputs_[1]) {
+                    for (auto l1o : compaction->inputs_[1]) { // 和第一个文件有重叠的下层文件 作为指引
                         compaction->grandparents_.push_back(l1o);
                     }
                     compaction->inputs_[1].clear();
                     NOVA_ASSERT(compaction->inputs_[0].size() <=
                                 options_->max_num_sstables_in_nonoverlapping_set);
-                    compaction->target_level_ = level;
-                } else if (new_l1files > 0 && 1 + new_l1files <
+                    compaction->target_level_ = level; // 这样就是把这一层很多文件合并到本层
+                } else if (new_l1files > 0 && 1 + new_l1files < // 如果这样找到的符合要求了
                                               options_->max_num_sstables_in_nonoverlapping_set) {
                     // Expand the compaction set to include more sstables at L0.
                     smallest = compaction->inputs_[1][0]->smallest.user_key();
@@ -1670,7 +1696,7 @@ namespace leveldb {
                             compaction->inputs_[1].size(),
                             limit);
                     // Only add L0 files that are within the range.
-                    GetOverlappingInputs(l0files, smallest, largest,
+                    GetOverlappingInputs(l0files, smallest, largest, // 还有剩下的 那再从l0里面挑一些 放在input0里面
                                          &compaction->inputs_[0], limit,
                                          skip_files, true);
                 }
@@ -1685,20 +1711,20 @@ namespace leveldb {
             NOVA_ASSERT(compaction->num_input_files(0) +
                         compaction->num_input_files(1) <=
                         options_->max_num_sstables_in_nonoverlapping_set);
-            if (remove_overlapping_tables) {
+            if (remove_overlapping_tables) { // 合并到本层的话不会进入这个分支 其他 正常的话会
                 Slice smallest;
                 Slice largest;
-                std::vector<FileMetaData *> tables = compaction->inputs_[0];
-                tables.insert(tables.end(), compaction->inputs_[1].begin(),
+                std::vector<FileMetaData *> tables = compaction->inputs_[0]; 
+                tables.insert(tables.end(), compaction->inputs_[1].begin(), // 把下层的拿上去
                               compaction->inputs_[1].end());
                 GetRange(tables, &smallest, &largest);
                 // Expand the range with boundary sstables.
-                ExpandRangeWithBoundaries(l1files, &smallest, &largest);
-                RemoveOverlapTablesWithRange(&l0files, smallest, largest);
-                RemoveOverlapTablesWithRange(&l1files, smallest, largest);
+                ExpandRangeWithBoundaries(l1files, &smallest, &largest); // 找到选中文件的大小边界
+                RemoveOverlapTablesWithRange(&l0files, smallest, largest); // 删掉在里面的文件
+                RemoveOverlapTablesWithRange(&l1files, smallest, largest); // 删掉在里面的文件
             }
-            RemoveTables(&l0files, compaction->inputs_[0]);
-            RemoveTables(&l1files, compaction->inputs_[1]);
+            RemoveTables(&l0files, compaction->inputs_[0]); // 删掉选中的文件
+            RemoveTables(&l1files, compaction->inputs_[1]); // 
             set_index++;
 //            if (!nova::NovaConfig::config->enable_subrange_reorg && level > 0 &&
 //                compaction->inputs_[0].size() * 6 < compaction->inputs_[1].size()) {
@@ -1718,7 +1744,7 @@ namespace leveldb {
             compactions.push_back(compaction);
         }
 
-        if (compactions.size() > compaction_size) {
+        if (compactions.size() > compaction_size) { // 如果compaction个数太多了 就山区一点
             std::sort(compactions.begin(), compactions.end(),
                       [](Compaction *c1, Compaction *c2) {
                           return c1->inputs_[0].size() > c2->inputs_[0].size();
@@ -1729,7 +1755,7 @@ namespace leveldb {
             }
             compactions.resize(compaction_size);
         }
-        if (!compactions.empty()) {
+        if (!compactions.empty()) { 
             compactions_result->insert(compactions_result->begin(),
                                        compactions.begin(), compactions.end());
         }
@@ -1999,6 +2025,7 @@ namespace leveldb {
         return v;
     }
 
+// done
     void AtomicVersion::Unref(const std::string &dbname) {
         mutex.lock();
         if (version && !deleted) {

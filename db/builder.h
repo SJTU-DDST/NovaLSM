@@ -27,13 +27,15 @@ namespace leveldb {
 // *meta will be filled with metadata about the generated table.
 // If no data is present in *iter, meta->file_size will be set to
 // zero, and no Table file will be produced.
+
+// 这里面meta已经预定了build table的层 所以需要传入pmname done
     Status
-    BuildTable(const std::string &dbname, Env *env, const Options &options,
+    BuildTable(const std::string &dbname, const std::string &pmname, int level, int levels_in_pm, Env *env, const Options &options,
                TableCache *table_cache, Iterator *iter, FileMetaData *meta,
                EnvBGThread *bg_thread, bool prune_memtables);
-
+// done
     Status
-    TestBuildTable(const std::string &dbname, Env *env, const Options &options,
+    TestBuildTable(const std::string &dbname, const std::string &pmname, int level, int levels_in_pm, Env *env, const Options &options,
                    TableCache *table_cache, Iterator *iter, FileMetaData *meta,
                    EnvBGThread *bg_thread);
 

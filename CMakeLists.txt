@@ -377,8 +377,10 @@ target_link_libraries(leveldb ibverbs event fmt)
 add_executable(nova_server_main "novalsm/nova_server_main.cpp")
 target_link_libraries(nova_server_main ${GFLAGS} leveldb)
 
-add_executable(file_reader "novalsm/file_reader.cpp")
-target_link_libraries(file_reader -lgflags leveldb)
+# may be errorable down
+
+add_executable(file_reader "novalsm/file_reader.cpp") 
+target_link_libraries(file_reader -lgflags leveldb) 
 
 add_executable(nova_server_main_debug "novalsm/nova_server_main.cpp")
 target_link_libraries(nova_server_main_debug -lgflags leveldb -pg)

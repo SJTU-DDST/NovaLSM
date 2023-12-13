@@ -52,3 +52,5 @@ preload_out
 expriments
 .gdb_history
 pm_files/*
+protect*
+test*

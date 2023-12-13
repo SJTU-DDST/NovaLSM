@@ -239,6 +239,7 @@ namespace leveldb {
         current_ = nullptr;
     }
 
+// 按已经组织好的rangeindex进行初始化
     void RangeIndexManager::Initialize(RangeIndex *init) {
         init->refs_ += 1;
         first_->next_ = init;
@@ -299,7 +300,7 @@ namespace leveldb {
         }
         mutex_.unlock();
         for (const auto &it : memtable_refs) {
-            versions_->mid_table_mapping_[it.first]->Unref("", it.second);
+            versions_->mid_table_mapping_[it.first]->Unref("", it.second); // 这里集中unref
         }
     }
 
@@ -318,12 +319,12 @@ namespace leveldb {
             for (auto memtableid : table.memtable_ids) {
                 auto memtable = versions_->mid_table_mapping_[memtableid];
                 NOVA_ASSERT(memtable);
-                memtable->RefMemTable();
+                memtable->RefMemTable(); // 什么时候unref呢 ??
             }
         }
     }
 
-// ???
+// 将range index相关的更新进行应用
     void
     RangeIndexManager::AppendNewVersion(ScanStats *scan_stats,
                                         const RangeIndexVersionEdit &edit) {
@@ -370,7 +371,7 @@ namespace leveldb {
         } else {
             for (int i = 0; i < new_range_idx->range_tables_.size(); i++) {
                 auto &table = new_range_idx->range_tables_[i];
-                for (auto sstable : edit.removed_l0_sstables) {
+                for (auto sstable : edit.removed_l0_sstables) { // 遍历每个range的table 删掉l0层已经删除的文件
                     table.l0_sstable_ids.erase(sstable);
                 }
                 for (auto memtable : edit.removed_memtables) {
@@ -381,7 +382,7 @@ namespace leveldb {
                         table.l0_sstable_ids.insert(replace_memtable.second);
                     }
                 }
-                for (auto &replace_sstable : edit.replace_l0_sstables) {
+                for (auto &replace_sstable : edit.replace_l0_sstables) { // 要转化的l0层 sstable
                     if (table.l0_sstable_ids.erase(replace_sstable.first) ==
                         1) {
                         table.l0_sstable_ids.insert(

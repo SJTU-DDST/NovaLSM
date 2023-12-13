@@ -49,6 +49,7 @@ namespace nova {
         }
     }
 
+//输出 storage 10s中的数量
     void NovaStatThread::OutputStats(const std::string &prefix,
                                      std::string *output,
                                      std::vector<nova::NovaStatThread::StorageWorkerStats> *storage_stats,
@@ -92,7 +93,7 @@ namespace nova {
         std::vector<uint32_t> compaction_stats;
 
         for (int i = 0; i < async_workers_.size(); i++) {
-            foreground_rdma_tasks.push_back(async_workers_[i]->stat_tasks_);
+            foreground_rdma_tasks.push_back(async_workers_[i]->stat_tasks_); // 各个任务当前的任务数量
         }
 
         for (int i = 0; i < async_compaction_workers_.size(); i++) {
@@ -125,7 +126,7 @@ namespace nova {
             output = "frdma,";
             for (int i = 0; i < foreground_rdma_tasks.size(); i++) {
                 uint32_t tasks = async_workers_[i]->stat_tasks_;
-                output += std::to_string(tasks - foreground_rdma_tasks[i]);
+                output += std::to_string(tasks - foreground_rdma_tasks[i]); // 输出10s内的fg任务数量
                 output += ",";
                 foreground_rdma_tasks[i] = tasks;
             }

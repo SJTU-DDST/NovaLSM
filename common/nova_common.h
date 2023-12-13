@@ -191,9 +191,11 @@ namespace nova {
 
     std::string ToString(const std::vector<uint32_t> &x);
 
+// done
     std::string
     DBName(const std::string &dbname, uint32_t index);
 
+// done
     void ParseDBIndexFromDBName(const std::string &dbname,
                                 uint32_t *index);
 

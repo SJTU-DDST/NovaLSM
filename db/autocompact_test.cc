@@ -14,17 +14,19 @@ namespace leveldb {
     public:
         AutoCompactTest() {
             dbname_ = test::TmpDir() + "/autocompact_test";
+            pmname_ = test::TmpDir() + "/pm_tmp"
+            levels_in_pm_ = 0;
             tiny_cache_ = NewLRUCache(100);
             options_.block_cache = tiny_cache_;
-            DestroyDB(dbname_, options_);
+            DestroyDB(dbname_, pmname_, options_);
             options_.create_if_missing = true;
             options_.compression = kNoCompression;
-            ASSERT_OK(DB::Open(options_, dbname_, &db_));
+            ASSERT_OK(DB::Open(options_, dbname_, pmname_, levels_in_pm_, &db_));
         }
 
         ~AutoCompactTest() {
             delete db_;
-            DestroyDB(dbname_, Options());
+            DestroyDB(dbname_, pmname_, Options());
             delete tiny_cache_;
         }
 
@@ -45,6 +47,8 @@ namespace leveldb {
 
     private:
         std::string dbname_;
+        std::string pmname_;
+        int levels_in_pm_;
         Cache *tiny_cache_;
         Options options_;
         DB *db_;

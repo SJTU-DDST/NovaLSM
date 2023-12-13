@@ -71,6 +71,9 @@ namespace nova {
 
         std::vector<leveldb::ReplicationPair> ReplicateSSTables(
                 const std::string &dbname,
+                const std::string &pmname,
+                int level,
+                int levels_in_pm,
                 const std::vector<leveldb::ReplicationPair> &replication_pairs);
 
         static std::atomic_int_fast32_t storage_file_number_seq;

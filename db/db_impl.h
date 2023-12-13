@@ -51,7 +51,8 @@ namespace leveldb {
 
     class DBImpl : public DB {
     public:
-        DBImpl(const Options &options, const std::string &dbname);
+// done
+        DBImpl(const Options &options, const std::string &dbname, const std::string &pmname, int levels_in_pm); // 这里传入的是存放这个数据库的文件的地址 /db/files/0 带index
 
         DBImpl(const DBImpl &) = delete;
 
@@ -144,6 +145,11 @@ namespace leveldb {
         DecodeMemTablePartitions(Slice *buf, std::unordered_map<uint32_t, leveldb::MemTableLogFilePair> *mid_table_map);
 
         const std::string &dbname() override;
+
+// done
+        const std::string &pmname() override;
+
+        int levels_in_pm();
 
         uint32_t EncodeDBMetadata(char *buf, nova::StoCInMemoryLogFileManager *log_manager, uint32_t cfg_id);
 
@@ -307,7 +313,10 @@ namespace leveldb {
         const InternalFilterPolicy internal_filter_policy_;
         const bool owns_info_log_;
         const bool owns_cache_;
+// done
         const std::string dbname_;
+        const std::string pmname_;
+        int levels_in_pm_;
 
         // table_cache_ provides its own synchronization
         TableCache *const table_cache_;
@@ -343,7 +352,7 @@ namespace leveldb {
         std::vector<AtomicMemTable *> active_memtables_;
         // partitioned memtables.
         std::vector<MemTablePartition *> partitioned_active_memtables_ GUARDED_BY(mutex_);
-        std::vector<uint32_t> partitioned_imms_ GUARDED_BY(mutex_);  // Memtable being compacted
+        std::vector<uint32_t> partitioned_imms_ GUARDED_BY(mutex_);  // Memtable being compacted 这个partition所有的immtable mematble
 
         uint32_t seed_ GUARDED_BY(mutex_);  // For sampling.
 
@@ -380,6 +389,7 @@ namespace leveldb {
 // Sanitize db options.  The caller should delete result.info_log if
 // it is not equal to src.info_log.
     Options SanitizeOptions(const std::string &db,
+                            const std::string &pm,
                             const InternalKeyComparator *icmp,
                             const InternalFilterPolicy *ipolicy,
                             const Options &src);

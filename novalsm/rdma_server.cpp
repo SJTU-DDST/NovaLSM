@@ -425,6 +425,9 @@ namespace nova {
                            leveldb::StoCRequestType::STOC_WRITE_SSTABLE) {
                     uint32_t msg_size = 2;
                     std::string dbname;
+                    std::string pmname;
+                    int level;
+                    int levels_in_pm;
                     uint64_t file_number;
                     uint32_t replica_id;
                     uint32_t size;
@@ -439,6 +442,11 @@ namespace nova {
                     }
 
                     msg_size += leveldb::DecodeStr(buf + msg_size, &dbname);
+                    msg_size += leveldb::DecodeStr(buf + msg_size, &pmname); // pmname level levels_in_pm
+                    level = (int)leveldb::DecodeFixed32(buf + msg_size);
+                    msg_size += 4;
+                    levels_in_pm = (int)leveldb::DecodeFixed32(buf + msg_size);
+                    msg_size += 4;
                     file_number = leveldb::DecodeFixed64(buf + msg_size);
                     msg_size += 8;
                     replica_id = leveldb::DecodeFixed32(buf + msg_size);
@@ -451,8 +459,8 @@ namespace nova {
                         filename = leveldb::DescriptorFileName(dbname, 0,
                                                                replica_id);
                     } else {
-                        filename = leveldb::TableFileName(dbname,
-                                                          file_number,
+                        filename = leveldb::TableFileName(dbname, pmname, 
+                                                          file_number, level, levels_in_pm,
                                                           internal_type,
                                                           replica_id);
                     }
@@ -489,9 +497,10 @@ namespace nova {
 
                     NOVA_LOG(DEBUG) << fmt::format(
                                 "rdma-server{}: Allocate buf for StoC file Write db:{} fn:{} size:{} file_id:{} file_off:{} fname:{}",
-                                thread_id_, dbname, file_number, size,
+                                thread_id_, dbname, file_number, size, 
                                 stoc_file->file_id(), stoc_file_off, filename);
                     processed = true;
+                    // dbname 这里上面是initiateappendblock的部分
                 } else if (buf[0] ==
                            leveldb::StoCRequestType::STOC_ALLOCATE_LOG_BUFFER) {
                     uint32_t size = leveldb::DecodeFixed32(buf + 1);
@@ -630,7 +639,14 @@ namespace nova {
                     uint32_t num_pairs = 0;
                     leveldb::Slice input(buf + 1,
                                          nova::NovaConfig::config->max_msg_size);
+                    uint32_t level;
+                    uint32_t levels_in_pm;
                     NOVA_ASSERT(leveldb::DecodeStr(&input, &task.dbname));
+                    NOVA_ASSERT(leveldb::DecodeStr(&input, &task.pmname));
+                    NOVA_ASSERT(leveldb::DecodeFixed32(&input, &level));
+                    task.level = (int) level;
+                    NOVA_ASSERT(leveldb::DecodeFixed32(&input, &levels_in_pm));
+                    task.levels_in_pm = (int) levels_in_pm;
                     NOVA_ASSERT(leveldb::DecodeFixed32(&input, &num_pairs));
                     for (int i = 0; i < num_pairs; i++) {
                         leveldb::ReplicationPair pair;

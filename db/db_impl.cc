@@ -81,8 +81,9 @@ namespace leveldb {
         if (static_cast<V>(*ptr) < minvalue) *ptr = minvalue;
     }
 
-    //规范一些options里面的参数设置
-    Options SanitizeOptions(const std::string &dbname,
+//规范一些options里面的参数设置 done
+    Options SanitizeOptions(const std::string &dbname, //done
+                            const std::string &pmname,
                             const InternalKeyComparator *icmp,
                             const InternalFilterPolicy *ipolicy,
                             const Options &src) {
@@ -94,6 +95,8 @@ namespace leveldb {
         ClipToRange(&result.write_buffer_size, 64 << 10, 1 << 30);
         ClipToRange(&result.max_file_size, 1 << 20, 1 << 30);
         ClipToRange(&result.block_size, 1 << 10, 4 << 20);
+        
+        //?
         if (result.info_log == nullptr) { //这里不为null 之前自己新建了logger
             // Open a log file in the same directory as the db
             src.env->CreateDir(dbname);  // In case it does not exist
@@ -114,35 +117,38 @@ namespace leveldb {
         return sanitized_options.max_open_files - kNumNonTableCacheFiles;
     }
 
-//打开数据库的时候建立一个具体的实例
-    DBImpl::DBImpl(const Options &raw_options, const std::string &dbname)
+//打开数据库的时候建立一个具体的实例 done
+    DBImpl::DBImpl(const Options &raw_options, const std::string &dbname, const std::string &pmname, int levels_in_pm)
             : env_(raw_options.env),
               internal_comparator_(raw_options.comparator),
               internal_filter_policy_(raw_options.filter_policy),
-              options_(SanitizeOptions(dbname, &internal_comparator_, &internal_filter_policy_, raw_options)),
+              options_(SanitizeOptions(dbname, pmname, &internal_comparator_, &internal_filter_policy_, raw_options)), // done
               owns_info_log_(options_.info_log != raw_options.info_log),
               owns_cache_(options_.block_cache != raw_options.block_cache),
-              dbname_(dbname),
-              db_profiler_(new DBProfiler(raw_options.enable_tracing, raw_options.trace_file_path)), //一般是不开tracing的
-              table_cache_(new TableCache(dbname_, options_, TableCacheSize(options_), db_profiler_)),
+              dbname_(dbname), // done
+              pmname_(pmname),
+              levels_in_pm_(levels_in_pm),
+              db_profiler_(new DBProfiler(raw_options.enable_tracing, raw_options.trace_file_path)), // 一般是不开tracing的
+              table_cache_(new TableCache(dbname_, pmname_, levels_in_pm_, options_, TableCacheSize(options_), db_profiler_)), // 想想这个怎么改 emmmm 传进去 或者 另加一个  to be done 现在想来是传入的方法好一些
+              // !!!!!!!!!!!!!!!!!
               db_lock_(nullptr),
               shutting_down_(false),
               seed_(0),
               manual_compaction_(nullptr),
-              versions_(new VersionSet(dbname_, &options_, table_cache_, &internal_comparator_)),
+              versions_(new VersionSet(dbname_, pmname_,  levels_in_pm_, &options_, table_cache_, &internal_comparator_)), // To BE DONE
               bg_compaction_threads_(raw_options.bg_compaction_threads),
               bg_flush_memtable_threads_(raw_options.bg_flush_memtable_threads),
               reorg_thread_(raw_options.reorg_thread),
               compaction_coordinator_thread_(raw_options.compaction_coordinator_thread),
-              memtable_available_signal_(&range_lock_),
-              l0_stop_write_signal_(&l0_stop_write_mutex_),
+              memtable_available_signal_(&range_lock_), // mempool模式使用
+              l0_stop_write_signal_(&l0_stop_write_mutex_), // 从来没有使用过
               user_comparator_(raw_options.comparator) {
         is_loading_db_ = false;
-        memtable_id_seq_ = 100;
-        start_coordinated_compaction_ = false;
-        terminate_coordinated_compaction_ = false;
-        start_compaction_ = true;
-        if (options_.enable_lookup_index) {
+        memtable_id_seq_ = 100; // memtable_id 从100开始 也就是说 0 - 99 应该是 level 0的!!!
+        start_coordinated_compaction_ = false; // 用于开始major compaction
+        terminate_coordinated_compaction_ = false; // 用于停止major compaction
+        start_compaction_ = true; //
+        if (options_.enable_lookup_index) { // 刚开始全部初始化为0 那一开始没有memtableid为0的memtable么??
 //这里的lookindex是包括memtable sstable和level0的
             lookup_index_ = new LookupIndex(
                     options_.upper_key - options_.lower_key);
@@ -174,28 +180,30 @@ namespace leveldb {
         table_cache_->Evict(file_number, false);
     }
 
+// 删掉旧的version emmm 通过引用计数判断
     void DBImpl::DeleteObsoleteVersions(leveldb::EnvBGThread *bg_thread) {
         mutex_.AssertHeld();
         versions_->DeleteObsoleteVersions();
     }
 
+// 从state中获取 edits 用于更新lookupindex
     void DBImpl::ObtainLookupIndexEdits(leveldb::CompactionState *state,
                                         std::unordered_map<uint32_t, leveldb::MemTableL0FilesEdit> *memtableid_l0fns) {
         auto c = state->compaction;
-        if (c->level() != 0) {
+        if (c->level() != 0) { // 如果是更深层的压缩那不影响lookupindex等
             return;
         }
-        if (c->target_level() == 0) {
+        if (c->target_level() == 0) { // 如果是l0 -> l0层的压缩
             // Merge wide L0 SSTables.
             // For each table Id: remove the input file. add all output files.
             for (int i = 0; i < c->inputs_[0].size(); i++) {
                 auto f = c->inputs_[0][i];
-                for (auto memtableid : f->memtable_ids) {
+                for (auto memtableid : f->memtable_ids) { // 原来存了这个l0文件的 atocmic memtable id? 
                     (*memtableid_l0fns)[memtableid].dbid_ = dbid_;
                     (*memtableid_l0fns)[memtableid].remove_fns.insert(f->number);
-                    for (const auto &out : state->outputs) {
+                    for (const auto &out : state->outputs) { // 每个memtableid 都要进行 因为不知道他们的交叉关系??
                         (*memtableid_l0fns)[memtableid].add_fns.insert(out.number);
-                    }
+                    } // 因为是l0到l0的压缩 所以就是要去掉原来metableid中的 旧文件加上新的文件
                 }
             }
 
@@ -203,11 +211,11 @@ namespace leveldb {
             for (FileMetaData &out : state->outputs) {
                 for (int i = 0; i < c->inputs_[0].size(); i++) {
                     auto input = c->inputs_[0][i];
-                    out.memtable_ids.insert(input->memtable_ids.begin(), input->memtable_ids.end());
+                    out.memtable_ids.insert(input->memtable_ids.begin(), input->memtable_ids.end()); // 输出承载了这些memtableid的东西
                 }
             }
         }
-        if (c->target_level() == 1) {
+        if (c->target_level() == 1) { // 如果是 l0 -> l1层的压缩
             // Compact L0 SSTables to L1.
             for (int i = 0; i < c->inputs_[0].size(); i++) {
                 auto f = c->inputs_[0][i];
@@ -215,11 +223,11 @@ namespace leveldb {
                 for (auto memtableid : f->memtable_ids) {
                     (*memtableid_l0fns)[memtableid].dbid_ = dbid_;
                     NOVA_ASSERT(memtableid < MAX_LIVE_MEMTABLES);
-                    (*memtableid_l0fns)[memtableid].remove_fns.insert(f->number);
+                    (*memtableid_l0fns)[memtableid].remove_fns.insert(f->number); // 只需要remove就好
                 }
             }
         }
-        if (c->target_level() == 0 || c->target_level() == 1) {
+        if (c->target_level() == 0 || c->target_level() == 1) { // 如果是到l0或者到l1层的压缩 又确保了一遍emmmm
             for (int i = 0; i < c->inputs_[1].size(); i++) {
                 auto f = c->inputs_[1][i];
                 if (f->memtable_ids.empty()) {
@@ -459,6 +467,7 @@ namespace leveldb {
         }
     }
 
+// done 下面这个函数改完才能到这个 done
     void DBImpl::DeleteFiles(EnvBGThread *bg_thread,
                              std::vector<std::string> &files_to_delete,
                              std::unordered_map<uint32_t, std::vector<SSTableStoCFilePair>> &server_pairs) {
@@ -467,8 +476,9 @@ namespace leveldb {
         // are therefore safe to delete while allowing other threads to proceed.
         for (const std::string &filename : files_to_delete) {
             env_->DeleteFile(dbname_ + "/" + filename);
+            env_->DeleteFile(pmname_ + "/" + filename); //这里的文件名字应该包括了dbname_ ???? 写的有问题
         }
-        for (auto &it : server_pairs) {
+        for (auto &it : server_pairs) {// server name fileid
             bg_thread->stoc_client()->InitiateDeleteTables(it.first,
                                                            it.second);
             for (auto &tble : it.second) {
@@ -479,6 +489,7 @@ namespace leveldb {
         }
     }
 
+// to be done 下面的函数先完成 done
     void DBImpl::ObtainObsoleteFiles(EnvBGThread *bg_thread,
                                      std::vector<std::string> *files_to_delete,
                                      std::unordered_map<uint32_t, std::vector<SSTableStoCFilePair>> *server_pairs,
@@ -491,20 +502,20 @@ namespace leveldb {
         }
         // Make a set of all of the live files
         std::set<uint64_t> live;
-        versions_->AddLiveFiles(&live, compacting_version_id);
+        versions_->AddLiveFiles(&live, compacting_version_id); // 把所有目前仍在使用的文件加进来 除了compaction之前的哪个version的
         auto it = compacted_tables_.begin();
         uint32_t success = 0;
-        while (it != compacted_tables_.end()) {
+        while (it != compacted_tables_.end()) { // 遍历压缩的sstable 
             uint64_t fn = it->first;
             FileMetaData &meta = it->second;
-            if (live.find(fn) != live.end()) {
+            if (live.find(fn) != live.end()) { // 如果它还是live的就不要remove
                 // Do not remove if it is still alive.
                 it++;
                 continue;
             }
             // The file can be deleted.
-            table_cache_->Evict(meta.number, false);
-            ObtainStoCFilesOfSSTable(files_to_delete, server_pairs, meta);
+            table_cache_->Evict(meta.number, false); // 不然就evict掉
+            ObtainStoCFilesOfSSTable(files_to_delete, server_pairs, meta); // 找到这个文件的各种信息 加入要删除的信息里面
             success += 1;
             it = compacted_tables_.erase(it);
         }
@@ -515,14 +526,15 @@ namespace leveldb {
         }
     }
 
+// done 
     void DBImpl::ObtainStoCFilesOfSSTable(std::vector<std::string> *files_to_delete,
                                           std::unordered_map<uint32_t, std::vector<SSTableStoCFilePair>> *server_pairs,
-                                          const FileMetaData &meta) const {
+                                          const FileMetaData &meta) const { //这里 meta是要删除的文件 需要把相关信息加入files_to_delete和server_pairs
         // Delete metadata file.
         for (int replica_id = 0; replica_id <
                                  nova::NovaConfig::config->number_of_sstable_metadata_replicas; replica_id++) {
             SSTableStoCFilePair pair = {};
-            pair.sstable_name = TableFileName(this->dbname_, meta.number, FileInternalType::kFileMetadata, replica_id);
+            pair.sstable_name = TableFileName(this->dbname_, this->pmname_, meta.number, meta.level, this->levels_in_pm_, FileInternalType::kFileMetadata, replica_id);
             pair.stoc_file_id = meta.block_replica_handles[replica_id].meta_block_handle.stoc_file_id;
             (*server_pairs)[meta.block_replica_handles[replica_id].meta_block_handle.server_id].push_back(pair);
         }
@@ -532,18 +544,18 @@ namespace leveldb {
             auto handles = meta.block_replica_handles[replica_id].data_block_group_handles;
             for (int i = 0; i < handles.size(); i++) {
                 SSTableStoCFilePair pair = {};
-                pair.sstable_name = TableFileName(this->dbname_, meta.number, FileInternalType::kFileData, replica_id);
+                pair.sstable_name = TableFileName(this->dbname_, this->pmname_, meta.number, meta.level, this->levels_in_pm_, FileInternalType::kFileData, replica_id);
                 pair.stoc_file_id = handles[i].stoc_file_id;
                 (*server_pairs)[handles[i].server_id].push_back(pair);
             }
             files_to_delete->push_back(
-                    TableFileName(this->dbname_, meta.number, FileInternalType::kFileData, replica_id));
+                    TableFileName(this->dbname_, this->pmname_, meta.number, meta.level, this->levels_in_pm_, FileInternalType::kFileData, replica_id));
         }
         // Delete parity file.
         if (nova::NovaConfig::config->use_parity_for_sstable_data_blocks) {
             auto handle = meta.parity_block_handle;
             SSTableStoCFilePair pair = {};
-            pair.sstable_name = TableFileName(this->dbname_, meta.number, FileInternalType::kFileParity, 0);
+            pair.sstable_name = TableFileName(this->dbname_, this->pmname_, meta.number, meta.level, this->levels_in_pm_, FileInternalType::kFileParity, 0);
             pair.stoc_file_id = handle.stoc_file_id;
             (*server_pairs)[handle.server_id].push_back(pair);
         }
@@ -593,11 +605,12 @@ namespace leveldb {
         recovery_time = time_diff(start, end);
     }
 
+// 从什么恢复??
     Status DBImpl::Recover() {
         timeval start = {};
         gettimeofday(&start, nullptr);
-        uint32_t stoc_id = options_.manifest_stoc_ids[0];
-        std::string manifest = DescriptorFileName(dbname_, 0, 0);
+        uint32_t stoc_id = options_.manifest_stoc_ids[0]; // manifest文件存的地方
+        std::string manifest = DescriptorFileName(dbname_, 0, 0); // 暂时还是磁盘中
         auto client = reinterpret_cast<StoCBlockClient *> (options_.stoc_client);
         uint32_t manifest_file_size = nova::NovaConfig::config->manifest_file_size;
         uint32_t scid = options_.mem_manager->slabclassid(0, manifest_file_size);
@@ -610,6 +623,7 @@ namespace leveldb {
         handle.offset = 0;
         handle.size = manifest_file_size;
 
+// 把manifest里面的东西读入自己申请的buf里
         NOVA_LOG(rdmaio::INFO) << fmt::format(
                     "Recover the latest verion from manifest file {} at StoC-{}, off:{}",
                     manifest, stoc_id, (uint64_t) buf);
@@ -617,7 +631,7 @@ namespace leveldb {
                                                         manifest_file_size,
                                                         buf,
                                                         manifest_file_size,
-                                                        manifest, false); // 前后台由什么决定?
+                                                        manifest, false); // 从manifest文件中读取所有东西
         client->Wait(); // 下发一个请求 传入client 的 sem， 完成/收到回复的时候会post
         StoCResponse response;
         NOVA_ASSERT(client->IsDone(req_id, &response, nullptr));
@@ -634,12 +648,12 @@ namespace leveldb {
 //                                         dbid_, &logfile_buf);
 //            client->Wait();UpdateFileMetaReplicaLocations
 //        }
-        for (auto &it : logfile_buf) {
+        for (auto &it : logfile_buf) { // 没有恢复log
             NOVA_LOG(rdmaio::INFO) << fmt::format("log file {}:{}", it.first, it.second);
         }
         // Recover log records.
         std::vector<SubRange> subrange_edits;
-        NOVA_ASSERT(versions_->Recover(Slice(buf, manifest_file_size), &subrange_edits).ok());
+        NOVA_ASSERT(versions_->Recover(Slice(buf, manifest_file_size), &subrange_edits).ok()); // 首先恢复subrange和version的相关信息 比如subrange是怎么分布的 各个level有哪些文件
         NOVA_LOG(rdmaio::INFO) << fmt::format("Recovered Version: {}", versions_->current()->DebugString());
         NOVA_LOG(rdmaio::INFO)
             << fmt::format("Recovered lsn:{} lfn:{}", versions_->last_sequence_, versions_->NextFileNumber());
@@ -647,33 +661,33 @@ namespace leveldb {
 
         // Inform all StoCs of the mapping between a file and stoc file id.
         const std::vector<std::vector<FileMetaData *>> &files = versions_->current()->files_;
-        std::unordered_map<uint32_t, std::unordered_map<std::string, uint32_t>> stoc_fn_stocfileid;
+        std::unordered_map<uint32_t, std::unordered_map<std::string, uint32_t>> stoc_fn_stocfileid; // stocid filename file id
         for (int level = 0; level < options_.level; level++) {
-            for (int i = 0; i < files[level].size(); i++) {
+            for (int i = 0; i < files[level].size(); i++) { // 按层收集文件的各种信息
                 auto meta = files[level][i];
-                for (int replica_id = 0; replica_id < meta->block_replica_handles.size(); replica_id++) {
-                    std::string metafilename = TableFileName(dbname_, meta->number, FileInternalType::kFileMetadata,
+                for (int replica_id = 0; replica_id < meta->block_replica_handles.size(); replica_id++) { // 对每个数据的replication
+                    std::string metafilename = TableFileName(dbname_, pmname_, meta->number, level, levels_in_pm_, FileInternalType::kFileMetadata,
                                                              replica_id);
                     auto meta_handle = meta->block_replica_handles[replica_id].meta_block_handle;
-                    stoc_fn_stocfileid[meta_handle.server_id][metafilename] = meta_handle.stoc_file_id;
+                    stoc_fn_stocfileid[meta_handle.server_id][metafilename] = meta_handle.stoc_file_id; //
                 }
 
                 if (nova::NovaConfig::config->number_of_sstable_data_replicas == 1) {
-                    std::string filename = TableFileName(dbname_, meta->number, FileInternalType::kFileData, 0);
+                    std::string filename = TableFileName(dbname_, pmname_, meta->number, level, levels_in_pm_, FileInternalType::kFileData, 0);
                     for (auto &data_block : meta->block_replica_handles[0].data_block_group_handles) {
                         stoc_fn_stocfileid[data_block.server_id][filename] = data_block.stoc_file_id;
                     }
-                } else {
+                } else {// 对每个元数据的replication
                     for (int replica_id = 0; replica_id < meta->block_replica_handles.size(); replica_id++) {
-                        std::string filename = TableFileName(dbname_, meta->number, FileInternalType::kFileData,
+                        std::string filename = TableFileName(dbname_, pmname_, meta->number, level, levels_in_pm_, FileInternalType::kFileData,
                                                              replica_id);
                         for (auto &data_block : meta->block_replica_handles[replica_id].data_block_group_handles) {
                             stoc_fn_stocfileid[data_block.server_id][filename] = data_block.stoc_file_id;
                         }
                     }
                 }
-                if (meta->parity_block_handle.stoc_file_id != 0) {
-                    std::string filename = TableFileName(dbname_, meta->number, FileInternalType::kFileParity, 0);
+                if (meta->parity_block_handle.stoc_file_id != 0) { // 对每个parity的replication
+                    std::string filename = TableFileName(dbname_, pmname_, meta->number, level, levels_in_pm_, FileInternalType::kFileParity, 0);
                     stoc_fn_stocfileid[meta->parity_block_handle.server_id][filename] = meta->parity_block_handle.stoc_file_id;
                 }
             }
@@ -681,14 +695,14 @@ namespace leveldb {
 
         NOVA_LOG(rdmaio::INFO)
             << fmt::format("Recover Start Install FileStoCFile mapping size:{}", stoc_fn_stocfileid.size());
-        for (const auto &mapping : stoc_fn_stocfileid) {
+        for (const auto &mapping : stoc_fn_stocfileid) { // serverid, filname, fileid
             NOVA_LOG(rdmaio::INFO)
                 << fmt::format("Recover Install FileStoCFile mapping {} size:{}", mapping.first, mapping.second.size());
             auto all_mapping_it = mapping.second.begin();
             std::unordered_map<std::string, uint32_t> fnstocfid;
-            while (all_mapping_it != mapping.second.end()) {
+            while (all_mapping_it != mapping.second.end()) { // batch一下 filename -> fileid的映射
                 if (fnstocfid.size() == 2000) {
-                    client->InitiateInstallFileNameStoCFileMapping(mapping.first, fnstocfid);
+                    client->InitiateInstallFileNameStoCFileMapping(mapping.first, fnstocfid); // 这里是建立什么映射??
                     client->Wait();
                     fnstocfid.clear();
                 }
@@ -696,7 +710,7 @@ namespace leveldb {
                 all_mapping_it++;
             }
             if (!fnstocfid.empty()) {
-                client->InitiateInstallFileNameStoCFileMapping(mapping.first, fnstocfid);
+                client->InitiateInstallFileNameStoCFileMapping(mapping.first, fnstocfid); // 打开了所有文件或者说建立了所有的映射 在stoc端
                 client->Wait();
             }
         }
@@ -705,13 +719,13 @@ namespace leveldb {
         std::vector<const FileMetaData *> meta_files;
         for (int level = 0; level < options_.level; level++) {
             for (int i = 0; i < files[level].size(); i++) {
-                meta_files.push_back(files[level][i]);
+                meta_files.push_back(files[level][i]); // 收集每层的filemeta
             }
         }
         NOVA_LOG(rdmaio::INFO)
             << fmt::format("Recover Start Fetching meta blocks size:{}",
                            meta_files.size());
-        FetchMetadataFilesInParallel(meta_files, dbname_, options_, client, env_);
+        FetchMetadataFilesInParallel(meta_files, dbname_, pmname_, levels_in_pm_, options_, client, env_); // 这里做了什么存在疑问 但是没改什么 注释掉应该也无所谓
         // Rebuild lookup index.
         ReadOptions ro;
         ro.mem_manager = options_.mem_manager;
@@ -725,20 +739,20 @@ namespace leveldb {
                 << fmt::format("Recover L0 data file {} ", meta->DebugString());
             auto it = table_cache_->NewIterator(
                     AccessCaller::kCompaction, ro, meta, meta->number,
-                    meta->SelectReplica(), 0, meta->converted_file_size);
-            it->SeekToFirst();
+                    meta->SelectReplica(), 0, meta->converted_file_size); // 随便选一个replica 一个level 0的遍历器 !!!! 重要
+            it->SeekToFirst(); // 通过table cache来遍历l0层的文件  
             while (it->Valid()) {
                 uint64_t hash;
                 Slice user_key = ExtractUserKey(it->key());
                 nova::str_to_int(user_key.data(), &hash, user_key.size());
                 if (lookup_index_) {
-                    lookup_index_->Insert(user_key, hash, memtableid);
+                    lookup_index_->Insert(user_key, hash, memtableid); // memtableid 为几代表 存在 memtableid对应的哪个memtable的l0_file_number中
                 }
 
                 AtomicMemTable *mem = versions_->mid_table_mapping_[memtableid];
-                mem->l0_file_numbers_.insert(meta->number);
-                mem->is_immutable_ = true;
-                mem->is_flushed_ = true;
+                mem->l0_file_numbers_.insert(meta->number); // 代表相应的l0层文件
+                mem->is_immutable_ = true; // ??
+                mem->is_flushed_ = true; // ??
                 it->Next();
             }
             memtableid++;
@@ -747,13 +761,14 @@ namespace leveldb {
         }
 
         if (options_.enable_subranges) {
-            if (!subrange_edits.empty()) {
+            if (!subrange_edits.empty()) { // 如果从manifest文件中恢复了subrange信息 恢复并且加入
                 auto new_srs = new SubRanges(subrange_edits);
                 new_srs->AssertSubrangeBoundary(user_comparator_);
                 subrange_manager_->latest_subranges_.store(new_srs);
                 subrange_manager_->ComputeCompactionThreadsAssignment(new_srs);
             }
 
+            // 如果没有恢复的话 那就预建立均匀分布的
             auto latest_srs = subrange_manager_->latest_subranges_.load();
             if (latest_srs->subranges.size() < options_.num_memtable_partitions) {
                 NOVA_LOG(rdmaio::INFO) << "Construct subranges with uniform distribution.";
@@ -768,29 +783,29 @@ namespace leveldb {
         if (options_.enable_range_index) {
             RangeIndex *init = new RangeIndex(&scan_stats, 0,
                                               versions_->current_version_id());
-            if (options_.enable_subranges) {
+            if (options_.enable_subranges) { // 如果开了subrange的话
                 auto new_srs = subrange_manager_->latest_subranges_.load();
                 std::string last_key;
                 int range_index_id = -1;
-                for (int i = 0; i < new_srs->subranges.size(); i++) {
+                for (int i = 0; i < new_srs->subranges.size(); i++) { // 这里表明 subrange的数量与 partition active memtable的数量一样
                     const auto &sr = new_srs->subranges[i];
-                    if (last_key == sr.tiny_ranges[0].lower) {
-                        init->range_tables_[range_index_id].memtable_ids.insert(
+                    if (last_key == sr.tiny_ranges[0].lower) { // 表明这是一个duplicate subrange 管理相同的range的memtableid会集合到一起
+                        init->range_tables_[range_index_id].memtable_ids.insert( // 用第一次出现的位置代替range 表明同一个range的memtable
                                 partitioned_active_memtables_[i]->active_memtable->memtableid());
                         continue;
                     }
                     Range r = {};
                     r.lower = sr.tiny_ranges[0].lower;
                     r.upper = sr.tiny_ranges[sr.tiny_ranges.size() - 1].upper;
-                    init->ranges_.push_back(r);
+                    init->ranges_.push_back(r); // 把subrange中的tiny range收集
                     RangeTables tables = {};
                     tables.memtable_ids.insert(
-                            partitioned_active_memtables_[i]->active_memtable->memtableid());
-                    init->range_tables_.push_back(tables);
+                            partitioned_active_memtables_[i]->active_memtable->memtableid()); // 找到对应的
+                    init->range_tables_.push_back(tables); // range index --- memtable id {...}
                     last_key = sr.tiny_ranges[0].lower;
                     range_index_id += 1;
                 }
-            } else {
+            } else { // 如果没开subrange的话 就捏成1个压进去就好 range index和 subrange必须开一个 不开subrange的话 所有partition里面的东西全部归大rangetable
                 Range r = {};
                 r.lower = std::to_string(options_.lower_key);
                 r.upper = std::to_string(options_.upper_key);
@@ -800,13 +815,13 @@ namespace leveldb {
                     tables.memtable_ids.insert(
                             partitioned_active_memtables_[i]->active_memtable->memtableid());
                 }
-                init->range_tables_.push_back(tables);
+                init->range_tables_.push_back(tables); // 所有的active memtable都属于一个 range
             }
             range_index_manager_->Initialize(init);
             NOVA_LOG(rdmaio::INFO) << init->DebugString();
         }
 
-        for (const auto &logfile : logfile_buf) {
+        for (const auto &logfile : logfile_buf) { // 无
             uint32_t index = logfile.first.find_last_of('-');
             uint32_t log_file_number = std::stoi(
                     logfile.first.substr(index + 1));
@@ -832,6 +847,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 没有任何关于恢复读写日志的东西
     Status
     DBImpl::RecoverLogFile(
             const std::unordered_map<std::string, uint64_t> &logfile_buf,
@@ -980,6 +996,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 用不到 done
     void DBImpl::TestCompact(leveldb::EnvBGThread *bg_thread,
                              const std::vector<leveldb::EnvBGTask> &tasks) {
         VersionEdit edit;
@@ -992,7 +1009,7 @@ namespace leveldb {
             Status s;
             Iterator *iter = imm->NewIterator(TraceType::IMMUTABLE_MEMTABLE,
                                               AccessCaller::kCompaction);
-            s = TestBuildTable(dbname_, env_, options_, table_cache_, iter,
+            s = TestBuildTable(dbname_, pmname_, 0, levels_in_pm_, env_, options_, table_cache_, iter,
                                &meta, bg_thread);
             NOVA_ASSERT(s.ok()) << s.ToString();
             delete iter;
@@ -1027,7 +1044,7 @@ namespace leveldb {
             MemTable *imm = reinterpret_cast<MemTable *>(task.memtable);
             auto atomic_imm = versions_->mid_table_mapping_[imm->memtableid()];
             atomic_imm->is_immutable_ = true;
-            atomic_imm->SetFlushed(dbname_, {imm->meta().number},
+            atomic_imm->SetFlushed(dbname_, {imm->meta().number}, // done 这里只是标识
                                    v->version_id());
         }
 
@@ -1051,6 +1068,8 @@ namespace leveldb {
         }
     }
 
+// key多的subrange的compaction 基本就是把memtable转化为sstable的格式
+// prune_memtable
     void DBImpl::CompactMemTableStaticPartition(leveldb::EnvBGThread *bg_thread,
                                                 const std::vector<leveldb::EnvBGTask> &tasks,
                                                 VersionEdit *edit,
@@ -1065,7 +1084,7 @@ namespace leveldb {
             Status s;
             Iterator *iter = imm->NewIterator(TraceType::IMMUTABLE_MEMTABLE, AccessCaller::kCompaction);
             nova::NovaGlobalVariables::global.generated_memtable_sizes += imm->ApproximateMemoryUsage();
-            s = BuildTable(dbname_, env_, options_, table_cache_, iter, &meta, bg_thread, prune_memtable);
+            s = BuildTable(dbname_, pmname_, meta.level, levels_in_pm_, env_, options_, table_cache_, iter, &meta, bg_thread, prune_memtable); // 把sstable做出来
             NOVA_ASSERT(s.ok()) << s.ToString();
             delete iter;
             // Note that if file_size is zero, the file has been deleted and
@@ -1084,13 +1103,14 @@ namespace leveldb {
         }
     }
 
+// key少的subrange的flush memtable的任务 1个partition的集合到一块了
     bool DBImpl::CompactMultipleMemTablesStaticPartitionToMemTable(
             int partition_id, leveldb::EnvBGThread *bg_thread,
             const std::vector<leveldb::EnvBGTask> &tasks,
             std::vector<uint32_t> *closed_memtable_log_files) {
         std::vector<Iterator *> iterators;
         CompactionStats stats;
-        std::set<uint32_t> immids;
+        std::set<uint32_t> immids; // immutable memtableid 有可能是为了存结果的
         for (auto &task : tasks) {
             MemTable *imm = reinterpret_cast<MemTable *>(task.memtable);
             NOVA_ASSERT(imm);
@@ -1109,14 +1129,14 @@ namespace leveldb {
         CompactionState *state = new CompactionState(nullptr, subranges, versions_->last_sequence_);
         std::function<uint64_t(void)> fn_generator = std::bind(
                 &VersionSet::NewFileNumber, versions_);
-        CompactionJob job(fn_generator, env_, dbname_, user_comparator_,
+        CompactionJob job(fn_generator, env_, dbname_, pmname_, levels_in_pm_, user_comparator_,
                           options_, bg_thread, table_cache_);
         uint32_t memtable_id = memtable_id_seq_.fetch_add(1);
         MemTable *output_memtable = new MemTable(internal_comparator_, memtable_id,
                                                  db_profiler_, true);
         NOVA_ASSERT(memtable_id < MAX_LIVE_MEMTABLES);
         auto atomic_output_memtable = versions_->mid_table_mapping_[memtable_id];
-        atomic_output_memtable->SetMemTable(flush_order_->latest_generation_id, output_memtable);
+        atomic_output_memtable->SetMemTable(flush_order_->latest_generation_id, output_memtable); // 输出设置为一个新的memtable
 
         std::vector<LevelDBLogRecord> log_records;
         auto fn_add_to_memtable = [&](const ParsedInternalKey &ikey, const Slice &value) {
@@ -1125,11 +1145,11 @@ namespace leveldb {
                 uint64_t key;
                 nova::str_to_int(ikey.user_key.data(), &key, ikey.user_key.size());
                 uint32_t current_mid = lookup_index_->Lookup(ikey.user_key, key);
-                if (immids.find(current_mid) != immids.end()) {
+                if (immids.find(current_mid) != immids.end()) { //如果当前这个kv的最新位于l0层 那就改成新的要输出的immtable中 这里应该是默认可以输出为1个memtable
                     lookup_index_->CAS(ikey.user_key, key, current_mid, memtable_id);
                 }
             }
-            LevelDBLogRecord log_record = {};
+            LevelDBLogRecord log_record = {}; //这里是记录下加入的kv
             log_record.sequence_number = ikey.sequence;
             log_record.key = ikey.user_key;
             log_record.value = value;
@@ -1154,7 +1174,7 @@ namespace leveldb {
             wo.rdma_backing_mem = backing_mem;
             wo.rdma_backing_mem_size = nova::NovaConfig::config->max_stoc_file_size;
             wo.is_loading_db = false;
-            GenerateLogRecord(wo, log_records, output_memtable->memtableid());
+            GenerateLogRecord(wo, log_records, output_memtable->memtableid()); // 新的memtable中的写入日志 以及新生成的memtable的id
             bg_thread->mem_manager()->FreeItem(0, backing_mem, scid);
         }
         iterators.clear();
@@ -1163,7 +1183,7 @@ namespace leveldb {
         MemTablePartition *p = partitioned_active_memtables_[partition_id];
         int start_id = 0;
 
-        if (nova::NovaConfig::config->cfgs.size() > 1) {
+        if (nova::NovaConfig::config->cfgs.size() > 1) { // ??? 这个和config有什么关系
             p->mutex.Lock();
             {
                 if (lookup_index_) {
@@ -1187,7 +1207,7 @@ namespace leveldb {
         // Update range index.
         if (range_index_manager_) {
             RangeIndexVersionEdit range_edit;
-            range_edit.sr = &subranges->subranges[partition_id];
+            range_edit.sr = &subranges->subranges[partition_id]; // 删掉陈旧的immutable memtable, 新的memtable
             range_edit.removed_memtables = immids;
             range_edit.new_memtable_id = memtable_id;
             range_edit.add_new_memtable = true;
@@ -1200,21 +1220,21 @@ namespace leveldb {
             MemTable *imm = reinterpret_cast<MemTable *>(task.memtable);
             auto atomic_imm = versions_->mid_table_mapping_[imm->memtableid()];
             atomic_imm->is_immutable_ = true;
-            atomic_imm->SetFlushed(dbname_, {}, 0);
+            atomic_imm->SetFlushed(dbname_, {}, 0); // done
         }
 
         if (nova::NovaConfig::config->cfgs.size() == 1) {
             p->mutex.Lock();
         }
-        if (!p->active_memtable) {
+        if (!p->active_memtable) { // 新输出的memtable直接当作新的就好 因为这个subrange key很少
             p->active_memtable = output_memtable;
         } else {
-            p->slot_imm_id[tasks[start_id].imm_slot] = output_memtable->memtableid();
+            p->slot_imm_id[tasks[start_id].imm_slot] = output_memtable->memtableid(); // 如果已经有新的memtable了 那就加到老的
             partitioned_imms_[tasks[start_id].imm_slot] = output_memtable->memtableid();
             start_id++;
         }
         p->AddMemTable(atomic_output_memtable->generation_id_, output_memtable->memtableid());
-        bool no_slots = p->available_slots.empty();
+        bool no_slots = p->available_slots.empty(); // 如果当前压缩之前available
         for (; start_id < tasks.size(); start_id++) {
             const auto &task = tasks[start_id];
             uint32_t immid = partitioned_imms_[task.imm_slot];
@@ -1223,17 +1243,17 @@ namespace leveldb {
             p->RemoveMemTable(remove_atomic->generation_id_.load(), immid);
             NOVA_ASSERT(task.imm_slot < partitioned_imms_.size());
 
-            partitioned_imms_[task.imm_slot] = 0;
-            p->available_slots.push(task.imm_slot);
+            partitioned_imms_[task.imm_slot] = 0; // 删掉对应的映射
+            p->available_slots.push(task.imm_slot); // 把这个槽编号还回去
             NOVA_ASSERT(p->available_slots.size() <= p->imm_slots.size());
         }
         number_of_immutable_memtables_.fetch_add(-tasks.size() + start_id);
         for (auto &log_file : p->immutable_memtable_ids) {
             closed_memtable_log_files->push_back(log_file);
         }
-        p->immutable_memtable_ids.clear();
+        p->immutable_memtable_ids.clear(); //清空
         if (no_slots) {
-            p->background_work_finished_signal_.SignalAll();
+            p->background_work_finished_signal_.SignalAll();//如果之前没有availaible的槽位了 那就唤醒
         }
         p->mutex.Unlock();
         delete state;
@@ -1259,7 +1279,7 @@ namespace leveldb {
             Status s;
             Iterator *iter = imm->NewIterator(TraceType::IMMUTABLE_MEMTABLE,
                                               AccessCaller::kCompaction);
-            s = BuildTable(dbname_, env_, options_, table_cache_, iter,
+            s = BuildTable(dbname_, pmname_, meta.level, levels_in_pm_, env_, options_, table_cache_, iter,
                            &meta, bg_thread, false);
             NOVA_ASSERT(s.ok()) << s.ToString();
             delete iter;
@@ -1377,7 +1397,8 @@ namespace leveldb {
         }
     }
 
-//用于flush immtable，不太懂
+//将active memtable转为为immutable memtable之后 用于flush immtable
+// 调用的时候不对partition上锁 
     void DBImpl::ScheduleFlushMemTableTask(int thread_id, uint32_t memtable_id,
                                            MemTable *imm,
                                            uint32_t partition_id,
@@ -1385,12 +1406,12 @@ namespace leveldb {
                                            unsigned int *rand_seed,
                                            bool merge_memtables_without_flushing) {
         auto atomic_memtable = versions_->mid_table_mapping_[memtable_id];
-        if (!flush_order_->IsSafeToFlush(partition_id, atomic_memtable->generation_id_)) {
+        if (!flush_order_->IsSafeToFlush(partition_id, atomic_memtable->generation_id_)) { // 即使不成立也会很快倍清除
             return;
         }
         bool FALSE = false;
         if (!atomic_memtable->is_scheduled_for_flushing.compare_exchange_strong(FALSE, true,
-                                                                                std::memory_order_seq_cst)) {
+                                                                                std::memory_order_seq_cst)) { // 改标记 改为正在flush
             return;
         }
         NOVA_LOG(rdmaio::DEBUG)
@@ -1403,7 +1424,7 @@ namespace leveldb {
         task.memtable = imm;
         task.merge_memtables_without_flushing = merge_memtables_without_flushing;
         if (imm) {
-            task.memtable_size_mb = imm->ApproximateMemoryUsage() / 1024 / 1024;
+            task.memtable_size_mb = imm->ApproximateMemoryUsage() / 1024 / 1024; // 这里只算了申请的空间
         }
         task.memtable_partition_id = partition_id;
         task.imm_slot = imm_slot;
@@ -1412,6 +1433,7 @@ namespace leveldb {
         }
     }
 
+// flush memtable的任务 major compaction的任务
     void DBImpl::PerformCompaction(leveldb::EnvBGThread *bg_thread, const std::vector<EnvBGTask> &tasks) {
         std::vector<EnvBGTask> memtable_tasks;
         std::unordered_map<uint32_t, std::vector<EnvBGTask>> pid_mergable_memtables;
@@ -1419,11 +1441,11 @@ namespace leveldb {
         bool delete_obsolete_files = false;
         for (auto &task : tasks) {
             if (task.memtable) {
-                if (task.merge_memtables_without_flushing) {
+                if (task.merge_memtables_without_flushing) { // key少的subrange
                     pid_mergable_memtables[task.memtable_partition_id].push_back(task);
                     continue;
                 }
-                memtable_tasks.push_back(task);
+                memtable_tasks.push_back(task);// key正常的subrange
             }
             if (task.compaction_task) {
                 sstable_tasks.push_back(task);
@@ -1445,12 +1467,12 @@ namespace leveldb {
         NOVA_ASSERT(
                 options_.memtable_type == MemTableType::kStaticPartition);
         // flush memtables belong to the same memtable partition.
-        for (const auto &it : pid_mergable_memtables) {
+        for (const auto &it : pid_mergable_memtables) { // key少的任务
             CompactMultipleMemTablesStaticPartitionToMemTable(it.first, bg_thread, it.second,
                                                               &closed_memtable_log_files);
         }
-        if (!memtable_tasks.empty()) {
-            CompactMemTableStaticPartition(bg_thread, memtable_tasks, &edit, options_.enable_flush_multiple_memtables);
+        if (!memtable_tasks.empty()) { // key多的任务 flush immutable memtable 关注这里
+            CompactMemTableStaticPartition(bg_thread, memtable_tasks, &edit, options_.enable_flush_multiple_memtables); //edit记录了添加了哪些文件
             // Include the latest version.
             versions_->AppendChangesToManifest(&edit, manifest_file_, options_.manifest_stoc_ids);
             std::unordered_map<uint32_t, std::vector<EnvBGTask>> pid_tasks;
@@ -1459,12 +1481,12 @@ namespace leveldb {
                 range_index_manager_->DeleteObsoleteVersions();
             }
             mutex_.Lock();
-            Version *v = new Version(&internal_comparator_, table_cache_, &options_,
+            Version *v = new Version(&internal_comparator_, table_cache_, &options_, // compaction之后会成立一个新的版本???
                                      versions_->version_id_seq_.fetch_add(1), versions_);
             for (auto &task : memtable_tasks) {
-                pid_tasks[task.memtable_partition_id].push_back(task);
+                pid_tasks[task.memtable_partition_id].push_back(task); // 按照partition进行划分
                 MemTable *imm = reinterpret_cast<MemTable *>(task.memtable);
-                range_edit.replace_memtables[imm->memtableid()] = imm->meta().number;
+                range_edit.replace_memtables[imm->memtableid()] = imm->meta().number; // 标识memtable转化为sstable
                 NOVA_ASSERT(imm);
                 auto atomic_imm = versions_->mid_table_mapping_[imm->memtableid()];
                 atomic_imm->is_immutable_ = true;
@@ -1483,7 +1505,7 @@ namespace leveldb {
             }
             mutex_.Unlock();
 
-            for (const auto &it : pid_tasks) {
+            for (const auto &it : pid_tasks) { // 整理每个分区
                 // New verion is installed. Then remove it from the immutable memtables.
                 MemTablePartition *p = partitioned_active_memtables_[it.first];
                 p->mutex.Lock();
@@ -1528,13 +1550,13 @@ namespace leveldb {
         if (nova::NovaConfig::config->log_record_mode == nova::NovaLogRecordMode::LOG_RDMA &&
             !closed_memtable_log_files.empty()) {
             std::vector<std::string> logs;
-            for (const auto &file : closed_memtable_log_files) {
+            for (const auto &file : closed_memtable_log_files) { // log先这样放着 有必要之后会改到放入pm中
                 logs.push_back(nova::LogFileName(dbid_, file));
             }
             log_manager_->DeleteLogBuf(logs);
             bg_thread->stoc_client()->InitiateCloseLogFiles(logs, dbid_);
         }
-        for (const auto &task : sstable_tasks) {
+        for (const auto &task : sstable_tasks) { // major compaction
             CompactionState *state = reinterpret_cast<CompactionState *> (task.compaction_task);
             NOVA_ASSERT(state);
             auto c = state->compaction;
@@ -1542,18 +1564,19 @@ namespace leveldb {
             CompactionStats stats = state->BuildStats();
             std::function<uint64_t(void)> fn_generator = std::bind(
                     &VersionSet::NewFileNumber, versions_);
-            CompactionJob job(fn_generator, env_, dbname_, user_comparator_, options_, bg_thread, table_cache_);
+            CompactionJob job(fn_generator, env_, dbname_, pmname_, levels_in_pm_, user_comparator_, options_, bg_thread, table_cache_);
             Status status = job.CompactTables(state, input, &stats, true, kCompactInputSSTables,
                                               kCompactOutputSSTables);
         }
     }
 
+// 计算应该做的compaction
     bool DBImpl::ComputeCompactions(leveldb::Version *current,
                                     std::vector<leveldb::Compaction *> *compactions,
-                                    VersionEdit *edit,
-                                    RangeIndexVersionEdit *range_edit,
+                                    VersionEdit *edit, // 增减文件
+                                    RangeIndexVersionEdit *range_edit, // 是否删了l0层的文件
                                     bool *delete_due_to_low_overlap,
-                                    std::unordered_map<uint32_t, leveldb::MemTableL0FilesEdit> *memtableid_l0fns) {
+                                    std::unordered_map<uint32_t, leveldb::MemTableL0FilesEdit> *memtableid_l0fns) { // memtableid移除的file number
         bool moves = false;
         auto frags = nova::NovaConfig::config->cfgs[0];
         if (nova::NovaConfig::config->cfgs.size() == 1 && frags->fragments.size() == 1 &&
@@ -1588,7 +1611,7 @@ namespace leveldb {
                     while (!l0_files.empty() && level_size[level] + l0_files[0]->file_size < max_level_size[level]) {
                         level_size[level] += l0_files[0]->file_size;
                         auto file = l0_files[0];
-                        Compaction *compact = new Compaction(current, &internal_comparator_, &options_, 0, level);
+                        Compaction *compact = new Compaction(current, &internal_comparator_, &options_, 0, level, levels_in_pm_);
                         compact->inputs_[0].push_back(file);
                         compactions->push_back(compact);
                         l0_files.erase(l0_files.begin());
@@ -1596,7 +1619,7 @@ namespace leveldb {
                 }
             }
         } else {
-            current->ComputeNonOverlappingSet(compactions, delete_due_to_low_overlap);
+            current->ComputeNonOverlappingSet(compactions, delete_due_to_low_overlap, levels_in_pm_); // 做compaction的时候需要level in pm??
         }
 
         if (NOVA_LOG_LEVEL == rdmaio::DEBUG) {
@@ -1619,44 +1642,54 @@ namespace leveldb {
         auto it = compactions->begin();
         while (it != compactions->end()) {
             auto c = *it;
-            if (!c->IsTrivialMove()) {
+            if (!c->IsTrivialMove()) { // 这里 判断如果是 l0 到 l1 的 trival move 需要采取一定措施 to be done
                 it++;
                 continue;
             }
             // Move file to next level
             assert(c->num_input_files(0) == 1);
             assert(c->num_input_files(1) == 0);
-            FileMetaData *f = c->input(0, 0);
-            edit->DeleteFile(c->level(), f->number);
-            edit->AddFile(c->target_level(),
-                          {},
-                          f->number, f->file_size,
-                          f->converted_file_size,
-                          f->flush_timestamp,
-                          f->smallest,
-                          f->largest,
-                          f->block_replica_handles, f->parity_block_handle);
-            std::string output = fmt::format(
-                    "Moved #{}@{} to level-{} {} bytes\n",
-                    f->number, c->level(), c->target_level(), f->file_size);
-            Log(options_.info_log, "%s", output.c_str());
-            NOVA_LOG(rdmaio::DEBUG) << output;
 
-            if (c->level() == 0 && c->target_level() == 1) {
-                range_edit->removed_l0_sstables.push_back(f->number);
-                // Compact L0 SSTables to L1.
-                for (int i = 0; i < c->inputs_[0].size(); i++) {
-                    auto f = c->inputs_[0][i];
-                    NOVA_ASSERT(f->memtable_ids.size() > 0);
-                    for (auto memtableid : f->memtable_ids) {
-                        NOVA_ASSERT(memtableid < MAX_LIVE_MEMTABLES);
-                        (*memtableid_l0fns)[memtableid].remove_fns.insert(f->number);
+            if (!c->IsChangeMedia()){ // pm->pm 或者 disk->disk 正常
+                FileMetaData *f = c->input(0, 0);
+                edit->DeleteFile(c->level(), f->number); // 删除
+                edit->AddFile(c->target_level(),
+                            {},
+                            f->number, f->file_size,
+                            f->converted_file_size,
+                            f->flush_timestamp,
+                            f->smallest,
+                            f->largest,
+                            f->block_replica_handles, f->parity_block_handle);
+                std::string output = fmt::format(
+                        "Moved #{}@{} to level-{} {} bytes\n",
+                        f->number, c->level(), c->target_level(), f->file_size);
+                Log(options_.info_log, "%s", output.c_str());
+                NOVA_LOG(rdmaio::DEBUG) << output;
+
+                if (c->level() == 0 && c->target_level() == 1) { // 如果是0->1层的压缩的话
+                    range_edit->removed_l0_sstables.push_back(f->number);
+                    // Compact L0 SSTables to L1.
+                    for (int i = 0; i < c->inputs_[0].size(); i++) {
+                        auto f = c->inputs_[0][i];
+                        NOVA_ASSERT(f->memtable_ids.size() > 0);
+                        for (auto memtableid : f->memtable_ids) { // l0到l1的压缩之后 lookupindex中的l0相关的文件号应该被删除
+                            NOVA_ASSERT(memtableid < MAX_LIVE_MEMTABLES);
+                            (*memtableid_l0fns)[memtableid].remove_fns.insert(f->number); // memtable id -> l0 file number
+                        }
                     }
                 }
-            }
-            moves = true;
-            delete c;
-            it = compactions->erase(it);
+                moves = true;
+                delete c;
+                it = compactions->erase(it);
+            }else{
+                // 跨越了介质需要删除和新加 
+                // 应该实现一个远程mv的调用 先看看别的怎么实现 
+                // to be done !!!!!!!!!!
+                // 这里就是trival move需要移动的状态
+                delete c;
+                it = compactions->erase(it);
+            }            
         }
         return moves;
     }
@@ -1673,6 +1706,8 @@ namespace leveldb {
         mutex_.Unlock();
     }
 
+// compaction这里需要改
+// major compaction调用
     void DBImpl::CoordinateMajorCompaction() {
         while (options_.major_compaction_type == kMajorCoordinated ||
                options_.major_compaction_type == kMajorCoordinatedStoC) {
@@ -1711,16 +1746,16 @@ namespace leveldb {
                 VersionEdit edit;
                 RangeIndexVersionEdit range_edit;
                 std::unordered_map<uint32_t, MemTableL0FilesEdit> edits;
-                if (ComputeCompactions(current, &compactions, &edit, &range_edit, &delete_due_to_low_overlap, &edits)) {
+                if (ComputeCompactions(current, &compactions, &edit, &range_edit, &delete_due_to_low_overlap, &edits)) { // 为真的话说明进行了trival move
                     // Contain moves. Cleanup LSM immediately.
                     CleanupLSMCompaction(nullptr, edit, range_edit, edits, nullptr, current->version_id_);
                 }
             }
-            if (!compactions.empty()) {
+            if (!compactions.empty()) { // 得到各个compaction任务
                 cleaned.resize(compactions.size());
             }
             mutex_compacting_tables.Lock();
-            for (int i = 0; i < compactions.size(); i++) {
+            for (int i = 0; i < compactions.size(); i++) { // compacting_tables代表当前正在compact的文件
                 for (int which = 0; which < 2; which++) {
                     for (int j = 0; j < compactions[i]->inputs_[which].size(); j++) {
                         compacting_tables_.insert(compactions[i]->inputs_[which][j]->number);
@@ -1737,12 +1772,12 @@ namespace leveldb {
                 if (subrange_manager_) {
                     subs = subrange_manager_->latest_subranges_;
                 }
-                uint64_t smallest_snapshot = versions_->LastSequence();
+                uint64_t smallest_snapshot = versions_->LastSequence(); // 当前的sequence
                 for (int i = 0; i < compactions.size(); i++) {
                     auto state = new CompactionState(compactions[i], subs, smallest_snapshot);
                     states.push_back(state);
                 }
-                if (options_.major_compaction_type == kMajorCoordinated) {
+                if (options_.major_compaction_type == kMajorCoordinated) { // ltc端进行
                     for (int i = 0; i < states.size(); i++) {
                         int thread_id =
                                 EnvBGThread::bg_compaction_thread_id_seq.fetch_add(
@@ -1751,10 +1786,10 @@ namespace leveldb {
                         NOVA_LOG(rdmaio::DEBUG) << fmt::format(
                                     "Coordinator schedules compaction at thread-{}",
                                     thread_id);
-                        ScheduleCompactionTask(thread_id, states[i]);
+                        ScheduleCompactionTask(thread_id, states[i]); // 任务下发直接开始
                     }
                     // Wait for majors to complete.
-                    for (int i = 0; i < compactions.size(); i++) {
+                    for (int i = 0; i < compactions.size(); i++) { // 任务完成
                         sem_wait(&completion_signal);
                         for (int j = 0; j < compactions.size(); j++) {
                             if (cleaned[j]) {
@@ -1766,7 +1801,7 @@ namespace leveldb {
                                     VersionEdit edit = {};
                                     RangeIndexVersionEdit range_edit = {};
                                     std::unordered_map<uint32_t, MemTableL0FilesEdit> edits;
-                                    CleanupLSMCompaction(states[j], edit,
+                                    CleanupLSMCompaction(states[j], edit, // 压缩之后的清理工作
                                                          range_edit,
                                                          edits,
                                                          nullptr,
@@ -1776,10 +1811,10 @@ namespace leveldb {
                         }
                     }
                 } else {
-                    auto client = reinterpret_cast<StoCBlockClient *> (compaction_coordinator_thread_->stoc_client());
+                    auto client = reinterpret_cast<StoCBlockClient *> (compaction_coordinator_thread_->stoc_client()); // stoc端进行
                     std::vector<uint32_t> selected_storages;
                     StorageSelector selector(&rand_seed_);
-                    selector.SelectAvailableStoCsForCompaction(&selected_storages, compactions.size());
+                    selector.SelectAvailableStoCsForCompaction(&selected_storages, compactions.size()); // 每个compaction选中一个storage
                     NOVA_ASSERT(selected_storages.size() == compactions.size());
 
                     for (int i = 0; i < compactions.size(); i++) {
@@ -1787,7 +1822,7 @@ namespace leveldb {
                                     "Coordinator schedules compaction on StoC-{} {}@{} + {}@{}", selected_storages[i],
                                     compactions[i]->inputs_[0].size(), compactions[i]->level(),
                                     compactions[i]->inputs_[1].size(), compactions[i]->target_level());
-                        if (selected_storages[i] == nova::NovaConfig::config->my_server_id) {
+                        if (selected_storages[i] == nova::NovaConfig::config->my_server_id) { // 如果选中的是自己的compaction的话
                             // Schedule on my server.
                             int thread_id =
                                     EnvBGThread::bg_compaction_thread_id_seq.fetch_add(1, std::memory_order_relaxed) %
@@ -1800,14 +1835,16 @@ namespace leveldb {
                             continue;
                         }
                         auto compaction = compactions[i];
-                        auto req = new CompactionRequest;
+                        auto req = new CompactionRequest; // 发送给stoc的compaction请求
                         req->completion_signal = &completion_signal;
                         req->source_level = compaction->level();
                         req->target_level = compaction->target_level();
                         req->dbname = dbname_;
+                        req->pmname = pmname_;
+                        req->levels_in_pm = levels_in_pm_;
                         req->smallest_snapshot = smallest_snapshot;
                         if (subs) {
-                            req->subranges = subs->subranges;
+                            req->subranges = subs->subranges; // subrange也放进去
                         }
                         for (int which = 0; which < 2; which++) {
                             req->inputs[which] = compaction->inputs_[which];
@@ -1819,7 +1856,7 @@ namespace leveldb {
                         requests.push_back(req);
                     }
                     // Wait for majors to complete.
-                    for (int i = 0; i < compactions.size(); i++) {
+                    for (int i = 0; i < compactions.size(); i++) { // 等待远端的compaction完成
                         sem_wait(&completion_signal);
 
                         // Figure out which one completes.
@@ -1886,7 +1923,7 @@ namespace leveldb {
                                        input_size - output_size);
                 }
             }
-            versions_->versions_[current->version_id()]->Unref(dbname_);
+            versions_->versions_[current->version_id()]->Unref(dbname_); // 陈旧版本 unref
 
             for (int i = 0; i < cleaned.size(); i++) {
                 NOVA_ASSERT(cleaned[i]);
@@ -1896,11 +1933,11 @@ namespace leveldb {
             mutex_.Lock();
             DeleteObsoleteVersions(compaction_coordinator_thread_);
             ObtainObsoleteFiles(compaction_coordinator_thread_,
-                                &files_to_delete, &server_pairs, 0);
+                                &files_to_delete, &server_pairs, 0); // 新的版本再整理一遍
             if (range_index_manager_) {
                 range_index_manager_->DeleteObsoleteVersions();
             }
-            if (!compacted_tables_.empty()) {
+            if (!compacted_tables_.empty()) { // ???? 说明obtainobsoletefiles没有删掉
                 ScheduleFileDeletionTask(dbid_ % bg_compaction_threads_.size());
             }
             mutex_.Unlock();
@@ -1935,6 +1972,11 @@ namespace leveldb {
         }
     }
 
+// compaction之后的清理 看起来是应用compaction过程中的log 然后整理各种元数据
+// major compaction的时候edit全空 很多信息存在state里面了
+// edit是 文件的变化 增加删除等
+// range edit是 对range index table中的文件的更新
+// edits是 主要是l0 l1层的文件变化与memtableid的对应关系 负责对于lookupindex的更新 
     void DBImpl::CleanupLSMCompaction(CompactionState *state,
                                       VersionEdit &edit,
                                       RangeIndexVersionEdit &range_edit,
@@ -1943,7 +1985,7 @@ namespace leveldb {
                                       uint32_t compacting_version_id) {
         std::vector<std::string> files_to_delete;
         std::unordered_map<uint32_t, std::vector<SSTableStoCFilePair> > server_pairs;
-        if (compaction_req && state) {
+        if (compaction_req && state) { // 大概只有stoc端的compaction 这两个都有
             auto client = reinterpret_cast<StoCBlockClient *> (compaction_coordinator_thread_->stoc_client());
             std::vector<const FileMetaData *> metafiles;
             for (auto f : compaction_req->outputs) {
@@ -1951,30 +1993,30 @@ namespace leveldb {
                 metafiles.push_back(f);
             }
             // Prefetch metadata files stored on other servers.
-            FetchMetadataFilesInParallel(metafiles, dbname_, options_, client, env_);
+            FetchMetadataFilesInParallel(metafiles, dbname_, pmname_, levels_in_pm_, options_, client, env_);
         }
-        if (state) {
-            ObtainLookupIndexEdits(state, &edits);
-            InstallCompactionResults(state, &edit, state->compaction->target_level());
+        if (state) { // stoc 和 ltc的major compaction会有这个
+            ObtainLookupIndexEdits(state, &edits); // 提取出关于lookupindex等的(l0层文件的增删等)
+            InstallCompactionResults(state, &edit, state->compaction->target_level()); //提取出文件增删
             if (state->compaction->level() == 0) {
-                if (state->compaction->target_level() == 0) {
+                if (state->compaction->target_level() == 0) { // 如果是0->0的压缩
                     std::vector<uint64_t> newids;
                     for (int i = 0; i < state->outputs.size(); i++) {
                         newids.push_back(state->outputs[i].number);
                     }
                     for (int i = 0; i < state->compaction->inputs_[0].size(); i++) {
                         uint64_t oldid = state->compaction->inputs_[0][i]->number;
-                        range_edit.replace_l0_sstables[oldid] = newids;
+                        range_edit.replace_l0_sstables[oldid] = newids; // rangeedit中这些旧的文件都包括在新的文件中了 所以替换???
                     }
                 } else {
-                    for (int i = 0; i < state->compaction->inputs_[0].size(); i++) {
+                    for (int i = 0; i < state->compaction->inputs_[0].size(); i++) { // rangeindex中要删掉的
                         range_edit.removed_l0_sstables.push_back(state->compaction->inputs_[0][i]->number);
                     }
                 }
             }
         }
         NOVA_LOG(rdmaio::DEBUG) << edit.DebugString();
-        versions_->AppendChangesToManifest(&edit, manifest_file_, options_.manifest_stoc_ids);
+        versions_->AppendChangesToManifest(&edit, manifest_file_, options_.manifest_stoc_ids); // 将增减文件的部分应用到manifest中
         if (range_index_manager_) {
             range_index_manager_->DeleteObsoleteVersions();
         }
@@ -1984,34 +2026,35 @@ namespace leveldb {
                                  &options_,
                                  versions_->version_id_seq_.fetch_add(1),
                                  versions_);
-        UpdateLookupIndex(v->version_id_, edits);
+        UpdateLookupIndex(v->version_id_, edits); // 更新l0相关的lookupindex l0层文件增删等
         range_edit.lsm_version_id = v->version_id_;
         if (state) {
             versions_->AddCompactedInputs(state->compaction, &compacted_tables_);
         }
-        versions_->LogAndApply(&edit, v, true);
+        versions_->LogAndApply(&edit, v, true); //应用之前的文件增删
 
-        uint32_t skip_compacting_version = compacting_version_id;
-        if (!versions_->versions_[compacting_version_id]->SetCompaction()) {
-            skip_compacting_version = 0;
+        uint32_t skip_compacting_version = compacting_version_id; //这个是之前compaction之前version的version id
+        if (!versions_->versions_[compacting_version_id]->SetCompaction()) { //如果不只有当前线程在使用这个version??????
+            skip_compacting_version = 0; // 0代表还有别人在用这个version emmm
         }
         DeleteObsoleteVersions(compaction_coordinator_thread_);
-        ObtainObsoleteFiles(compaction_coordinator_thread_, &files_to_delete, &server_pairs, skip_compacting_version);
+        ObtainObsoleteFiles(compaction_coordinator_thread_, &files_to_delete, &server_pairs, skip_compacting_version); // 找到要删除的文件
         if (range_index_manager_) {
-            range_index_manager_->AppendNewVersion(&scan_stats, range_edit);
+            range_index_manager_->AppendNewVersion(&scan_stats, range_edit); // 将更改应用到range index
             range_index_manager_->DeleteObsoleteVersions();
         }
         mutex_.Unlock();
-        DeleteFiles(compaction_coordinator_thread_, files_to_delete, server_pairs);
+        DeleteFiles(compaction_coordinator_thread_, files_to_delete, server_pairs); // 删掉compaction中删除的文件
 
         for (int i = 0; i < partitioned_active_memtables_.size(); i++) {
-            partitioned_active_memtables_[i]->background_work_finished_signal_.SignalAll();
+            partitioned_active_memtables_[i]->background_work_finished_signal_.SignalAll(); // 压缩完成可以开始继续工作
         }
 //        l0_stop_write_mutex_.Lock();
 //        l0_stop_write_signal_.SignalAll();
 //        l0_stop_write_mutex_.Unlock();
     }
 
+// 从state中提取出关于文件增删的edit 要删除的和要添加的文件
     Status DBImpl::InstallCompactionResults(CompactionState *compact,
                                             VersionEdit *edit,
                                             int target_level) {
@@ -2072,6 +2115,7 @@ namespace leveldb {
         return internal_iter;
     }
 
+// get实际调用
     Status DBImpl::Get(const ReadOptions &options, const Slice &key,
                        std::string *value) {
         number_of_gets_ += 1;
@@ -2083,6 +2127,8 @@ namespace leveldb {
         return GetWithRangeIndex(options, key, value);
     }
 
+// 不开lookupindex的话 ???? 我觉得完全错误.. 这个相当于 不开lookupindex 用rangeindex去找 包括subrange index等 这个比较直接而且符合直觉
+// 没看到有锁
     Status
     DBImpl::GetWithRangeIndex(const ReadOptions &options, const Slice &key,
                               std::string *value) {
@@ -2091,28 +2137,28 @@ namespace leveldb {
         Status s;
         NOVA_ASSERT(range_index_manager_);
         std::vector<Iterator *> list;
-        RangeIndex *range_index = range_index_manager_->current();
+        RangeIndex *range_index = range_index_manager_->current(); //用了 current就相当于ref了
         NOVA_ASSERT(range_index);
-        auto atomic_version = versions_->versions_[range_index->lsm_version_id_];
+        auto atomic_version = versions_->versions_[range_index->lsm_version_id_]; //用range index对应的那个version去找
         NOVA_ASSERT(atomic_version) << range_index->lsm_version_id_;
         int index = 0;
-        NOVA_ASSERT(BinarySearch(range_index->ranges_, key, &index,
+        NOVA_ASSERT(BinarySearch(range_index->ranges_, key, &index, // 在当前各个range中找到对应的range
                                  user_comparator_));
         const RangeTables &range_table = range_index->range_tables_[index];
         // Search memtables.
-        for (uint32_t memtableid : range_table.memtable_ids) {
+        for (uint32_t memtableid : range_table.memtable_ids) { // 在对应的range中的memtable去找
             versions_->mid_table_mapping_[memtableid]->memtable_->Get(lkey, value, &s);
         }
-        std::vector<uint64_t> l0fns;
-        l0fns.insert(l0fns.begin(), range_table.l0_sstable_ids.begin(),
+        std::vector<uint64_t> l0fns; 
+        l0fns.insert(l0fns.begin(), range_table.l0_sstable_ids.begin(), // 去找 有关的L0层
                      range_table.l0_sstable_ids.end());
         // Search SSTables.
-        SequenceNumber latest_seq = 0;
+        SequenceNumber latest_seq = 0; // 去l0和l1以上去找
         atomic_version->version->Get(options, l0fns, lkey, &latest_seq,
                                      value,
                                      &number_of_files_to_search_for_get_);
         Version::GetStats stats = {};
-        atomic_version->version->Get(options, lkey, &latest_seq, value,
+        atomic_version->version->Get(options, lkey, &latest_seq, value, // 最后L1层及以上
                                      &stats, GetSearchScope::kL1AndAbove,
                                      &number_of_files_to_search_for_get_);
         range_index->UnRef();
@@ -2123,6 +2169,7 @@ namespace leveldb {
         return Status::NotFound("");
     }
 
+// 一般调用 l1及以上的瓶颈在于 每个overlap的都要找?? 但是应该只需要查找一个?? 有待于实验
     Status
     DBImpl::GetWithLookupIndex(const ReadOptions &options, const Slice &key,
                                std::string *value) {
@@ -2134,12 +2181,12 @@ namespace leveldb {
 
         NOVA_ASSERT(lookup_index_);
         uint32_t memtableid = lookup_index_->Lookup(key, options.hash);
-        if (memtableid != 0) {
-            NOVA_ASSERT(memtableid < MAX_LIVE_MEMTABLES) << memtableid;
-            memtable = versions_->mid_table_mapping_[memtableid]->RefMemTable();
+        if (memtableid != 0) { // = 0 说明要么 没有 要么在l0层 0 代表初始化未加入或者在l0 基本不会是 
+            NOVA_ASSERT(memtableid < MAX_LIVE_MEMTABLES) << memtableid; 
+            memtable = versions_->mid_table_mapping_[memtableid]->RefMemTable(); // 如果小于100的话应该代表l0层的东西
         }
         LookupKey lkey(key, snapshot);
-        if (memtable != nullptr) {
+        if (memtable != nullptr) { // 如果memtable不是null 代表可以在memtable里面找
             NOVA_ASSERT(memtable->memtable_->memtableid() == memtableid);
 //            NOVA_ASSERT()
 //                << fmt::format("key:{} memtable:{} s:{}",
@@ -2157,10 +2204,13 @@ namespace leveldb {
             }
         }
 
+        // memtable是null 说明上面memtableid 指出的应该是 l0层的东西
+        // 如果是0也可能在l0层能找到或者没有任何信息 所以初始化为啥不改成-1 ..
+        // 如果不是0代表在l0层能找到
         Version *current = nullptr;
         uint32_t vid = 0;
         SequenceNumber latest_seq = 0;
-        auto atomic_memtable = versions_->mid_table_mapping_[memtableid];
+        auto atomic_memtable = versions_->mid_table_mapping_[memtableid]; // 可优化
         while (true) {
             current = nullptr;
             l0fns.clear();
@@ -2170,8 +2220,8 @@ namespace leveldb {
                 current = versions_->versions_[vid]->Ref();
             }
             NOVA_ASSERT(current->version_id() == vid);
-            atomic_memtable->mutex_.lock();
-            if (vid >= atomic_memtable->last_version_id_) {
+            atomic_memtable->mutex_.lock(); // 只有对应的atomic table进行上锁
+            if (vid >= atomic_memtable->last_version_id_) { // 取到对应的l0层
                 // good to go.
                 l0fns.insert(l0fns.end(), atomic_memtable->l0_file_numbers_.begin(),
                              atomic_memtable->l0_file_numbers_.end());
@@ -2188,7 +2238,7 @@ namespace leveldb {
         }
         NOVA_ASSERT(!s.IsIOError())
             << fmt::format("v:{} status:{} mid:{} version:{}", vid, s.ToString(), memtableid, current->DebugString());
-        if (s.IsNotFound()) {
+        if (s.IsNotFound()) { // 如果l0层的没找到 那就去l1及以上找吧
             // Search L1 files.
             Version::GetStats stats = {};
             SequenceNumber l1seq;
@@ -2246,17 +2296,18 @@ namespace leveldb {
     }
 
 // put最后会落到这个函数上么
+// put实际调用
 // Convenience methods
     Status
     DBImpl::Put(const WriteOptions &o, const Slice &key, const Slice &val) {
         processed_writes_ += 1;
         if (options_.memtable_type == MemTableType::kStaticPartition) {
-            if (o.is_loading_db || !options_.enable_subranges) { // is_loading_db标识是否进行了预load 
-                return WriteStaticPartition(o, key, val);
+            if (o.is_loading_db || !options_.enable_subranges) { // is_loading_db标识是否进行了预load  
+                return WriteStaticPartition(o, key, val); // 那就是只开range index
             }
-            return WriteSubrange(o, key, val); // 一般都是这个
+            return WriteSubrange(o, key, val); // 一般都是这个 
         }
-        return WriteMemTablePool(o, key, val); // 基本不会进这个
+        return WriteMemTablePool(o, key, val); // 基本不会进这个 最普通的什么也不加的模式 
     }
 
     Status DBImpl::Delete(const WriteOptions &options, const Slice &key) {
@@ -2533,6 +2584,7 @@ namespace leveldb {
     }
 
 // 平常设置进入到这里 partition_id就是subrange对应的id
+// 或者是随便选的一个 -> 在不开subrange的情况下
     bool DBImpl::WriteStaticPartition(const leveldb::WriteOptions &options,
                                       const leveldb::Slice &key,
                                       const leveldb::Slice &value,
@@ -2541,7 +2593,7 @@ namespace leveldb {
                                       uint64_t last_sequence,
                                       SubRange *subrange) {
         MemTablePartition *partition = partitioned_active_memtables_[partition_id];
-        partition->mutex.Lock();
+        partition->mutex.Lock(); // 一进来直接对整个partition上锁
         if (subrange != nullptr) {
             int tinyrange_id;
             NOVA_ASSERT(BinarySearch(subrange->tiny_ranges, key, &tinyrange_id, user_comparator_))
@@ -2559,17 +2611,15 @@ namespace leveldb {
             table = partition->active_memtable;
             imm_slot = -1;
 
-            // 根据当前active memtable的大小决定是不是把当前memtable转化为immutable memtable
+            // 根据当前active memtable的大小决定是不是把当前memtable转化为immutable memtable (转化
             if (table) {
                 auto atomic_mem = versions_->mid_table_mapping_[table->memtableid()];
                 if (atomic_mem->memtable_size_ <= options_.write_buffer_size) { // ?????? 如果当前memtable大小小于写buffer大小?? buffer大小一般设置为和memtable大小一致 直接完全跳出
                     break;
                 }
 
-                // 当前table已经写满 大小大于写buffer的大小
-
                 bool wait_for_l0 = false;
-
+                // 当前table已经写满 大小大于写buffer的大小 需要将table冲入l0 然而如果当前l0层正在压缩中 需要等待
                 // 这个循环是等待后台l0层压缩完成
                 while (options_.l0bytes_stop_writes_trigger > 0) { // ??? 好像是设置为10G
                     // Get the current version.
@@ -2586,7 +2636,7 @@ namespace leveldb {
                         if (start_wait == 0) {
                             start_wait = env_->NowMicros();
                         }
-                        partition->background_work_finished_signal_.Wait();
+                        partition->background_work_finished_signal_.Wait(); // 后台压缩完成的话会唤醒 wait的时候会释放mutex锁 这里大概率等待的是major compaction的信号 2044
                         wait = true;
                         wait_for_l0 = true;
                         continue;
@@ -2595,12 +2645,12 @@ namespace leveldb {
                     break;
                 }
 
-                if (wait_for_l0) { // 如果刚才等待了l0的压缩，去看看table是不是还有效
+                if (wait_for_l0) { // 如果刚才等待了l0的压缩，去看看table是不是还有效 如果压缩了的话可能memtable没了?? 这里lookupindex或许也会变啊?? 这里是写
                     // Check if the table is still valid.
                     continue;
                 }
 
-                if (atomic_mem->number_of_pending_writes_ > 0) { // 等到没有等待的写
+                if (atomic_mem->number_of_pending_writes_ > 0) { // 等到没有等待的写 这里只有在写log的时候可能会等 如果当前这个memtable上有未完成的写
                     // Wait until the number of pending writes is 0.
                     partition->background_work_finished_signal_.Wait();
                     continue;
@@ -2610,56 +2660,57 @@ namespace leveldb {
                 //available slots装的是本partition分配到的memtable的编号
 
                 // The table is full.
-                NOVA_ASSERT(!partition->available_slots.empty());
+                NOVA_ASSERT(!partition->available_slots.empty()); // 为什么确定当前available slots不空 第一次肯定不空
                 // Mark the active memtable as immutable and schedule compaction.
-                imm_slot = partition->available_slots.front(); // 可用的imm槽的编号?
-                partition->available_slots.pop();
+                imm_slot = partition->available_slots.front(); // 可用的imm槽的编号? 
+                partition->available_slots.pop(); // 这两个指的应该是同一个槽??
                 NOVA_ASSERT(partitioned_imms_[imm_slot] == 0);
-                partitioned_imms_[imm_slot] = table->memtableid(); // 把本active memtable做成imm的
-                partition->slot_imm_id[imm_slot] = table->memtableid(); //
+                partitioned_imms_[imm_slot] = table->memtableid(); // 表明这个memtableid对应的table正在进行压缩
+                partition->slot_imm_id[imm_slot] = table->memtableid(); // 建立slot编号到memtableid的映射
                 partition->immutable_memtable_ids.push_back(table->memtableid());
                 number_of_immutable_memtables_.fetch_add(1);
-                partition->active_memtable = nullptr;
+                partition->active_memtable = nullptr; //转化为immutable memtable 并且将active memtable置为空的
             }
 
-            // 当前没有空闲的slot了
+            // table为null 可能是刚刚写满 且当前没有空闲的slot了 总之到这里active table是没有了
             if (partition->available_slots.empty()) {
-                // imm_slot!=0说明刚才把active memtable转化为immutable memtable了
+                // imm_slot != -1说明 自己刚才把active memtable转化为immutable memtable了
                 if (imm_slot != -1) {
                     int thread_id = -1;
                     bool merge_memtables_without_flushing = false;
                     // 不太懂subrange什么时候设置为null 
                     // 这个时候需要压缩 并 flush 腾出空间
-                    if (subrange) {
+                    if (subrange) { //如果开了subrange的话 就从之前计算的县城分配中选一个
                         thread_id = subrange->GetCompactionThreadId(
                                 &EnvBGThread::bg_flush_memtable_thread_id_seq,
                                 &merge_memtables_without_flushing);
-                    } else {
+                    } else {// 没开subrange就随便选一个
                         thread_id =
                                 EnvBGThread::bg_flush_memtable_thread_id_seq.fetch_add(
                                         1, std::memory_order_relaxed) %
                                 bg_flush_memtable_threads_.size();
                     }
                     ScheduleFlushMemTableTask(thread_id,
-                                              partitioned_imms_[imm_slot],
-                                              versions_->mid_table_mapping_[partitioned_imms_[imm_slot]]->memtable_,
-                                              partition_id, imm_slot,
+                                              partitioned_imms_[imm_slot], // 刚刚转化的immutable table的memtable id
+                                              versions_->mid_table_mapping_[partitioned_imms_[imm_slot]]->memtable_, // memtable本身
+                                              partition_id, imm_slot, // 分区/subrange号 imm编号
                                               options.rand_seed,
                                               merge_memtables_without_flushing);
-                }
+                } 
+                // 说明进入函数的时候 别人就已经用完了active memtable并且没有available的槽了 是别人转化的! 所以等别人压缩
                 // We have filled up all memtables, but the previous
                 // one is still being compacted, so we wait.
-                if (!should_wait) {
+                if (!should_wait) { // 如果不能立刻插入 就结束返回失败
                     partition->mutex.Unlock();
                     return false;
                 }
                 if (start_wait == 0) {
                     start_wait = env_->NowMicros();
                 }
-                partition->background_work_finished_signal_.Wait();
+                partition->background_work_finished_signal_.Wait(); // 等待后台压缩结束
                 wait = true;
             } else {
-                //当前还有空闲的memtable，初始的时候搞1个memtable，一直搞到所有memtable都被创建出来
+                //table为null 可能是刚刚转化 且当前还有空闲的memtable，初始的时候搞1个memtable，一直搞到所有memtable都被创建出来
 
                 // Create a new table.
                 uint32_t memtable_id = memtable_id_seq_.fetch_add(1);
@@ -2667,12 +2718,12 @@ namespace leveldb {
                 NOVA_ASSERT(memtable_id < MAX_LIVE_MEMTABLES);
                 uint64_t generation_id = flush_order_->latest_generation_id;
                 versions_->mid_table_mapping_[memtable_id]->SetMemTable(generation_id, table);
-                partition->active_memtable = table;
+                partition->active_memtable = table; // 开了新的memtable
                 partition->AddMemTable(generation_id, table->memtableid());
 
                 // 如果开了range index的话
-                if (range_index_manager_) {
-                    RangeIndexVersionEdit edit;
+                if (range_index_manager_) { //调整rangeindex里面的东西
+                    RangeIndexVersionEdit edit; // 对应的添加subrange对应的memtable
                     edit.sr = subrange;
                     edit.add_new_memtable = true;
                     edit.new_memtable_id = memtable_id;
@@ -2700,8 +2751,8 @@ namespace leveldb {
         atomic_mem->memtable_size_ += (key.size() + value.size());
         // LogRecordMode一般设为NONE或者log_RDMA local_write一般都是设为false了
         if (nova::NovaConfig::config->log_record_mode ==
-            nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) {
-            partition->mutex.Unlock(); // 需要先上锁
+            nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) { // 写log的时候可以让出
+            partition->mutex.Unlock(); // 生成日志的时候可以让别人上锁
             GenerateLogRecord(options, last_sequence, key, value, memtable_id); // 这里生成日志！
             partition->mutex.Lock();
         }
@@ -2714,14 +2765,15 @@ namespace leveldb {
         if (nova::NovaConfig::config->log_record_mode ==
             nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) {
             if (atomic_mem->number_of_pending_writes_ == 0 &&
-                atomic_mem->memtable_size_ > options_.write_buffer_size) {
+                atomic_mem->memtable_size_ > options_.write_buffer_size) { // 如果没有等待的 那signalall就没什么作用 
                 // Wake up other threads that are waiting on pending.
                 partition->background_work_finished_signal_.SignalAll();
             }
         }
-        partition->mutex.Unlock();
+        partition->mutex.Unlock(); // 这里让出了这个partition的锁
+        
         // Schedule.
-        if (imm_slot != -1) {
+        if (imm_slot != -1) { // 刚才转化了immutable memtable 而且刚才available 里面还是有空闲的memtable 位置可以使用的
             int thread_id = -1;
             bool merge_memtables_without_flushing = false;
             if (subrange) {
@@ -2742,17 +2794,17 @@ namespace leveldb {
         return true;
     }
 
-// 只有开启了预load 或者 没开subrange 才会进入这个
+// 只有开启了预load 或者 没开subrange 才会进入这个 看看 那说明只有一个大range
     Status DBImpl::WriteStaticPartition(const WriteOptions &options,
                                         const Slice &key, const Slice &val) {
         uint64_t last_sequence = versions_->last_sequence_.fetch_add(1);
-        if (options.is_loading_db) {
-            NOVA_ASSERT(WriteStaticPartition(options, key, val, 0, true, last_sequence, nullptr));
+        if (options.is_loading_db) { // 如果是在预load的话 直接写入第一个的partition就好 此时如果有subrange的话 subrange是恢复的或者recover不行直接重建的
+            NOVA_ASSERT(WriteStaticPartition(options, key, val, 0, true, last_sequence, nullptr)); // 都直接写入??
             return Status::OK();
         }
 
-        uint32_t partition_id = rand_r(options.rand_seed) % partitioned_active_memtables_.size();
-        if (options_.num_memtable_partitions > 1) {
+        uint32_t partition_id = rand_r(options.rand_seed) % partitioned_active_memtables_.size(); // 随便选一个加入
+        if (options_.num_memtable_partitions > 1) { // 不然就随便选一个partition 先试着无阻塞写入 不行改成有阻塞
             int tries = 2;
             int i = 0;
             while (i < tries) {
@@ -2779,7 +2831,8 @@ namespace leveldb {
                                  const leveldb::Slice &key,
                                  const leveldb::Slice &val) {
         uint64_t last_sequence = versions_->last_sequence_.fetch_add(1);
-        if (processed_writes_ > SUBRANGE_WARMUP_NPUTS &&
+        // 先不管subrange的reorg 先针对均匀场景进行操作 就是不开subrange reorganization enable !!! 选项要选为 false
+        if (processed_writes_ > SUBRANGE_WARMUP_NPUTS && // 只有在这里改了subrange
             processed_writes_ % SUBRANGE_REORG_INTERVAL == 0 &&
             options_.enable_subrange_reorg) {
             // wake up reorg thread.
@@ -2798,6 +2851,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// mempool模式
     Status DBImpl::WriteMemTablePool(const WriteOptions &options,
                                      const Slice &key,
                                      const Slice &val) {
@@ -2809,7 +2863,7 @@ namespace leveldb {
         bool all_busy = true;
         bool enable_stickness = true;
 
-        range_lock_.Lock();
+        range_lock_.Lock(); // range_lock 基本只用于writememtablepool emmm
         int expected_share =
                 round(((double) processed_writes_ /
                        (double) options.total_writes) *
@@ -3154,6 +3208,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 生成写前日志!!! to be done 
     void DBImpl::GenerateLogRecord(const leveldb::WriteOptions &options,
                                    const std::vector<leveldb::LevelDBLogRecord> &log_records,
                                    uint32_t memtable_id) {
@@ -3199,6 +3254,15 @@ namespace leveldb {
         return dbname_;
     }
 
+    const std::string &DBImpl::pmname() {
+        return pmname_;
+    }
+
+    int DBImpl::levels_in_pm(){
+        return levels_in_pm_;
+    }
+
+// ???????
     void DBImpl::QueryFailedReplicas(uint32_t failed_stoc_id,
                                      bool is_stoc_failed,
                                      std::unordered_map<uint32_t, std::vector<ReplicationPair> > *stoc_repl_pairs,
@@ -3213,7 +3277,7 @@ namespace leveldb {
         NOVA_ASSERT(current->version_id() == vid);
         StorageSelector selector(&rand_seed_);
         mutex_compacting_tables.Lock();
-        for (const auto &it : current->files_[level]) {
+        for (const auto &it : current->files_[level]) { // 遍历当前这一层所有的文件
             // find an available replica to replicate the sstable.
             for (int replica_id = 0; replica_id < it->block_replica_handles.size(); replica_id++) {
                 const auto &replica = it->block_replica_handles[replica_id];
@@ -3239,11 +3303,11 @@ namespace leveldb {
                     uint32_t dest_stoc_id = selector.SelectAvailableStoCForFailedMetaBlock(
                             it->block_replica_handles, replica_id, is_stoc_failed, &available_replica_id);
                     ReplicationPair pair = {};
-                    pair.dest_stoc_id = dest_stoc_id;
+                    pair.dest_stoc_id = dest_stoc_id; // 给存储在要删掉的stoc的数据找到一个新的stoc
                     const auto &available_replica = it->block_replica_handles[available_replica_id];
                     pair.source_stoc_file_id = available_replica.meta_block_handle.stoc_file_id;
                     pair.internal_type = FileInternalType::kFileMetadata;
-                    pair.sstable_file_number = it->number;
+                    pair.sstable_file_number = it->number; // 没有db_name 需要查看
                     if (is_stoc_failed) {
                         pair.replica_id = it->block_replica_handles.size();
                     } else {
@@ -3274,6 +3338,7 @@ namespace leveldb {
         versions_->versions_[vid]->Unref(dbname_);
     }
 
+// 收集这个db的统计信息
     void DBImpl::QueryDBStats(leveldb::DBStats *db_stats) {
         Version *current = nullptr;
         uint32_t vid = 0;
@@ -3284,19 +3349,20 @@ namespace leveldb {
         }
         NOVA_ASSERT(current->version_id() == vid);
         if (options_.enable_subranges && options_.enable_detailed_stats) {
-            subrange_manager_->QueryDBStats(db_stats);
+            subrange_manager_->QueryDBStats(db_stats); // 先去收集关于subrange的统计??
         }
         current->QueryStats(db_stats, options_.enable_detailed_stats);
         versions_->versions_[vid]->Unref(dbname_);
     }
 
+// 获取这个数据库的某个属性
     bool DBImpl::GetProperty(const Slice &property, std::string *value) {
         value->clear();
 
         MutexLock l(&mutex_);
         Slice in = property;
         Slice prefix("leveldb.");
-        if (!in.starts_with(prefix)) return false;
+        if (!in.starts_with(prefix)) return false; // 必须以leveldb.开头
         in.remove_prefix(prefix.size());
 
         if (in.starts_with("num-files-at-level")) {
@@ -3355,40 +3421,44 @@ namespace leveldb {
 
     DB::~DB() = default;
 
-//打开一个具体的数据库
+// 打开一个具体的数据库
+// 很多初始化工作
+// 这里开始 dmname 和 pmname 就都是xxx/0这种
     Status
-    DB::Open(const Options &options, const std::string &dbname, DB **dbptr) {
+    DB::Open(const Options &options, const std::string &dbname, const std::string &pmname, int levels_in_pm, DB **dbptr) {
         *dbptr = nullptr;
-        DBImpl *impl = new DBImpl(options, dbname);
+        DBImpl *impl = new DBImpl(options, dbname, pmname, levels_in_pm); // TO BE DONE
         impl->mutex_.Lock();
         impl->server_id_ = nova::NovaConfig::config->my_server_id;
 
         if (!options.debug) {
-            std::string manifest_file_name = DescriptorFileName(dbname, 0, 0); //manifest文件
-            impl->manifest_file_ = new StoCWritableFileClient(options.env, //建立manifest文件
-                                                              impl->options_, 0,
+            std::string manifest_file_name = DescriptorFileName(dbname, 0, 0); //manifest文件 代表磁盘 pm_path代表l0 这个文件是啥来着 也许可以放在pm
+            impl->manifest_file_ = new StoCWritableFileClient(options.env, //done 建立manifest文件 emmm传入manifest文件没有什么意义 dbname只是作为搜寻和定位的位置 所以完全可以 当前manifestfile的位置暂时没有改 放置于dbpath磁盘中
+                                                              impl->options_, 0, // 但是如果是sstable类型的文件 那就需要
                                                               options.mem_manager,
                                                               options.stoc_client,
-                                                              impl->dbname_, 0,
+                                                              impl->dbname_, impl->pmname_, 0, // 先判断number 再看层就可以
+                                                              impl->levels_in_pm_,
+                                                              0,
                                                               nova::NovaConfig::config->manifest_file_size,
                                                               &impl->rand_seed_,
-                                                              manifest_file_name);
+                                                              manifest_file_name); // 远程的manifest文件
         }
         for (int i = 0; i < MAX_LIVE_MEMTABLES; i++) {
-            impl->versions_->mid_table_mapping_[i]->nentries_ = 0; //mid_table_mapping用途未知
+            impl->versions_->mid_table_mapping_[i]->nentries_ = 0; //mid_table_mapping用途未知 用于加速查找
         }
         if (options.memtable_type == MemTableType::kMemTablePool) { //默认的是else static partition
-            for (int i = 0; i < impl->min_memtables_; i++) {
+            for (int i = 0; i < impl->min_memtables_; i++) { // 默认为2 选两个memtable出来
                 uint32_t memtable_id = impl->memtable_id_seq_.fetch_add(1);
                 MemTable *new_table = new MemTable(impl->internal_comparator_, memtable_id, impl->db_profiler_, true);
-                new_table->is_pinned_ = true;
+                new_table->is_pinned_ = true; // 如果是pinned就只能用于某种场景??
                 NOVA_ASSERT(memtable_id < MAX_LIVE_MEMTABLES);
                 impl->versions_->mid_table_mapping_[memtable_id]->SetMemTable(INIT_GEN_ID, new_table);
                 impl->active_memtables_.push_back(
                         impl->versions_->mid_table_mapping_[memtable_id]);
                 NOVA_ASSERT(
                         options.memtable_pool->num_available_memtables_ >= 1);
-                options.memtable_pool->num_available_memtables_ -= 1;
+                options.memtable_pool->num_available_memtables_ -= 1; // 这个数量等于预设中的总memtable数量
 
             }
             options.memtable_pool->range_cond_vars_[impl->dbid_] = &impl->memtable_available_signal_;
@@ -3404,11 +3474,11 @@ namespace leveldb {
             uint32_t remainder = options.num_memtables % options.num_memtable_partitions; 
             uint32_t slot_id = 0;
             for (int i = 0; i < options.num_memtable_partitions; i++) {
-                uint64_t memtable_id = impl->memtable_id_seq_.fetch_add(1);
+                uint64_t memtable_id = impl->memtable_id_seq_.fetch_add(1); // 初始值是100 也就是memtableid从100开始
                 MemTable *table = new MemTable(impl->internal_comparator_, memtable_id, impl->db_profiler_, true);
                 NOVA_ASSERT(memtable_id < MAX_LIVE_MEMTABLES);
-                impl->versions_->mid_table_mapping_[memtable_id]->SetMemTable(INIT_GEN_ID, table); //这个是imm还是acti，大概率active
-                impl->partitioned_active_memtables_[i] = new MemTablePartition;
+                impl->versions_->mid_table_mapping_[memtable_id]->SetMemTable(INIT_GEN_ID, table); // 这个是imm还是acti，大概率active
+                impl->partitioned_active_memtables_[i] = new MemTablePartition; // 
                 impl->partitioned_active_memtables_[i]->active_memtable = table;
                 impl->partitioned_active_memtables_[i]->partition_id = i;
                 impl->partitioned_active_memtables_[i]->AddMemTable(INIT_GEN_ID, table->memtableid());
@@ -3419,7 +3489,7 @@ namespace leveldb {
                 }
                 impl->partitioned_active_memtables_[i]->imm_slots.resize(slots); //imm的数量?? 把immutable的数量分配下去 但是没有真实分配
                 for (int j = 0; j < slots; j++) {
-                    impl->partitioned_active_memtables_[i]->imm_slots[j] = slot_id + j;
+                    impl->partitioned_active_memtables_[i]->imm_slots[j] = slot_id + j; // 每个partition可用的memtable都有编号 partition之间不重合
                     impl->partitioned_active_memtables_[i]->available_slots.push(slot_id + j);
                 }
                 slot_id += slots;
@@ -3453,7 +3523,7 @@ namespace leveldb {
             }
             impl->subrange_manager_ = new SubRangeManager(impl->manifest_file_,
                                                           flush_order,
-                                                          dbname,
+                                                          dbname, // done 不用 这个只是为了 标识
                                                           impl->dbid_,
                                                           impl->versions_,
                                                           impl->options_,
@@ -3474,7 +3544,8 @@ namespace leveldb {
 
     Snapshot::~Snapshot() = default;
 
-    Status DestroyDB(const std::string &dbname, const Options &options) {
+// to be done 没有调用 也许不用改 done
+    Status DestroyDB(const std::string &dbname, const std::string &pmname, const Options &options) {
         Env *env = options.env;
         std::vector<std::string> filenames;
         Status result = env->GetChildren(dbname, &filenames);
@@ -3484,7 +3555,7 @@ namespace leveldb {
         }
 
         FileLock *lock;
-        const std::string lockname = LockFileName(dbname);
+        std::string lockname = LockFileName(dbname);
         if (result.ok()) {
             uint64_t number;
             FileType type;
@@ -3502,6 +3573,44 @@ namespace leveldb {
             env->DeleteDir(
                     dbname);  // Ignore error in case dir contains other files
         }
+
+        filenames.clear();
+
+        result = env->GetChildren(pmname, &filenames);
+        if (!result.ok()) {
+            // Ignore error in case directory does not exist
+            return Status::OK();
+        }
+        lockname = LockFileName(pmname);
+        if (result.ok()) {
+            uint64_t number;
+            FileType type;
+            for (size_t i = 0; i < filenames.size(); i++) {
+                if (ParseFileName(filenames[i], &number, &type) &&
+                    type != kDBLockFile) {  // Lock file will be deleted at end
+                    Status del = env->DeleteFile(pmname + "/" + filenames[i]);
+                    if (result.ok() && !del.ok()) {
+                        result = del;
+                    }
+                }
+            }
+//            env->UnlockFile(lockname);  // Ignore error since state is already gone
+            env->DeleteFile(lockname);
+            env->DeleteDir(
+                    pmname);  // Ignore error in case dir contains other files
+        }
+
+
+
+
+
+
+
+
+
+
+
+
         return result;
     }
 

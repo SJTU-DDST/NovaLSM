@@ -26,7 +26,9 @@ using namespace rdmaio;
 using namespace nova;
 
 DEFINE_string(db_path, "/tmp/db", "level db path");// leveldb的路径??? 之前是/db/nova-db-recordcount-valuesize 现在是~/db_files/nova-db-recordcount-valuesize
-DEFINE_string(stoc_files_path, "/tmp/stoc", "StoC files path");//stoc文件的路径 之前是/db/stoc_files 现在是~/db_files/stoc_files
+DEFINE_string(stoc_files_path, "/tmp/stoc", "StoC files path");//stoc文件的路径 之前是/db/stoc_files 现在是~/db_files/stoc_files pm不会根据这个改 因为这个最后毫无用处
+DEFINE_string(pm_path, "/tmp/pm", "pm files path");//用于存放pm文件的路径
+DEFINE_int64(levels_in_pm, 0, "this and lower levels should be held in pm");// 这层及以以下的level应该存放于pm之中
 
 DEFINE_string(all_servers, "localhost:11211", "A list of servers");//server的list
 DEFINE_int64(server_id, -1, "Server id.");//当前这个server的id
@@ -112,6 +114,8 @@ DEFINE_uint32(major_compaction_max_parallism, 1,
               "The maximum compaction parallelism.");//最大的compaction 并行数量??
 DEFINE_uint32(major_compaction_max_tables_in_a_set, 15,
               "The maximum number of SSTables in a compaction job.");//一次compaction中最多的sstable数量
+
+              // replica!!!!!
 DEFINE_uint32(num_sstable_replicas, 1, "Number of replicas for SSTables.");//一个sstable的replica数量
 DEFINE_uint32(num_sstable_metadata_replicas, 1, "Number of replicas for meta blocks of SSTables.");//sstable的meta block的replica数量
 DEFINE_bool(use_parity_for_sstable_data_blocks, false, "");//是否开启对于sstable的data block的校验
@@ -123,7 +127,7 @@ DEFINE_int32(exp_seconds_to_fail_stoc, -1,
 DEFINE_int32(failure_duration, -1, "Failure duration");
 DEFINE_int32(num_migration_threads, 1, "Number of migration threads");//负责迁移的线程的数量
 DEFINE_string(ltc_migration_policy, "base", "immediate/base");//迁移的策略
-DEFINE_bool(use_ordered_flush, false, "use ordered flush");//是否采用顺序 flush?
+DEFINE_bool(use_ordered_flush, false, "use ordered flush");//是否采用顺序 flush? 默认nfalse 意义也许是序号在前的memtable/sstable先进行冲刷??
 
 NovaConfig *NovaConfig::config; //配置
 std::atomic_int_fast32_t leveldb::EnvBGThread::bg_flush_memtable_thread_id_seq;
@@ -168,9 +172,14 @@ void StartServer() {
                            NovaConfig::config->db_path).data());
         ret = system(fmt::format("exec rm -rf {}/*",
                            NovaConfig::config->stoc_files_path).data());
+        ret = system(fmt::format("exec rm -rf {}/*",
+                           NovaConfig::config->pm_path).data());
     }
-    mkdirs(NovaConfig::config->stoc_files_path.data());
+    
     mkdirs(NovaConfig::config->db_path.data());
+    mkdirs(NovaConfig::config->stoc_files_path.data());
+    mkdirs(NovaConfig::config->pm_path.data());
+
 //这里就是一个服务器
     auto *mem_server = new NICServer(rdma_ctrl, buf, port);
     mem_server->Start();
@@ -209,7 +218,9 @@ int main(int argc, char *argv[]) {
     NovaConfig::config->block_cache_mb = FLAGS_block_cache_mb;
     NovaConfig::config->memtable_size_mb = FLAGS_memtable_size_mb;
 
-    NovaConfig::config->db_path = FLAGS_db_path;
+    NovaConfig::config->db_path = FLAGS_db_path; //done
+    NovaConfig::config->pm_path = FLAGS_pm_path;
+    NovaConfig::config->levels_in_pm = FLAGS_levels_in_pm;
     NovaConfig::config->enable_rdma = FLAGS_enable_rdma;
     NovaConfig::config->enable_load_data = FLAGS_enable_load_data;
     NovaConfig::config->major_compaction_type = FLAGS_major_compaction_type;
@@ -312,7 +323,7 @@ int main(int argc, char *argv[]) {
     nova::RDMAServerImpl::compaction_storage_worker_seq_id_ = 0;
     nova::DBMigration::migration_seq_id_ = 0;
     leveldb::StorageSelector::stoc_for_compaction_seq_id = nova::NovaConfig::config->my_server_id;
-    nova::NovaGlobalVariables::global.Initialize();
+    nova::NovaGlobalVariables::global.Initialize(); // 为了其他server进行读取的全局统计 用于负载均衡等
     auto available_stoc_servers = new Servers;
     available_stoc_servers->servers = NovaConfig::config->cfgs[0]->stoc_servers;
     for (int i = 0; i < available_stoc_servers->servers.size(); i++) {

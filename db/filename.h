@@ -39,7 +39,9 @@ namespace leveldb {
 // in the db named by "dbname".  The result will be prefixed with
 // "dbname".
     std::string
-    TableFileName(const std::string &dbname, uint64_t number, FileInternalType internal_type,
+    TableFileName(const std::string &dbname, const std::string &pmname, uint64_t number, 
+                  int level, int levels_in_pm, 
+                  FileInternalType internal_type,
                   uint32_t replica_id);
 
 // Return the name of the descriptor file for the db named by

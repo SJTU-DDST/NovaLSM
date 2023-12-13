@@ -25,10 +25,12 @@ namespace leveldb {
         CorruptionTest()
                 : db_(nullptr),
                   dbname_("/memenv/corruption_test"),
+                  pmname_("/memenv/pm_tmp"),
+                  levels_in_pm_(0),
                   tiny_cache_(NewLRUCache(100)) {
             options_.env = &env_;
             options_.block_cache = tiny_cache_;
-            DestroyDB(dbname_, options_);
+            DestroyDB(dbname_, pmname_, options_);
 
             options_.create_if_missing = true;
             Reopen();
@@ -43,7 +45,7 @@ namespace leveldb {
         Status TryReopen() {
             delete db_;
             db_ = nullptr;
-            return DB::Open(options_, dbname_, &db_);
+            return DB::Open(options_, dbname_, pmname_, levels_in_pm_, &db_);
         }
 
         void Reopen() { ASSERT_OK(TryReopen()); }
@@ -188,6 +190,8 @@ namespace leveldb {
 
     private:
         std::string dbname_;
+        std::string pmname_;
+        int levels_in_pm_;
         Cache *tiny_cache_;
     };
 

@@ -32,10 +32,12 @@ namespace leveldb {
         }
     }
 
-    uint32_t CompactionRequest::EncodeRequest(char *buf) {
+    uint32_t CompactionRequest::EncodeRequest(char *buf) { 
         char *sendbuf = buf;
         uint32_t msg_size = 0;
         msg_size += EncodeStr(sendbuf + msg_size, dbname);
+        msg_size += EncodeStr(sendbuf + msg_size, pmname); // pmname levels_in_pm 
+        msg_size += EncodeFixed32(sendbuf + msg_size, (uint32_t)levels_in_pm); // 
         msg_size += EncodeFixed64(sendbuf + msg_size, smallest_snapshot);
         msg_size += EncodeFixed32(sendbuf + msg_size, source_level);
         msg_size += EncodeFixed32(sendbuf + msg_size, target_level);
@@ -66,8 +68,12 @@ namespace leveldb {
 
         char *sendbuf = buf;
         sendbuf += DecodeStr(sendbuf, &dbname);
+        sendbuf += DecodeStr(sendbuf, &pmname);
 
         Slice input(sendbuf, buf_size);
+        uint32_t levels_in_pm_pre;
+        NOVA_ASSERT(DecodeFixed32(&input, &levels_in_pm_pre));
+        levels_in_pm = (int) levels_in_pm_pre;
         NOVA_ASSERT(DecodeFixed64(&input, &smallest_snapshot));
         NOVA_ASSERT(DecodeFixed32(&input, &source_level));
         NOVA_ASSERT(DecodeFixed32(&input, &target_level));
@@ -455,6 +461,8 @@ namespace leveldb {
         return user_policy_->KeyMayMatch(ExtractUserKey(key), f);
     }
 
+// lookupkey包含 key和get请求来的时候的sequence
+// 1. 可变编码5字节 lookupkey长度(后面还有的长度，不算自己) 2. 直接复制8字节 userkey 3.固定长度编码8字节 sequence number和seek的信息
     LookupKey::LookupKey(const Slice &user_key, SequenceNumber s) {
         size_t usize = user_key.size();
         size_t needed = usize + 13;  // A conservative estimate

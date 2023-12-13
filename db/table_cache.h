@@ -20,9 +20,11 @@ namespace leveldb {
 
     class Env;
 
+// 这个 cache应该可以复用??
     class TableCache {
     public:
-        TableCache(const std::string &dbname, const Options &options,
+// done
+        TableCache(const std::string &dbname, const std::string &pmname, int levels_in_pm, const Options &options,
                    int entries, DBProfiler *db_profiler);
 
         ~TableCache();
@@ -63,6 +65,8 @@ namespace leveldb {
     private:
         Env *const env_;
         const std::string dbname_;
+        const std::string pmname_;
+        int levels_in_pm_;
         const Options options_;
         DBProfiler *db_profiler_ = nullptr;
     };

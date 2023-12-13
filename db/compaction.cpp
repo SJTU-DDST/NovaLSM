@@ -8,9 +8,14 @@
 #include "filename.h"
 
 namespace leveldb {
+
+// 对传入的metafile
     void
     FetchMetadataFilesInParallel(const std::vector<const FileMetaData *> &files,
                                  const std::string &dbname,
+                                 const std::string &pmname,
+                                 // int level,
+                                 int levels_in_pm,
                                  const Options &options,
                                  StoCBlockClient *client,
                                  Env *env) {
@@ -18,31 +23,35 @@ namespace leveldb {
         std::vector<const FileMetaData *> batch;
         for (int i = 0; i < files.size(); i++) {
             if (batch.size() == FETCH_METADATA_BATCH_SIZE &&
-                files.size() - i > FETCH_METADATA_BATCH_SIZE) {
+                files.size() - i > FETCH_METADATA_BATCH_SIZE) { // batch之后
                 fetched_files += batch.size();
-                FetchMetadataFiles(batch, dbname, options, client, env);
+                FetchMetadataFiles(batch, dbname, pmname, levels_in_pm, options, client, env);
                 batch.clear();
             }
             batch.push_back(files[i]);
         }
         if (!batch.empty()) {
             fetched_files += batch.size();
-            FetchMetadataFiles(batch, dbname, options, client, env);
+            FetchMetadataFiles(batch, dbname, pmname, levels_in_pm, options, client, env);
         }
         NOVA_ASSERT(fetched_files == files.size());
     }
 
+// 对batch的metafile 取到每个file的meta block中的东西 这里env里面的选项是sstable mem
     void
     FetchMetadataFiles(const std::vector<const FileMetaData *> &files,
-                       const std::string &dbname, const Options &options,
+                       const std::string &dbname, const std::string &pmname,
+                       // int level, 
+                       int levels_in_pm, 
+                       const Options &options,
                        StoCBlockClient *client, Env *env) {
         // Fetch all metadata files in parallel.
-        char *backing_mems[files.size() * nova::NovaConfig::config->number_of_sstable_metadata_replicas];
+        char *backing_mems[files.size() * nova::NovaConfig::config->number_of_sstable_metadata_replicas]; // 每个文件 每个metadata replica的指针
         int index = 0;
         for (int i = 0; i < files.size(); i++) {
             auto meta = files[i];
             for (int replica_id = 0; replica_id < meta->block_replica_handles.size(); replica_id++) {
-                std::string filename = TableFileName(dbname, meta->number, FileInternalType::kFileMetadata, replica_id);
+                std::string filename = TableFileName(dbname, pmname, meta->number, meta->level, levels_in_pm, FileInternalType::kFileMetadata, replica_id);
                 const StoCBlockHandle &meta_handle = meta->block_replica_handles[replica_id].meta_block_handle;
                 uint32_t backing_scid = options.mem_manager->slabclassid(0, meta_handle.size);
                 char *backing_buf = options.mem_manager->ItemAlloc(0, backing_scid);
@@ -71,11 +80,11 @@ namespace leveldb {
                 uint32_t backing_scid = options.mem_manager->slabclassid(0, meta_handle.size);
                 WritableFile *writable_file;
                 EnvFileMetadata env_meta = {};
-                auto sstablename = TableFileName(dbname, meta->number, FileInternalType::kFileData, replica_id);
-                Status s = env->NewWritableFile(sstablename, env_meta, &writable_file);
+                auto sstablename = TableFileName(dbname, pmname, meta->number, meta->level, levels_in_pm, FileInternalType::kFileMetadata, replica_id);
+                Status s = env->NewWritableFile(sstablename, env_meta, &writable_file); // 这里一般是内存里面的文件
                 NOVA_ASSERT(s.ok());
                 Slice sstable_meta(backing_buf, meta_handle.size);
-                s = writable_file->Append(sstable_meta);
+                s = writable_file->Append(sstable_meta); // 将对应的metadata文件写入
                 NOVA_ASSERT(s.ok());
                 s = writable_file->Flush();
                 NOVA_ASSERT(s.ok());
@@ -85,7 +94,7 @@ namespace leveldb {
                 NOVA_ASSERT(s.ok());
                 delete writable_file;
                 writable_file = nullptr;
-                options.mem_manager->FreeItem(0, backing_buf, backing_scid);
+                options.mem_manager->FreeItem(0, backing_buf, backing_scid); // 这里类似于验证文件完整性 ?
                 index++;
             }
         }
@@ -93,9 +102,10 @@ namespace leveldb {
 
     Compaction::Compaction(VersionFileMap *input_version,
                            const InternalKeyComparator *icmp,
-                           const Options *options, int level, int target_level)
+                           const Options *options, int level, int target_level, int levels_in_pm)
             : level_(level),
               target_level_(target_level),
+              levels_in_pm_(levels_in_pm),
               icmp_(icmp),
               options_(options),
               max_output_file_size_(options->max_file_size),
@@ -139,6 +149,7 @@ namespace leveldb {
         return debug;
     }
 
+// 如果是levels_in_pm的trival move到下一层的也许需要进行直接复制
     bool Compaction::IsTrivialMove() const {
 //         Avoid a move if there is lots of overlapping grandparent data.
 //         Otherwise, the move could create a parent file that will require
@@ -148,6 +159,10 @@ namespace leveldb {
 //        &&
 //                TotalFileSize(grandparents_) <=
 //                MaxGrandParentOverlapBytes(options_));
+    }
+
+    bool Compaction::IsChangeMedia() {
+        return (target_level_ > levels_in_pm_ && level_ <= levels_in_pm_);
     }
 
     void Compaction::AddInputDeletions(VersionEdit *edit) {
@@ -160,12 +175,13 @@ namespace leveldb {
         }
     }
 
+// 当前读到的key的位置
     bool Compaction::ShouldStopBefore(const Slice &internal_key) {
         // Scan to find earliest grandparent file that contains key.
         while (grandparent_index_ < grandparents_.size() &&
                icmp_->Compare(internal_key,
-                              grandparents_[grandparent_index_]->largest.Encode()) >
-               0) {
+                              grandparents_[grandparent_index_]->largest.Encode()) > // grandparents的情况是 只取1个l0层的文件的话 在l1中都会有很多overlap的 所以把l0层的都集合 然后l1层重叠的放在grandparents里面作为指引
+               0) { // 
             if (seen_key_) {
                 overlapped_bytes_ += 1; //grandparents_[grandparent_index_]->file_size;
             }
@@ -174,7 +190,7 @@ namespace leveldb {
         seen_key_ = true;
         int max_overlap = 5;
         max_overlap = std::min(max_overlap, (int) grandparents_.size() / 4);
-        max_overlap = std::max(max_overlap, 1);
+        max_overlap = std::max(max_overlap, 1); // 允许的最大overlap是最多为五 最少为1/4的grandparents的size
         if (overlapped_bytes_ >= max_overlap) {
             // Too much overlap for current output; start new output
             overlapped_bytes_ = 0;
@@ -196,20 +212,22 @@ namespace leveldb {
         return stats;
     }
 
-
+// 这里的是 用于制作输出文件的 所以应该传入
     CompactionJob::CompactionJob(std::function<uint64_t(void)> &fn_generator,
                                  leveldb::Env *env, const std::string &dbname,
+                                 const std::string &pmname, int levels_in_pm,
                                  const leveldb::Comparator *user_comparator,
                                  const leveldb::Options &options,
                                  EnvBGThread *bg_thread,
                                  TableCache *table_cache)
-            : fn_generator_(fn_generator), env_(env), dbname_(dbname),
+            : fn_generator_(fn_generator), env_(env), dbname_(dbname), pmname_(pmname), levels_in_pm_(levels_in_pm),
               user_comparator_(
                       user_comparator), options_(options),
               bg_thread_(bg_thread), table_cache_(table_cache) {
     }
 
-    Status CompactionJob::OpenCompactionOutputFile(CompactionState *compact) {
+// done
+    Status CompactionJob::OpenCompactionOutputFile(CompactionState *compact, int level) {
         assert(compact != nullptr);
         assert(compact->builder == nullptr);
         uint64_t file_number;
@@ -230,14 +248,17 @@ namespace leveldb {
         }
         // Make the output file
         MemManager *mem_manager = bg_thread_->mem_manager();
-        std::string filename = TableFileName(dbname_, file_number, FileInternalType::kFileData, 0);
-        StoCWritableFileClient *stoc_writable_file = new StoCWritableFileClient(
+        std::string filename = TableFileName(dbname_, pmname_, file_number, level, levels_in_pm_, FileInternalType::kFileData, 0);
+        StoCWritableFileClient *stoc_writable_file = new StoCWritableFileClient( // to be done
                 options_.env,
                 options_,
                 file_number,
                 mem_manager,
                 bg_thread_->stoc_client(),
                 dbname_,
+                pmname_,
+                level,
+                levels_in_pm_,
                 bg_thread_->thread_id(),
                 options_.max_stoc_file_size,
                 bg_thread_->rand_seed(),
@@ -247,6 +268,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 结束这个文件的编写
     Status
     CompactionJob::FinishCompactionOutputFile(const ParsedInternalKey &ik,
                                               CompactionState *compact,
@@ -306,6 +328,7 @@ namespace leveldb {
         return s;
     }
 
+// key少的subrange压缩到同一个memtable中 major compaction
     Status
     CompactionJob::CompactTables(CompactionState *compact,
                                  Iterator *input,
@@ -343,7 +366,7 @@ namespace leveldb {
         ParsedInternalKey ikey;
         std::string current_user_key;
         bool has_current_user_key = false;
-        SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
+        SequenceNumber last_sequence_for_key = kMaxSequenceNumber; // 初始设为最大值
         std::vector<std::string> keys;
         uint64_t memtable_size = 0;
         while (input->Valid()) {
@@ -373,11 +396,11 @@ namespace leveldb {
                 last_sequence_for_key = kMaxSequenceNumber;
             }
 
-            if (last_sequence_for_key <= compact->smallest_snapshot) {
+            if (last_sequence_for_key <= compact->smallest_snapshot) { // 同一个key只留sequence最大的
                 // Hidden by an newer entry for same user key
                 drop = true;  // (A)
             }
-            last_sequence_for_key = ikey.sequence;
+            last_sequence_for_key = ikey.sequence; // 记录上一个key的sequence
 #if 0
             Log(options_.info_log,
                 "  Compact: %s, seq %d, type: %d %d, drop: %d, is_base: %d, "
@@ -394,9 +417,9 @@ namespace leveldb {
                 continue;
             } else {
                 // Open output file if necessary
-                if (output_type == kCompactOutputSSTables &&
+                if (output_type == kCompactOutputSSTables && // 只有->sstable才会开文件
                     compact->builder == nullptr) {
-                    status = OpenCompactionOutputFile(compact);
+                    status = OpenCompactionOutputFile(compact, stats->input_target.level); // 新打开一个文件
                     if (!status.ok()) {
                         break;
                     }

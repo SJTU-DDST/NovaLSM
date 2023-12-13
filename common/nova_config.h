@@ -193,6 +193,8 @@ namespace nova {
         int max_msg_size = 0;
 
         std::string db_path;
+        std::string pm_path;
+        int levels_in_pm;
 
         int rdma_port = 0;
         int rdma_max_num_sends = 0;

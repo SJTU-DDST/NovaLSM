@@ -37,7 +37,7 @@ namespace leveldb {
 
         bool IsSafeToFlush(uint32_t drange_idx, uint64_t generation_id);
 
-        std::atomic_uint_fast64_t latest_generation_id;
+        std::atomic_uint_fast64_t latest_generation_id; // generation id每次subrange更新一次之后都会更新
     private:
         std::vector<MemTablePartition *> *partitioned_active_memtables_ = nullptr;
         std::atomic<ImpactedDrangeCollection *> impacted_dranges_;

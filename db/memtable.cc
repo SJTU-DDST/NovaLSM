@@ -33,6 +33,7 @@ namespace leveldb {
               is_ready_signal_(&is_ready_mutex_) {
     }
 
+// 一个config永远ready
     void MemTable::WaitUntilReady() {
         if (nova::NovaConfig::config->cfgs.size() == 1 || is_ready_) {
             return;
@@ -51,12 +52,14 @@ namespace leveldb {
         is_ready_mutex_.Unlock();
     }
 
+// 加到这个generation的
     void MemTablePartition::AddMemTable(uint64_t generation_id, uint32_t memtableid) {
         NOVA_LOG(rdmaio::DEBUG) << fmt::format("Add memtable {}:{}", generation_id, memtableid);
         auto it = generation_num_memtables_.find(generation_id);
         generation_num_memtables_[generation_id].insert(memtableid);
     }
 
+// 从generation中删掉
     void MemTablePartition::RemoveMemTable(uint64_t generation_id, uint32_t memtableid) {
         NOVA_LOG(rdmaio::DEBUG) << fmt::format("Remove memtable {}:{}", generation_id, memtableid);
         auto it = generation_num_memtables_.find(generation_id);
@@ -211,6 +214,7 @@ namespace leveldb {
         table_.Insert(buf);
     }
 
+
     bool MemTable::Get(const LookupKey &key, std::string *value, Status *s) {
         WaitUntilReady();
         Slice memkey = key.memtable_key();
@@ -218,21 +222,21 @@ namespace leveldb {
         iter.Seek(memkey.data());
         if (iter.Valid()) {
             // entry format is:
-            //    klength  varint32
-            //    userkey  char[klength]
-            //    tag      uint64
-            //    vlength  varint32
-            //    value    char[vlength]
+            //    klength  varint32          5
+            //    userkey  char[klength]     8
+            //    tag      uint64            8
+            //    vlength  varint32          5
+            //    value    char[vlength]     1024
             // Check that it belongs to same user key.  We do not check the
             // sequence number since the Seek() call above should have skipped
             // all entries with overly large sequence numbers.
             const char *entry = iter.key();
             uint32_t key_length;
-            const char *key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length);
+            const char *key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length); // 读出长度并且key_pt指向userkey 这里的key length 包括了tag 也就是类型和序列号的结合
             if (comparator_.comparator.user_comparator()->Compare(
-                    Slice(key_ptr, key_length - 8), key.user_key()) == 0) {
+                    Slice(key_ptr, key_length - 8), key.user_key()) == 0) { // 对比user key
                 // Correct user key
-                const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
+                const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8); //
                 switch (static_cast<ValueType>(tag & 0xff)) {
                     case kTypeValue: {
                         Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
@@ -263,6 +267,7 @@ namespace leveldb {
         mutex_.unlock();
     }
 
+// 压缩后 表明
     void AtomicMemTable::SetFlushed(const std::string &dbname,
                                     const std::vector<uint64_t> &l0_file_numbers,
                                     uint32_t version_id) {
@@ -356,6 +361,7 @@ namespace leveldb {
         return memtable_exists;
     }
 
+// 该加的加 该删的删
     void AtomicMemTable::UpdateL0Files(uint32_t version_id, const MemTableL0FilesEdit &edit) {
         mutex_.lock();
         NOVA_ASSERT(is_immutable_) << fmt::format("{}:{},{}", memtable_id_, memtable_size_, edit.DebugString());
@@ -370,6 +376,7 @@ namespace leveldb {
         mutex_.unlock();
     }
 
+// done
     void AtomicMemTable::Unref(const std::string &dbname, uint32_t unrefcount) {
         mutex_.lock();
         NOVA_ASSERT(memtable_);

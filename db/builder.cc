@@ -18,14 +18,15 @@
 
 namespace leveldb {
 
+// 未调用 可以不改 done
     Status
-    TestBuildTable(const std::string &dbname, Env *env, const Options &options,
+    TestBuildTable(const std::string &dbname, const std::string &pmname, int level, int64_t levels_in_pm, Env *env, const Options &options,
                    TableCache *table_cache, Iterator *iter, FileMetaData *meta,
                    EnvBGThread *bg_thread) {
         Status s;
         meta->file_size = 0;
         iter->SeekToFirst();
-        std::string fname = TableFileName(dbname, meta->number, FileInternalType::kFileData, 0);
+        std::string fname = TableFileName(dbname, pmname, meta->number, level, levels_in_pm, FileInternalType::kFileData, 0);
         if (iter->Valid()) {
             MemManager *mem_manager = bg_thread->mem_manager();
             uint64_t key = bg_thread->thread_id();
@@ -78,17 +79,20 @@ namespace leveldb {
         return s;
     }
 
+// done
     Status
-    BuildTable(const std::string &dbname, Env *env, const Options &options,
+    BuildTable(const std::string &dbname, const std::string &pmname, int level, int64_t levels_in_pm, Env *env, const Options &options,
                TableCache *table_cache, Iterator *iter, FileMetaData *meta,
                EnvBGThread *bg_thread, bool prune_memtables) {
         Status s;
         meta->file_size = 0;
         iter->SeekToFirst();
-        std::string filename = TableFileName(dbname, meta->number, FileInternalType::kFileData, 0);
+        std::string filename = TableFileName(dbname, pmname, meta->number, level, levels_in_pm, FileInternalType::kFileData, 0);
         if (iter->Valid()) {
             const Comparator *user_comp = reinterpret_cast<const InternalKeyComparator *>(options.comparator)->user_comparator();
             MemManager *mem_manager = bg_thread->mem_manager();
+
+            // 还是要传入一些信息 因为之后会再算一次filename ..
             StoCWritableFileClient *stoc_writable_file = new StoCWritableFileClient(
                     env,
                     options,
@@ -96,6 +100,9 @@ namespace leveldb {
                     mem_manager,
                     bg_thread->stoc_client(),
                     dbname,
+                    pmname,
+                    level,
+                    levels_in_pm,
                     bg_thread->thread_id(),
                     options.max_stoc_file_size,
                     bg_thread->rand_seed(),

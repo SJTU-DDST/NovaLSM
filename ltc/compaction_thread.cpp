@@ -90,8 +90,8 @@ namespace leveldb {
 
             std::unordered_map<void *, std::vector<EnvBGTask>> db_tasks;
             for (auto &task : tasks) {
-                db_tasks[task.db].push_back(task);
-                if (task.memtable) {
+                db_tasks[task.db].push_back(task); // 按db进行划分
+                if (task.memtable) { // flush memtable的任务
                     memtable_size[task.memtable_size_mb] += 1;
                 }
             }

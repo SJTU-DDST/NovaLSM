@@ -31,10 +31,13 @@ namespace leveldb {
         cache->Release(h);
     }
 
-    TableCache::TableCache(const std::string &dbname, const Options &options,
+// done
+    TableCache::TableCache(const std::string &dbname, const std::string &pmname, int levels_in_pm, const Options &options,
                            int entries, DBProfiler *db_profiler)
             : env_(options.env),
               dbname_(dbname),
+              pmname_(pmname),
+              levels_in_pm_(levels_in_pm),
               options_(options),
               cache_(NewLRUCache(entries)), db_profiler_(db_profiler) {}
 
@@ -83,9 +86,12 @@ namespace leveldb {
             if (caller == AccessCaller::kCompaction) {
                 prefetch_all = true;
             }
-            std::string filename = TableFileName(dbname_, file_number, FileInternalType::kFileData,
+            std::string filename = TableFileName(dbname_, pmname_, file_number, level, levels_in_pm_, FileInternalType::kFileData,
                                                  replica_id);
-            file = new StoCRandomAccessFileClientImpl(env_, options_, dbname_,
+            file = new StoCRandomAccessFileClientImpl(env_, options_, dbname_, // done
+                                                      pmname_, 
+                                                      level,
+                                                      levels_in_pm_,
                                                       file_number,
                                                       replica_id,
                                                       meta,
@@ -106,7 +112,7 @@ namespace leveldb {
             return s;
         }
 
-        auto fname = TableFileName(dbname_, file_number, FileInternalType::kFileData, 0);
+        auto fname = TableFileName(dbname_, pmname_, file_number, level, levels_in_pm_, FileInternalType::kFileData, 0);
         if (nova::NovaConfig::config->cfgs.size() > 1) {
             NOVA_ASSERT(env_->LockFile(fname, file_number).ok());
         }
@@ -127,8 +133,11 @@ namespace leveldb {
             if (caller == AccessCaller::kCompaction) {
                 prefetch_all = true;
             }
-            std::string filename = TableFileName(dbname_, file_number, FileInternalType::kFileData, replica_id);
-            file = new StoCRandomAccessFileClientImpl(env_, options_, dbname_,
+            std::string filename = TableFileName(dbname_, pmname_, file_number, level, levels_in_pm_, FileInternalType::kFileData, replica_id);
+            file = new StoCRandomAccessFileClientImpl(env_, options_, dbname_, // done
+                                                      pmname_, 
+                                                      level,
+                                                      levels_in_pm_,
                                                       file_number,
                                                       replica_id,
                                                       meta,

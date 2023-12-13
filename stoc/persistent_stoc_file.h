@@ -135,7 +135,7 @@ namespace leveldb {
 
         void DeleteSSTable(const std::string &filename);
 
-        std::unordered_map<std::string, leveldb::StoCPersistentFile *> fn_stoc_file_map_;
+        std::unordered_map<std::string, leveldb::StoCPersistentFile *> fn_stoc_file_map_; // name -> file
     private:
         Env *env_ = nullptr;
         MemManager *mem_manager_ = nullptr;
@@ -146,7 +146,7 @@ namespace leveldb {
         uint32_t current_manifest_file_stoc_file_id_ = 1;
         const uint32_t MAX_MANIFEST_FILE_ID = 10000;
         uint32_t current_stoc_file_id_ = MAX_MANIFEST_FILE_ID + 1;
-        std::unordered_map<uint32_t, StoCPersistentFile *> stoc_files_;
+        std::unordered_map<uint32_t, StoCPersistentFile *> stoc_files_; // id -> file
         leveldb::Cache *block_cache_ = nullptr;
         std::mutex mutex_;
     };

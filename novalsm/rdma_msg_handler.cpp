@@ -156,9 +156,10 @@ namespace nova {
                 case leveldb::RDMA_CLIENT_REQ_WRITE_DATA_BLOCKS:
                     ctx.req_id = stoc_client_->InitiateAppendBlock(
                             task.server_id, task.thread_id,
-                            nullptr, task.write_buf, task.dbname,
+                            nullptr, task.write_buf, task.dbname, task.pmname, task.level, task.levels_in_pm, // done
                             task.file_number, task.replica_id, task.write_size,
                             task.internal_type);
+// dbname 这里上面是 initiateappendblock等
                     break;
                 case leveldb::RDMA_CLIENT_REQ_DELETE_TABLES:
                     ctx.req_id = stoc_client_->InitiateDeleteTables(
@@ -192,7 +193,7 @@ namespace nova {
                     break;
                 case leveldb::RDMA_CLIENT_RECONSTRUCT_MISSING_REPLICA:
                     ctx.req_id = stoc_client_->InitiateReplicateSSTables(
-                            task.server_id, task.dbname, task.missing_replicas);
+                            task.server_id, task.dbname, task.pmname, task.level, task.levels_in_pm, task.missing_replicas);
                     break;
             }
             if (failed) {

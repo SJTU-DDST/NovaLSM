@@ -59,6 +59,7 @@ namespace leveldb {
                 sizeof(uint32_t));                     // Restart array length
     }
 
+// key value结束之后放置所有的restart在buffer_里面 然后传出去
     Slice BlockBuilder::Finish() {
         // Append restart array
         for (size_t i = 0; i < restarts_.size(); i++) {
@@ -69,6 +70,7 @@ namespace leveldb {
         return Slice(buffer_);
     }
 
+// 所有的key value都放到多放到自己的buffer_里面
     void BlockBuilder::Add(const Slice &key, const Slice &value) {
         Slice last_key_piece(last_key_);
         assert(!finished_);

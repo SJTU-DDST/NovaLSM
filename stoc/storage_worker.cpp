@@ -51,8 +51,12 @@ namespace nova {
         sem_post(&sem_);
     }
 
+// change config 时 ltc给stoc发送的
     std::vector<leveldb::ReplicationPair> StorageWorker::ReplicateSSTables(
             const std::string &dbname,
+            const std::string &pmname,
+            int level,
+            int levels_in_pm,
             const std::vector<leveldb::ReplicationPair> &replication_pairs) {
         std::vector<char *> bufs;
         std::vector<uint32_t> reqs;
@@ -82,11 +86,14 @@ namespace nova {
                     << fmt::format("{} {} {}", pair.source_stoc_file_id,
                                    pair.source_file_size, result.size());
                 uint32_t place_holder;
-                uint32_t req_id = client->InitiateAppendBlock(
+                uint32_t req_id = client->InitiateAppendBlock( // 这里剩一点没有改
                         pair.dest_stoc_id, 0,
                         &place_holder,
                         buf,
                         dbname,
+                        pmname,
+                        level,
+                        levels_in_pm,
                         pair.sstable_file_number,
                         pair.replica_id,
                         pair.source_file_size,
@@ -192,17 +199,21 @@ namespace nova {
                     }
                 } else if (task.request_type ==
                            leveldb::StoCRequestType::STOC_REPLICATE_SSTABLES) {
-                    ct.replication_results = ReplicateSSTables(task.dbname, task.replication_pairs);
+                    ct.replication_results = ReplicateSSTables(task.dbname, task.pmname, task.level, task.levels_in_pm, task.replication_pairs); // replicate相关
+                    // dbname 以上是replicate 相关的 以下是compaction相关
                 } else if (task.request_type ==
                            leveldb::StoCRequestType::STOC_COMPACTION) {
                     leveldb::TableCache table_cache(
-                            task.compaction_request->dbname, options_, 0,
+                            task.compaction_request->dbname, task.compaction_request->pmname,
+                            task.compaction_request->levels_in_pm, // to be done
+                            options_, 0,
                             nullptr);
                     leveldb::VersionFileMap version_files(&table_cache);
                     leveldb::Compaction *compaction = new leveldb::Compaction(
                             &version_files, &icmp_, &options_,
                             task.compaction_request->source_level,
-                            task.compaction_request->target_level);
+                            task.compaction_request->target_level, 
+                            task.compaction_request->levels_in_pm);
                     compaction->grandparents_ = task.compaction_request->guides;
                     for (int which = 0; which < 2; which++) {
                         compaction->inputs_[which] = task.compaction_request->inputs[which];
@@ -237,12 +248,16 @@ namespace nova {
                         }
                         FetchMetadataFilesInParallel(files,
                                                      task.compaction_request->dbname,
+                                                     task.compaction_request->pmname, // to be done 
+                                                     task.compaction_request->levels_in_pm, // to be done
                                                      options_,
                                                      reinterpret_cast<leveldb::StoCBlockClient *>(client_),
                                                      env_);
                     }
                     leveldb::CompactionJob job(fn_generator, env_,
                                                task.compaction_request->dbname,
+                                               task.compaction_request->pmname, // to be done
+                                               task.compaction_request->levels_in_pm, // to be done
                                                user_comparator_,
                                                options_, this, &table_cache);
                     NOVA_LOG(rdmaio::DEBUG)

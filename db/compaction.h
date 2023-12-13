@@ -52,9 +52,10 @@ namespace leveldb {
     class Compaction {
     public:
         Compaction(VersionFileMap *input_version,
-                   const InternalKeyComparator *icmp,
-                   const Options *options,
-                   int level, int target_level);
+                    const InternalKeyComparator *icmp,
+                    const Options *options, 
+                    int level, int target_level, int levels_in_pm);
+
 
         std::string DebugString(const Comparator *user_comparator);
 
@@ -95,6 +96,8 @@ namespace leveldb {
         // moving a single input file to the next level (no merging or splitting)
         bool IsTrivialMove() const;
 
+        bool IsChangeMedia();
+
         // Add all inputs to this compaction as delete operations to *edit.
         void AddInputDeletions(VersionEdit *edit);
 
@@ -120,6 +123,7 @@ namespace leveldb {
 
         int level_;
         int target_level_;
+        int levels_in_pm_;
         uint64_t max_output_file_size_;
         VersionEdit edit_;
         const Options *options_;
@@ -171,13 +175,14 @@ namespace leveldb {
 
         CompactionStats BuildStats();
 
+// 应该在这里停下 emmmm ??? 在什么条件下
         bool ShouldStopBefore(const Slice &internal_key,
                               const Comparator *user_comparator) {
             bool subrange_stop = false;
             bool compaction_stop = false;
             if (subranges) {
                 Slice userkey = ExtractUserKey(internal_key);
-                if (subrange_index == -1) {
+                if (subrange_index == -1) { // 不可能等于
                     // Returns the first subrange that has its userkey < upper.
                     while (subrange_index < subranges->subranges.size()) {
                         const SubRange &sr = subranges->subranges[subrange_index];
@@ -190,7 +195,7 @@ namespace leveldb {
                 }
                 while (subrange_index < subranges->subranges.size()) {
                     const SubRange &sr = subranges->subranges[subrange_index];
-                    if (sr.IsGreaterThanUpper(userkey, user_comparator)) {
+                    if (sr.IsGreaterThanUpper(userkey, user_comparator)) { // 如果这个userkey属于一个新的subrange 那就结束 也就是按照subrange的范围进行压缩
                         subrange_index++;
                         subrange_stop = true;
                     } else {
@@ -222,9 +227,13 @@ namespace leveldb {
 
     class CompactionJob {
     public:
+
+// done 
         CompactionJob(std::function<uint64_t(void)> &fn_generator,
                       Env *env,
                       const std::string &dbname,
+                      const std::string &pmname,
+                      int levels_in_pm,
                       const Comparator *user_comparator,
                       const Options &options,
                       EnvBGThread *bg_thread, TableCache *table_cache);
@@ -239,31 +248,43 @@ namespace leveldb {
                                                const Slice &value)> &add_to_memtable = {});
 
     private:
-        Status OpenCompactionOutputFile(CompactionState *compact);
+//
+        Status OpenCompactionOutputFile(CompactionState *compact, int level);
 
         Status
         FinishCompactionOutputFile(const ParsedInternalKey &ik,
                                    CompactionState *compact, Iterator *input);
 
+// done
         std::function<uint64_t(void)> fn_generator_;
         Env *env_ = nullptr;
         EnvBGThread *bg_thread_ = nullptr;
         const std::string dbname_;
+        const std::string pmname_;
+        int levels_in_pm_;
         const Comparator *user_comparator_ = nullptr;
         const Options options_;
         TableCache *table_cache_ = nullptr;
     };
 
+// 这两个函数传入的也是数据库名称 而非具体的文件名 done
     void
     FetchMetadataFilesInParallel(const std::vector<const FileMetaData *> &files,
                                  const std::string &dbname,
+                                 const std::string &pmname,
+                                 // int level, 这里
+                                 int levels_in_pm,
                                  const Options &options,
                                  StoCBlockClient *client,
                                  Env *env);
 
+// done
     void
     FetchMetadataFiles(const std::vector<const FileMetaData *> &files,
                        const std::string &dbname,
+                       const std::string &pmname,
+                       // int level,
+                       int levels_in_pm,
                        const Options &options, StoCBlockClient *client,
                        Env *env);
 }

@@ -21,6 +21,7 @@
 
 namespace leveldb {
 
+// 真正的需要写到数据块中的内容
     struct TableBuilder::Rep {
         Rep(const Options &opt, WritableFile *f)
                 : options(opt),
@@ -44,8 +45,8 @@ namespace leveldb {
         WritableFile *file;
         uint64_t offset;
         Status status;
-        BlockBuilder data_block;
-        BlockBuilder index_block;
+        BlockBuilder data_block; // 更加细致的block emmm
+        BlockBuilder index_block; //
         std::string last_key;
         int64_t num_entries;
         uint64_t num_data_blocks;
@@ -189,6 +190,7 @@ namespace leveldb {
         block->Reset();
     }
 
+// 写入块
     void TableBuilder::WriteRawBlock(const Slice &block_contents,
                                      CompressionType type,
                                      BlockHandle *handle) {

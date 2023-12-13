@@ -72,7 +72,7 @@ typedef struct leveldb_writeoptions_t leveldb_writeoptions_t;
 /* DB operations */
 
 LEVELDB_EXPORT leveldb_t *leveldb_open(const leveldb_options_t *options,
-                                       const char *name, char **errptr);
+                                       const char *name, const char *pmname, int levels_in_pm, char **errptr);
 
 LEVELDB_EXPORT void leveldb_close(leveldb_t *db);
 
@@ -123,7 +123,7 @@ LEVELDB_EXPORT void leveldb_compact_range(leveldb_t *db, const char *start_key,
 /* Management operations */
 
 LEVELDB_EXPORT void leveldb_destroy_db(const leveldb_options_t *options,
-                                       const char *name, char **errptr);
+                                       const char *name, const char *pmname, char **errptr);
 
 LEVELDB_EXPORT void leveldb_repair_db(const leveldb_options_t *options,
                                       const char *name, char **errptr);

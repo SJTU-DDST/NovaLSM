@@ -30,9 +30,13 @@ namespace leveldb {
         current_rdma_msg_handler_id_ = client_id;
     }
 
+// 每次调用都保证了是同一层的
     uint32_t
     StoCBlockClient::InitiateReplicateSSTables(uint32_t stoc_server_id,
                                                const std::string &dbname,
+                                               const std::string &pmname,
+                                               int level,
+                                               int levels_in_pm,
                                                const std::vector<leveldb::ReplicationPair> &pairs) {
         NOVA_ASSERT(stoc_server_id != nova::NovaConfig::config->my_server_id);
         RDMARequestTask task = {};
@@ -40,6 +44,9 @@ namespace leveldb {
         task.server_id = stoc_server_id;
         task.missing_replicas = pairs;
         task.dbname = dbname;
+        task.pmname = pmname;
+        task.level = level;
+        task.levels_in_pm = levels_in_pm;
         task.sem = &sem_;
 
         uint32_t reqid = req_id_;
@@ -86,6 +93,7 @@ namespace leveldb {
         return reqid;
     }
 
+// 向远端发送一个compaction请求
     uint32_t StoCBlockClient::InitiateCompaction(uint32_t remote_server_id,
                                                  leveldb::CompactionRequest *compaction_request) {
         NOVA_ASSERT(remote_server_id != nova::NovaConfig::config->my_server_id);
@@ -105,9 +113,11 @@ namespace leveldb {
         return reqid;
     }
 
+// 用于向远程stoc指定文件写一段数据 done
+// dbname 以下是initiateappendblock相关
     uint32_t StoCBlockClient::InitiateAppendBlock(
             uint32_t stoc_id, uint32_t thread_id, uint32_t *stoc_file_id,
-            char *buf, const std::string &dbname, uint64_t file_number,
+            char *buf, const std::string &dbname, const std::string &pmname, int level, int levels_in_pm, uint64_t file_number,
             uint32_t replica_id,
             uint32_t size, FileInternalType internal_type) {
         if (stoc_id == nova::NovaConfig::config->my_server_id) {
@@ -115,8 +125,9 @@ namespace leveldb {
             if (file_number == 0) {
                 filename = leveldb::DescriptorFileName(dbname, 0, replica_id);
             } else {
-                filename = leveldb::TableFileName(dbname,
+                filename = leveldb::TableFileName(dbname, pmname, 
                                                   file_number,
+                                                  level, levels_in_pm,
                                                   internal_type, replica_id);
             }
             leveldb::StoCPersistentFile *stoc_file = stoc_file_manager_->OpenStoCFile(
@@ -163,6 +174,9 @@ namespace leveldb {
         task.thread_id = thread_id;
         task.write_buf = buf;
         task.dbname = dbname;
+        task.pmname = pmname;
+        task.level = level;
+        task.levels_in_pm = levels_in_pm;
         task.file_number = file_number;
         task.replica_id = replica_id;
         task.write_size = size;
@@ -323,6 +337,7 @@ namespace leveldb {
         return 0;
     }
 
+// recoever的时候建立filename到fileid的映射 总的来说 就是打开文件并且建立映射
     uint32_t
     StoCBlockClient::InitiateInstallFileNameStoCFileMapping(uint32_t stoc_id,
                                                             const std::unordered_map<std::string, uint32_t> &fn_stocfnid) {
@@ -342,8 +357,13 @@ namespace leveldb {
         return reqid;
     }
 
+
+// dbname 以上是initiateappendblock相关 以下是replicate相关
     uint32_t StoCRDMAClient::InitiateReplicateSSTables(uint32_t stoc_server_id,
                                                        const std::string &dbname,
+                                                       const std::string &pmname,
+                                                       int level,
+                                                       int levels_in_pm,
                                                        const std::vector<leveldb::ReplicationPair> &pairs) {
         uint32_t req_id = current_req_id_;
         StoCRequestContext context = {};
@@ -353,7 +373,10 @@ namespace leveldb {
         char *send_buf = rdma_broker_->GetSendBuf(stoc_server_id);
         uint32_t msg_size = 1;
         send_buf[0] = StoCRequestType::STOC_REPLICATE_SSTABLES;
-        msg_size += EncodeStr(send_buf + msg_size, dbname);
+        msg_size += EncodeStr(send_buf + msg_size, dbname); // pmname level levels_in_pm
+        msg_size += EncodeStr(send_buf + msg_size, pmname);
+        msg_size += EncodeFixed32(send_buf + msg_size, (uint32_t)level);
+        msg_size += EncodeFixed32(send_buf + msg_size, (uint32_t)levels_in_pm);
         msg_size += EncodeFixed32(send_buf + msg_size, pairs.size());
 
         for (const auto &it : pairs) {
@@ -424,7 +447,7 @@ namespace leveldb {
             StoCBlockHandle converted_handle = {};
             uint32_t stoc_file_id = block_handle.stoc_file_id;
             if (!filename.empty()) {
-                stoc_file_id = stoc_file_manager_->OpenStoCFile(0, filename)->file_id();
+                stoc_file_id = stoc_file_manager_->OpenStoCFile(0, filename)->file_id(); // 之后需要把这里改为对持久文件直接读写
             }
             Slice output;
             converted_handle.server_id = block_handle.server_id;
@@ -564,6 +587,7 @@ namespace leveldb {
         return req_id;
     }
 
+// compaction request发送到对面
     uint32_t StoCRDMAClient::InitiateCompaction(uint32_t stoc_id,
                                                 leveldb::CompactionRequest *compaction_request) {
         NOVA_ASSERT(stoc_id !=
@@ -689,11 +713,16 @@ namespace leveldb {
         return req_id;
     }
 
+// dbname 以下是intiateblock相关
+// 用于向远程文件写
     uint32_t StoCRDMAClient::InitiateAppendBlock(uint32_t stoc_id,
                                                  uint32_t thread_id,
                                                  uint32_t *stoc_file_id,
                                                  char *buf,
                                                  const std::string &dbname,
+                                                 const std::string &pmname,
+                                                 int level,
+                                                 int levels_in_pm,
                                                  uint64_t file_number,
                                                  uint32_t replica_id,
                                                  uint32_t size,
@@ -709,6 +738,11 @@ namespace leveldb {
         send_buf[0] = StoCRequestType::STOC_WRITE_SSTABLE;
         send_buf[1] = internal_type;
         msg_size += EncodeStr(send_buf + msg_size, dbname);
+        msg_size += EncodeStr(send_buf + msg_size, pmname); // 改了格式!!!!!!! pmname level levels_in_pm
+        EncodeFixed32(send_buf + msg_size, (uint32_t)level);
+        msg_size += 4;
+        EncodeFixed32(send_buf + msg_size, (uint32_t)levels_in_pm);
+        msg_size += 4;
         EncodeFixed64(send_buf + msg_size, file_number);
         msg_size += 8;
         EncodeFixed32(send_buf + msg_size, replica_id);
@@ -1043,11 +1077,11 @@ namespace leveldb {
                         processed = true;
 //对面发送的是stoc compaction response类型的
                     } else if (buf[0] ==
-                               StoCRequestType::STOC_COMPACTION_RESPONSE) {
+                               StoCRequestType::STOC_COMPACTION_RESPONSE) { // 收到了stoc发送的compaction的回复
                         uint32_t num_outputs = leveldb::DecodeFixed32(buf + 1);
                         Slice outputs(buf + 5,
                                       nova::NovaConfig::config->max_msg_size);
-                        for (int i = 0; i < num_outputs; i++) {
+                        for (int i = 0; i < num_outputs; i++) { // 得到压缩产生的文件名等数据
                             FileMetaData *meta = new FileMetaData;
                             NOVA_ASSERT(meta->Decode(&outputs, false));
                             context.compaction->outputs.push_back(meta);

@@ -56,7 +56,7 @@ namespace nova {
     StoCInMemoryLogFileManager::StoCInMemoryLogFileManager(
             nova::NovaMemManager *mem_manager) : mem_manager_(mem_manager) {
         uint32_t nranges = NovaConfig::config->cfgs[0]->fragments.size();
-        db_log_files_ = new DBLogFiles *[nranges];
+        db_log_files_ = new DBLogFiles *[nranges]; // 每个数据库1个
         NOVA_LOG(rdmaio::DEBUG)
             << fmt::format("{} {}", NovaConfig::config->servers.size(),
                            nranges);

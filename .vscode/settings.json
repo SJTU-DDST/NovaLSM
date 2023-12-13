@@ -68,6 +68,11 @@
         "thread": "cpp",
         "cinttypes": "cpp",
         "typeindex": "cpp",
-        "typeinfo": "cpp"
+        "typeinfo": "cpp",
+        "numbers": "cpp",
+        "span": "cpp",
+        "variant": "cpp",
+        "format": "cpp",
+        "semaphore": "cpp"
     }
 }

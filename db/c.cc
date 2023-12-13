@@ -172,10 +172,10 @@ static char *CopyString(const std::string &str) {
     return result;
 }
 
-leveldb_t *leveldb_open(const leveldb_options_t *options, const char *name,
+leveldb_t *leveldb_open(const leveldb_options_t *options, const char *name, const char *pmname, int levels_in_pm,
                         char **errptr) {
     DB *db;
-    if (SaveError(errptr, DB::Open(options->rep, std::string(name), &db))) {
+    if (SaveError(errptr, DB::Open(options->rep, std::string(name), std::string(pmname), levels_in_pm, &db))) {
         return nullptr;
     }
     leveldb_t *result = new leveldb_t;
@@ -278,9 +278,9 @@ void leveldb_compact_range(leveldb_t *db, const char *start_key,
 //            (limit_key ? (b = Slice(limit_key, limit_key_len), &b) : nullptr));
 }
 
-void leveldb_destroy_db(const leveldb_options_t *options, const char *name,
+void leveldb_destroy_db(const leveldb_options_t *options, const char *name, const char *pmname,
                         char **errptr) {
-    SaveError(errptr, DestroyDB(name, options->rep));
+    SaveError(errptr, DestroyDB(name, pmname, options->rep));
 }
 
 void leveldb_repair_db(const leveldb_options_t *options, const char *name,

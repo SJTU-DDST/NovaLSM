@@ -68,6 +68,8 @@ namespace nova {
         sem_post(&sem_);
     }
 
+// 这个函数大概率不会用到 replicatesstable调用处 用于去除一个stoc后的数据迁移
+// 换config 去除很多stoc 每个新的fragment都要把这些进行剔除 这里似乎默认了1次只会改变1个stoc
     void DBMigration::MigrateStoC(nova::LTCFragment *frag, const std::vector<uint32_t> &removed_stocs) {
         uint32_t failed_stoc_server_id = removed_stocs[0];
         timeval repl_start{};
@@ -76,19 +78,19 @@ namespace nova {
         auto cfg = nova::NovaConfig::config->cfgs[cfgid];
         std::unordered_map<uint32_t, std::vector<leveldb::ReplicationPair>> stoc_repl_pairs;
         uint32_t total_replicated = 0;
-        for (int level = nova::NovaConfig::config->level - 1; level >= 0; level--) {
+        for (int level = nova::NovaConfig::config->level - 1; level >= 0; level--) { // 从这个fragment的db最下层开始
             stoc_repl_pairs.clear();
             leveldb::ReconstructReplicasStats stats = {};
             timeval start{};
             gettimeofday(&start, nullptr);
             auto db = reinterpret_cast<leveldb::DB *>(frag->db);
-            db->QueryFailedReplicas(failed_stoc_server_id, false, &stoc_repl_pairs, level, &stats);
+            db->QueryFailedReplicas(failed_stoc_server_id, false, &stoc_repl_pairs, level, &stats); // 当前存储在的stoc id-> 分配到的这个stoc的迁移任务
             if (stoc_repl_pairs.empty()) {
                 continue;
             }
             uint32_t num_batches = 0;
             std::vector<uint32_t> reqs;
-            for (const auto &pairs : stoc_repl_pairs) {
+            for (const auto &pairs : stoc_repl_pairs) { // 遍历这些任务
                 // break into pieces.
                 uint32_t stoc_id = pairs.first;
                 std::vector<leveldb::ReplicationPair> batch;
@@ -99,15 +101,15 @@ namespace nova {
                                        pairs.second[i].DebugString());
                     batch.push_back(pairs.second[i]);
                     i++;
-                    if (batch.size() == MAX_RESTORE_REPLICATION_BATCH_SIZE) {
-                        uint32_t reqid = client_->InitiateReplicateSSTables(stoc_id, db->dbname(), batch);
+                    if (batch.size() == MAX_RESTORE_REPLICATION_BATCH_SIZE) { // 同一个stoc的东西积累一个batch
+                        uint32_t reqid = client_->InitiateReplicateSSTables(stoc_id, db->dbname(), db->pmname(), level, db->levels_in_pm(), batch); // 这里也许暂时用不到? 这里不会调用但是别的地方会
                         reqs.push_back(reqid);
                         batch.clear();
                         num_batches += 1;
                     }
                 }
                 if (!batch.empty()) {
-                    uint32_t reqid = client_->InitiateReplicateSSTables(stoc_id, db->dbname(), batch);
+                    uint32_t reqid = client_->InitiateReplicateSSTables(stoc_id, db->dbname(), db->pmname(), level, db->levels_in_pm(), batch);
                     reqs.push_back(reqid);
                     num_batches += 1;
                 }
@@ -115,6 +117,8 @@ namespace nova {
             for (int b = 0; b < num_batches; b++) {
                 client_->Wait();
             }
+
+            // 以上完成对使用了remove的stoc的 fragment的迁移
 
             std::vector<leveldb::ReplicationPair> result;
             for (auto reqid : reqs) {
@@ -124,6 +128,8 @@ namespace nova {
                     result.push_back(r);
                 }
             }
+
+            // 获得完成后的信息并且更新
             db->UpdateFileMetaReplicaLocations(result, failed_stoc_server_id, level, client_);
             total_replicated += stoc_repl_pairs.size();
             timeval end{};

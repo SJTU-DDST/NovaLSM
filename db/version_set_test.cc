@@ -583,7 +583,7 @@ namespace leveldb {
 
         std::vector<Compaction *> compactions;
         bool delete_due_to_low_overlap;
-        version->ComputeNonOverlappingSet(&compactions, &delete_due_to_low_overlap);
+        version->ComputeNonOverlappingSet(&compactions, &delete_due_to_low_overlap, 0);
         PrintCompactions(icmp.user_comparator(), compactions);
         std::string reason;
         ASSERT_TRUE(version->AssertNonOverlappingSet(compactions, &reason));

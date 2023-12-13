@@ -18,7 +18,8 @@
 #include "leveldb/export.h"
 #include "leveldb/options.h"
 #include "leveldb/status.h"
-
+// 学习tablebuiler的写法 之后改数据结构的话也要改成类似table builder这种加的同时内存就准备好了的结构
+// 总体来说就是要把nvm memtable和l0实现为一个数据结构 通过 slice 向文件直接写入 同时可以简单读出来相应的东西
 namespace leveldb {
 
     class BlockBuilder;

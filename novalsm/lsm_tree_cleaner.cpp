@@ -34,6 +34,7 @@ namespace leveldb {
         }
     }
 
+// 定时冲刷immutable memtable
     void LSMTreeCleaner::FlushingMemTables() const {
 //定时调用flush memtables
         while (true) {

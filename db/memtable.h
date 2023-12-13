@@ -113,6 +113,10 @@ namespace leveldb {
         Arena arena_;
         Table table_;
         FileMetaData flushed_meta_;
+        // 改arena 改成连续分配类似于不断地挖
+        // 加rep 直接指向arena的东西 并且组织一个可以理解的文本流?
+        // 加encode和decode方法 先不开subrange的更新试一试
+        // 整理好直接发送
     };
 
     struct MemTableL0FilesEdit {
@@ -128,6 +132,7 @@ namespace leveldb {
     public:
         void SetMemTable(uint64_t generation_id, MemTable *mem);
 
+// 这里指的是数据库而非 某个文件 done
         void SetFlushed(const std::string &dbname,
                         const std::vector<uint64_t> &l0_file_numbers,
                         uint32_t version_id);
@@ -136,6 +141,7 @@ namespace leveldb {
 
         void UpdateL0Files(uint32_t version_id, const MemTableL0FilesEdit &edit);
 
+// 这里也是指的某个数据库 而非某个文件 done
         void Unref(const std::string &dbname, uint32_t unrefcnt = 1);
 
         uint32_t Encode(char *buf);
@@ -178,17 +184,17 @@ namespace leveldb {
 
         MemTable *active_memtable = nullptr;
         port::Mutex mutex;
-        std::map<uint64_t, std::set<uint32_t>> generation_num_memtables_;
+        std::map<uint64_t, std::set<uint32_t>> generation_num_memtables_; // generationid -> memtableid 的 映射
 
         void AddMemTable(uint64_t generation_id, uint32_t memtableid);
 
         void RemoveMemTable(uint64_t generation_id, uint32_t memtableid);
 
         uint32_t partition_id = 0;
-        std::vector<uint32_t> imm_slots;
-        std::queue<uint32_t> available_slots;
-        std::vector<uint32_t> immutable_memtable_ids;
-        std::map<uint32_t, uint32_t> slot_imm_id;
+        std::vector<uint32_t> imm_slots; // 负责存放本 partition可以用于immutable memtable的编号! 无变化
+        std::queue<uint32_t> available_slots; // 当前可以将memtable转化为immutable memtable可用的编号
+        std::vector<uint32_t> immutable_memtable_ids; // 当前为immutable memtable的id
+        std::map<uint32_t, uint32_t> slot_imm_id; // 编号到memtableid的映射
         port::CondVar background_work_finished_signal_ GUARDED_BY(mutex);
     };
 }  // namespace leveldb

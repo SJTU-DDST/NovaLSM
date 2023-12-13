@@ -61,7 +61,7 @@ namespace leveldb {
         return true;
     }
 
-// 新建文件并且 分配预先指定的空间
+// 新建文件并且 分配预先指定的空间 需要加一个判断是不是在pm里的东西 也可以从文件名判断
     StoCPersistentFile::StoCPersistentFile(uint32_t file_id,
                                            leveldb::Env *env,
                                            std::string filename,
@@ -70,9 +70,9 @@ namespace leveldb {
                                            uint32_t file_size) :
             file_id_(file_id), env_(env), stoc_file_name_(filename),
             mem_manager_(mem_manager), thread_id_(thread_id) {
-        EnvFileMetadata meta;
+        EnvFileMetadata meta; // 这个meta没有任何用处
         meta.level = 0;
-        Status s = env_->NewReadWriteFile(filename, meta, &file_);
+        Status s = env_->NewReadWriteFile(filename, meta, &file_); // 也许会用pm使用 有则直接打开 无则新建
         NOVA_ASSERT(s.ok()) << s.ToString();
 
         uint32_t scid = mem_manager_->slabclassid(thread_id,
@@ -385,6 +385,8 @@ namespace leveldb {
         return persisted_bytes;
     }
 
+// 删除当前这个文件
+
     bool
     StoCPersistentFile::DeleteSSTable(uint32_t given_fileid_for_assertion,
                                       const std::string &filename) {
@@ -657,6 +659,7 @@ namespace leveldb {
         block_cache_->Release(cache_handle); //  还要release????
     }
 
+// 传入一个filename -> fileid的集合 打开里面所有的文件
     void StocPersistentFileManager::OpenStoCFiles(
             const std::unordered_map<std::string, uint32_t> &fn_files) {
         mutex_.lock();
@@ -674,15 +677,15 @@ namespace leveldb {
             NOVA_ASSERT(stoc_files_[fileid] == nullptr)
                 << fmt::format("{} {} {}", fileid, it.first,
                                stoc_files_[fileid]->stoc_file_name_);
-            stoc_files_[fileid] = stoc_file;
-            fn_stoc_file_map_[fn] = stoc_file;
+            stoc_files_[fileid] = stoc_file; //重点是建立file id->file
+            fn_stoc_file_map_[fn] = stoc_file; //以及filename->file
             current_stoc_file_id_ = std::max(current_stoc_file_id_, fileid);
         }
         current_stoc_file_id_ += 1;
         mutex_.unlock();
     }
 
-// stoc端打开 stocfile 
+// stoc端打开 stocfile 有就返回 没有新建之后返回
     StoCPersistentFile *
     StocPersistentFileManager::OpenStoCFile(uint32_t thread_id, std::string &filename) {
         mutex_.lock();
@@ -728,6 +731,7 @@ namespace leveldb {
         return stoc_file;
     }
 
+// 删除这个名字的sstable
     void
     StocPersistentFileManager::DeleteSSTable(const std::string &filename) {
         mutex_.lock();

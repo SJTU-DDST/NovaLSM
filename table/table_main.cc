@@ -23,6 +23,9 @@
 using namespace std;
 
 DEFINE_string(dbname, "", "");
+DEFINE_string(pmname, "", "")
+DEFINE_int64(level, 0, "");
+DEFINE_int64(levels_in_pm, 0, "");
 DEFINE_uint32(fn, 0, "");
 DEFINE_uint32(size, 0, "");
 
@@ -42,7 +45,7 @@ int main(int argc, char *argv[]) {
     env->set_env_option(env_option);
     opt.env = env;
     leveldb::RandomAccessFile *r;
-    env->NewRandomAccessFile(leveldb::TableFileName(FLAGS_dbname, FLAGS_fn),
+    env->NewRandomAccessFile(leveldb::TableFileName(FLAGS_dbname, FLAGS_pmname, FLAGS_fn),
                              &r);
     leveldb::Table *table;
     leveldb::Status s = leveldb::Table::Open(opt, leveldb::ReadOptions(), r, FLAGS_size, 0, FLAGS_fn,

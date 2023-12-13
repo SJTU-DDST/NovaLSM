@@ -35,6 +35,7 @@ namespace leveldb {
         virtual ~Snapshot();
     };
 
+// 关于重叠部分的统计信息
     struct OverlappingStats {
         uint32_t num_overlapping_tables = 0;
         uint64_t total_size = 0;
@@ -56,6 +57,7 @@ namespace leveldb {
         double stdev = 0.0;
     };
 
+// 关于1个db的各种统计信息
     struct DBStats {
         uint32_t num_l0_sstables = 0;
         uint64_t dbsize = 0;
@@ -101,10 +103,14 @@ namespace leveldb {
         // OK on success.
         // Stores nullptr in *dbptr and returns a non-OK status on error.
         // Caller should delete *dbptr when it is no longer needed.
-        static Status Open(const Options &options, const std::string &name,
+        static Status Open(const Options &options, const std::string &name, const std::string &pmname, int levels_in_pm,
                            DB **dbptr);
 
         virtual const std::string &dbname() = 0;
+
+        virtual const std::string &pmname() = 0;
+
+        virtual int levels_in_pm() = 0;
 
         virtual void QueryFailedReplicas(uint32_t failed_stoc_id,
                                          bool is_stoc_failed,
@@ -256,7 +262,7 @@ namespace leveldb {
 //
 // Note: For backwards compatibility, if DestroyDB is unable to list the
 // database files, Status::OK() will still be returned masking this failure.
-    LEVELDB_EXPORT Status DestroyDB(const std::string &name,
+    LEVELDB_EXPORT Status DestroyDB(const std::string &name, const std::string &pmname,
                                     const Options &options);
 
 // If a DB cannot be opened, you may attempt to call this method to

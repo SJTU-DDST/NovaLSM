@@ -39,6 +39,7 @@ namespace leveldb {
         new_subranges_.clear();
     }
 
+// 应该是每个新的version搞一个edit
     uint32_t VersionEdit::EncodeTo(char *dst) const {
         uint32_t msg_size = 0;
         if (has_comparator_) {
@@ -96,6 +97,7 @@ namespace leveldb {
         }
     }
 
+// 每次读出来1个manifest的edit 
     Status VersionEdit::DecodeFrom(const Slice &src, Slice *result) {
         Clear();
         Slice input = src;
@@ -111,10 +113,10 @@ namespace leveldb {
         InternalKey key;
         SubRange sr;
 
-        while (msg.empty() && input.size() > 0) {
+        while (msg.empty() && input.size() > 0) { // 暂时没有错 而且还有剩余的没有读
             tag = input[0];
             input.remove_prefix(1);
-
+// 下一个文件的number 最后的序列号 level 和 删掉的文件号?? 新的文件号 具体的subrange
             if (tag == kEndEdit) {
                 if (result != nullptr) {
                     *result = input;
@@ -125,7 +127,7 @@ namespace leveldb {
             switch (tag) {
                 case kComparator:
                     break;
-                case kNextFileNumber:
+                case kNextFileNumber: // 下一个文件编号
                     if (DecodeFixed64(&input, &next_file_number_)) {
                         has_next_file_number_ = true;
                     } else {
@@ -133,14 +135,14 @@ namespace leveldb {
                     }
                     break;
 
-                case kLastSequence:
+                case kLastSequence: // 上一个写入值时的序列号
                     if (DecodeFixed64(&input, &last_sequence_)) {
                         has_last_sequence_ = true;
                     } else {
                         msg = "last sequence number";
                     }
                     break;
-                case kDeletedFile:
+                case kDeletedFile: // 删除的界别以及文件号
                     if (GetLevel(&input, &level) &&
                         DecodeFixed64(&input, &number)) {
                         DeletedFileIdentifier df = {};
@@ -151,7 +153,7 @@ namespace leveldb {
                     }
                     break;
 
-                case kNewFile:
+                case kNewFile: // 新建的级别以及文件号
                     if (GetLevel(&input, &level) && f.Decode(&input, false)) {
                         new_files_.emplace_back(std::make_pair(level, f));
                         f.block_replica_handles.clear();
@@ -160,7 +162,7 @@ namespace leveldb {
                     }
                     break;
                 case kUpdateSubRange:
-                    sr = {};
+                    sr = {}; // subrange的新增或改动
                     if (sr.Decode(&input)) {
                         new_subranges_.push_back(std::move(sr));
                     } else {

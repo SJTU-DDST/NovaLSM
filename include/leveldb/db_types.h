@@ -24,6 +24,7 @@
 namespace leveldb {
 
 // 用于读写或者定位一个文件的信息(大多数是位于stoc的)
+// 用 fileid 可以找到 filename
     class StoCBlockHandle {
     public:
         uint32_t server_id = 0;
@@ -135,6 +136,7 @@ namespace leveldb {
 
     bool DecodeInternalFileType(Slice *ptr, FileInternalType *internal_type);
 
+// ??????? 有可能需要改!!!!!
     struct ReplicationPair {
         uint32_t source_stoc_file_id = 0;
         uint32_t source_file_size = 0;
@@ -237,6 +239,7 @@ namespace leveldb {
         std::mutex mutex_;
     };
 
+// 其实没有实现 done
     class SSTableManager {
     public:
         virtual void AddSSTable(const std::string &dbname, uint64_t file_number,

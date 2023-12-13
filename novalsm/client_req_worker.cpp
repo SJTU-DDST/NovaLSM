@@ -197,7 +197,7 @@ namespace nova {
         NOVA_ASSERT(db);
         std::string value;
         leveldb::ReadOptions read_options;
-        read_options.hash = int_key;
+        read_options.hash = int_key; //输入为uint64_t类型的key
         read_options.stoc_client = worker->stoc_client_;
         read_options.mem_manager = worker->mem_manager_;
         read_options.thread_id = worker->thread_id_;
@@ -294,7 +294,7 @@ namespace nova {
         return true;
     }
 
-//客户端要求换一个cfg
+//客户端要求换一个cfg replicate唯一起始调用开始处
     bool
     process_socket_change_config_request(int fd, Connection *conn) {
         int current_cfg_id = NovaConfig::config->current_cfg_id;
@@ -307,18 +307,18 @@ namespace nova {
         timeval change_start{};
         gettimeofday(&change_start, nullptr);
 
-        int new_cfg_id = current_cfg_id + 1;
+        int new_cfg_id = current_cfg_id + 1; // 切换到下一个cfg
         nova::Servers *new_stocs = new nova::Servers;
         std::vector<uint32_t> removed_stocs;
         for (int fragid = 0; fragid < NovaConfig::config->cfgs[current_cfg_id]->fragments.size(); fragid++) {
-            auto old_frag = NovaConfig::config->cfgs[current_cfg_id]->fragments[fragid];
-            auto current_frag = NovaConfig::config->cfgs[new_cfg_id]->fragments[fragid];
-            if (old_frag->ltc_server_id != current_frag->ltc_server_id) {
-                if (old_frag->ltc_server_id == NovaConfig::config->my_server_id) {
+            auto old_frag = NovaConfig::config->cfgs[current_cfg_id]->fragments[fragid]; // 一个fragment就代表一个/db/files/0 这样的一个数据库
+            auto current_frag = NovaConfig::config->cfgs[new_cfg_id]->fragments[fragid]; //
+            if (old_frag->ltc_server_id != current_frag->ltc_server_id) { // 如果这个fragment对应的ltc变化了 也就是分到了另一个ltc进行管理
+                if (old_frag->ltc_server_id == NovaConfig::config->my_server_id) { // 如果变化的fragment是本地服务器负责的fragment 那就要进行操作
                     NOVA_LOG(rdmaio::INFO) << fmt::format("Migrate {}", current_frag->DebugString());
                     migrate_frags.push_back(old_frag);
                 }
-            } else {
+            } else { // 如果fragment的serverid // ltc没有变化
                 current_frag->db = old_frag->db;
                 current_frag->is_ready_ = true;
                 current_frag->is_complete_ = true;
@@ -327,28 +327,28 @@ namespace nova {
 
         new_stocs->servers = NovaConfig::config->cfgs[new_cfg_id]->stoc_servers;
         new_stocs->server_ids = NovaConfig::config->cfgs[new_cfg_id]->stoc_server_ids;
-        leveldb::StorageSelector::available_stoc_servers.store(new_stocs);
+        leveldb::StorageSelector::available_stoc_servers.store(new_stocs); // 更新一下关于stoc的东西
         for (int i = 0; i < NovaConfig::config->cfgs[current_cfg_id]->stoc_servers.size(); i++) {
             auto stoc_id = NovaConfig::config->cfgs[current_cfg_id]->stoc_servers[i];
             auto new_cfg = NovaConfig::config->cfgs[new_cfg_id];
-            if (new_cfg->stoc_server_ids.find(stoc_id) == new_cfg->stoc_server_ids.end()) {
+            if (new_cfg->stoc_server_ids.find(stoc_id) == new_cfg->stoc_server_ids.end()) { // 新的config中去除了某个stoc 记录下来
                 removed_stocs.push_back(stoc_id);
             }
         }
         // Bump up cfg id.
-        NovaConfig::config->current_cfg_id.fetch_add(1);
+        NovaConfig::config->current_cfg_id.fetch_add(1); // 更新config编号
         NovaConfig::config->cfgs[new_cfg_id]->start_time_us_ = change_start.tv_sec * 1000000 + change_start.tv_usec;
-        if (nova::NovaConfig::config->cfgs[current_cfg_id]->IsLTC()) {
+        if (nova::NovaConfig::config->cfgs[current_cfg_id]->IsLTC()) { // 如果本机服务器是一个ltc的话
             int thread_id = 0;
             std::vector<LTCFragment *> batch;
-            int frags_per_thread = migrate_frags.size() / worker->db_migration_threads_.size();
+            int frags_per_thread = migrate_frags.size() / worker->db_migration_threads_.size(); // 本地服务器需要迁移的fragment任务数量 分到各个migrate线程
             if (frags_per_thread == 0) {
                 frags_per_thread = 1;
             }
             NOVA_LOG(rdmaio::INFO) << fmt::format("Migrate {} ranges per migration thread.", frags_per_thread);
             for (int i = 0; i < migrate_frags.size(); i++) {
                 batch.push_back(migrate_frags[i]);
-                if (batch.size() == frags_per_thread) {
+                if (batch.size() == frags_per_thread) { // 每个thread需要进行迁移的组成1个batch
                     thread_id = (thread_id + 1) % worker->db_migration_threads_.size();
                     worker->db_migration_threads_[thread_id]->AddSourceMigrateDB(batch);
                     batch.clear();
@@ -358,11 +358,11 @@ namespace nova {
                 thread_id = (thread_id + 1) % worker->db_migration_threads_.size();
                 worker->db_migration_threads_[thread_id]->AddSourceMigrateDB(batch);
             }
-            if (!removed_stocs.empty()) {
+            if (!removed_stocs.empty()) { // 
                 NOVA_ASSERT(removed_stocs.size() == 1);
                 for (int fragid = 0; fragid < NovaConfig::config->cfgs[new_cfg_id]->fragments.size(); fragid++) {
                     auto current_frag = NovaConfig::config->cfgs[new_cfg_id]->fragments[fragid];
-                    if (current_frag->ltc_server_id == nova::NovaConfig::config->my_server_id) {
+                    if (current_frag->ltc_server_id == nova::NovaConfig::config->my_server_id) { // 如果有stoc移除了 本地负责的每个新的fragment都要自己清理一遍这些stoc
                         thread_id = (thread_id + 1) % worker->db_migration_threads_.size();
                         worker->db_migration_threads_[thread_id]->AddStoCMigration(current_frag, removed_stocs);
                     }

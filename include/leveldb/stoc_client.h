@@ -25,14 +25,18 @@ namespace leveldb {
         WRITE_SUCCESS = 4,
     };
 
+// 用于记录当前发送log record之后 状态机中的状态
     struct StoCReplicateLogRecordState {
         uint32_t cfgid = 0;
         StoCReplicateLogRecordResult result;
         int rdma_wr_id;
     };
 
+// ltc发送给stoc 要进行的compaction的结构 需要解析很多东西
     struct CompactionRequest {
-        std::string dbname;
+        std::string dbname; //????
+        std::string pmname;
+        int levels_in_pm;
         uint64_t smallest_snapshot;
         std::vector<FileMetaData *> inputs[2];
         std::vector<FileMetaData *> guides;
@@ -85,7 +89,7 @@ namespace leveldb {
     struct StoCRequestContext {
         StoCRequestType req_type;
         uint32_t remote_server_id = 0;
-        std::string dbname;
+        std::string dbname; // done 这个没有用到过
         uint64_t file_number = 0;
         char *backing_mem = nullptr;
         uint32_t size = 0;
@@ -159,6 +163,7 @@ namespace leveldb {
     };
 
 // rdma rpc 发送的时候下发的task 存在于rdma handler中
+// 对于InitiateAppendBlock 就是向远程文件写 也是replicate的task
     struct RDMARequestTask {
         RDMAClientRequestType type;
         sem_t *sem = nullptr;
@@ -185,7 +190,10 @@ namespace leveldb {
         std::vector<SSTableStoCFilePair> stoc_file_ids;
 
         char *write_buf = nullptr;
-        std::string dbname;
+        std::string dbname; // intiateappendblock的task 也是replicate的task done
+        std::string pmname;
+        int level;
+        int levels_in_pm;
         uint64_t file_number = 0;
         uint32_t replica_id = 0;
         uint32_t write_size = 0;
@@ -207,7 +215,10 @@ namespace leveldb {
                                             CompactionRequest *compaction_request) = 0;
 
         virtual uint32_t InitiateReplicateSSTables(uint32_t stoc_server_id,
-                                                   const std::string& dbname,
+                                                   const std::string& dbname, // replicate done
+                                                   const std::string& pmname,
+                                                   int level,
+                                                   int levels_in_pm,
                                                    const std::vector<leveldb::ReplicationPair>& pairs) = 0;
 
         virtual uint32_t
@@ -235,12 +246,16 @@ namespace leveldb {
                 uint32_t dbid,
                 std::unordered_map<std::string, uint64_t> *logfile_offset) = 0;
 
+// 远程文件用于写的
         virtual uint32_t
         InitiateAppendBlock(uint32_t stoc_id,
                             uint32_t thread_id,
                             uint32_t *stoc_file_id,
                             char *buf,
-                            const std::string &dbname,
+                            const std::string &dbname, // intiateappendblock原始调用
+                            const std::string &pmname,
+                            int level,
+                            int levels_in_pm,
                             uint64_t file_number,
                             uint32_t replica_id,
                             uint32_t size,

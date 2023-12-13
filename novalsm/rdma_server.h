@@ -29,7 +29,7 @@ namespace leveldb {
 namespace nova {
     class DBMigration;
 
-// 发送过来的任务 转化为 storage worker的任务的结构体
+// 发送过来的任务 转化为 storage worker的任务的结构体 done
     struct StorageTask {
         leveldb::StoCRequestType request_type;
         uint32_t rdma_server_thread_id = 0;
@@ -50,7 +50,10 @@ namespace nova {
         leveldb::CompactionRequest *compaction_request = nullptr;
 
         // Replication request
-        std::string dbname;
+        std::string dbname; // 用于接收 发起迁移后 的东西
+        std::string pmname;
+        int level;
+        int levels_in_pm;
         std::vector<leveldb::ReplicationPair> replication_pairs;
     };
 

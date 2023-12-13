@@ -17,12 +17,16 @@
 
 namespace leveldb {
 //用这个函数建立了manifest文件，这个文件应该放置于stoc?
+// done ltc用于向stoc写
     StoCWritableFileClient::StoCWritableFileClient(Env *env,
                                                    const Options &options,
                                                    uint64_t file_number,
                                                    MemManager *mem_manager,
                                                    StoCClient *stoc_client,
-                                                   const std::string &dbname,
+                                                   const std::string &dbname, 
+                                                   const std::string &pmname,
+                                                   int level,
+                                                   int levels_in_pm,
                                                    uint64_t thread_id,
                                                    uint64_t file_size,
                                                    unsigned int *rand_seed,
@@ -31,7 +35,11 @@ namespace leveldb {
               fname_debug_only_(filename),
               mem_manager_(mem_manager),
               stoc_client_(stoc_client),
-              dbname_(dbname), thread_id_(thread_id),
+              dbname_(dbname), 
+              pmname_(pmname),
+              level_(level),
+              levels_in_pm_(levels_in_pm),
+              thread_id_(thread_id),
               allocated_size_(file_size), rand_seed_(rand_seed),
               MemFile(nullptr, "", false) {
         NOVA_ASSERT(mem_manager);
@@ -100,6 +108,7 @@ namespace leveldb {
         return backing_mem_ + used_size_;
     }
 
+// done
     Status StoCWritableFileClient::Append(uint32_t size) {
         NOVA_ASSERT(used_size_ + size < allocated_size_)
             << fmt::format(
@@ -111,6 +120,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// done
     Status
     StoCWritableFileClient::SyncAppend(const leveldb::Slice &data,
                                        const std::vector<uint32_t> &stoc_ids) {
@@ -128,7 +138,7 @@ namespace leveldb {
             uint32_t stoc_id = stoc_ids[replica_id];
             uint32_t req_id = client->InitiateAppendBlock(stoc_id, 0,
                                                           &stoc_file_id, buf,
-                                                          dbname_, 0,
+                                                          dbname_, pmname_, level_, levels_in_pm_, 0,
                                                           replica_id,
                                                           data.size(), FileInternalType::kFileData);
             reqs.push_back(req_id);
@@ -303,7 +313,7 @@ namespace leveldb {
                     uint32_t req_id = client->InitiateAppendBlock(
                             remote_stoc_id, thread_id_, &stoc_file_id,
                             backing_mem_ + offset,
-                            dbname_, file_number_, replica_id,
+                            dbname_, pmname_, level_, levels_in_pm_, file_number_, replica_id,
                             size, FileInternalType::kFileData);
                     BlockHandle data_fragment;
                     data_fragment.set_offset(offset);
@@ -353,7 +363,7 @@ namespace leveldb {
             uint32_t req_id = client->InitiateAppendBlock(
                     remote_stoc_id, thread_id_, &stoc_file_id,
                     parity_block_backing_mem_,
-                    dbname_, file_number_, 0,
+                    dbname_, pmname_, level_, levels_in_pm_, file_number_, 0,
                     parity_block_size_, FileInternalType::kFileParity);
             NOVA_LOG(rdmaio::DEBUG)
                 << fmt::format(
@@ -631,7 +641,7 @@ namespace leveldb {
                     new_idx_handle.offset(), new_idx_handle.size());
         WritableFile *writable_file;
         EnvFileMetadata meta = {};
-        s = mem_env_->NewWritableFile(TableFileName(dbname_, file_number_, FileInternalType::kFileData, replica_id),
+        s = mem_env_->NewWritableFile(TableFileName(dbname_, pmname_, file_number_, level_, levels_in_pm_, FileInternalType::kFileData, replica_id),
                                       meta, &writable_file);
         NOVA_ASSERT(s.ok());
         Slice meta_sstable(backing_mem, new_file_size);
@@ -651,6 +661,9 @@ namespace leveldb {
                                                   nullptr,
                                                   backing_mem,
                                                   dbname_,
+                                                  pmname_,
+                                                  level_,
+                                                  levels_in_pm_,
                                                   file_number_,
                                                   replica_id,
                                                   new_file_size,
@@ -723,9 +736,11 @@ namespace leveldb {
         return block_contents.size() + kBlockTrailerSize;
     }
 
+// dbname 这里上面上面的是stoc writeble file client
 
     StoCRandomAccessFileClientImpl::StoCRandomAccessFileClientImpl(
             Env *env, const Options &options, const std::string &dbname,
+            const std::string &pmname, const int level, int levels_in_pm,
             uint64_t file_number, uint32_t replica_id,
             const leveldb::FileMetaData *meta,
             leveldb::StoCClient *stoc_client,
@@ -733,6 +748,9 @@ namespace leveldb {
             uint64_t thread_id, bool prefetch_all, std::string &filename)
             : env_(env),
               dbname_(dbname),
+              pmname_(pmname),
+              level_(level),
+              levels_in_pm_(levels_in_pm),
               file_number_(file_number),
               meta_(meta),
               mem_manager_(mem_manager),
@@ -748,14 +766,14 @@ namespace leveldb {
         auto stoc_block_client = reinterpret_cast<leveldb::StoCBlockClient *>(stoc_client);
         NOVA_ASSERT(stoc_block_client);
         {
-            auto metafile = TableFileName(dbname, file_number, FileInternalType::kFileData, replica_id);
+            auto metafile = TableFileName(dbname, pmname, file_number, level, levels_in_pm, FileInternalType::kFileData, replica_id);
             if (!env_->FileExists(metafile)) {
                 NOVA_LOG(rdmaio::INFO)
                     << fmt::format("Fetch missing metadata db:{} fd:{} file {}", dbname, file_number,
                                    meta->DebugString());
                 std::vector<const FileMetaData *> files;
                 files.push_back(meta);
-                FetchMetadataFiles(files, dbname, options, stoc_block_client, env_);
+                FetchMetadataFiles(files, dbname, pmname, levels_in_pm, options, stoc_block_client, env_);
             }
             s = env_->NewRandomAccessFile(metafile, &local_ra_file_);
         }
