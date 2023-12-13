@@ -20,7 +20,7 @@ namespace leveldb {
 
 // 未调用 可以不改 done
     Status
-    TestBuildTable(const std::string &dbname, const std::string &pmname, int level, int64_t levels_in_pm, Env *env, const Options &options,
+    TestBuildTable(const std::string &dbname, const std::string &pmname, int level, int levels_in_pm, Env *env, const Options &options,
                    TableCache *table_cache, Iterator *iter, FileMetaData *meta,
                    EnvBGThread *bg_thread) {
         Status s;
@@ -81,7 +81,7 @@ namespace leveldb {
 
 // done
     Status
-    BuildTable(const std::string &dbname, const std::string &pmname, int level, int64_t levels_in_pm, Env *env, const Options &options,
+    BuildTable(const std::string &dbname, const std::string &pmname, int level, int levels_in_pm, Env *env, const Options &options,
                TableCache *table_cache, Iterator *iter, FileMetaData *meta,
                EnvBGThread *bg_thread, bool prune_memtables) {
         Status s;
