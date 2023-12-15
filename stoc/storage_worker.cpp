@@ -252,7 +252,7 @@ namespace nova {
                                                      task.compaction_request->levels_in_pm, // to be done
                                                      options_,
                                                      reinterpret_cast<leveldb::StoCBlockClient *>(client_),
-                                                     env_);
+                                                     env_); // 这里的env是sstable mem模式 因为把sstable取到内存中进行读写??
                     }
                     leveldb::CompactionJob job(fn_generator, env_,
                                                task.compaction_request->dbname,

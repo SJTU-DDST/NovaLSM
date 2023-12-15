@@ -80,7 +80,7 @@ namespace leveldb {
                 uint32_t backing_scid = options.mem_manager->slabclassid(0, meta_handle.size);
                 WritableFile *writable_file;
                 EnvFileMetadata env_meta = {};
-                auto sstablename = TableFileName(dbname, pmname, meta->number, meta->level, levels_in_pm, FileInternalType::kFileMetadata, replica_id);
+                auto sstablename = TableFileName(dbname, pmname, meta->number, meta->level, levels_in_pm, FileInternalType::kFileData, replica_id);
                 Status s = env->NewWritableFile(sstablename, env_meta, &writable_file); // 这里一般是内存里面的文件
                 NOVA_ASSERT(s.ok());
                 Slice sstable_meta(backing_buf, meta_handle.size);

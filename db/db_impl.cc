@@ -1683,10 +1683,10 @@ namespace leveldb {
                 delete c;
                 it = compactions->erase(it);
             }else{
-                // 跨越了介质需要删除和新加 
-                // 应该实现一个远程mv的调用 先看看别的怎么实现 
-                // to be done !!!!!!!!!!
-                // 这里就是trival move需要移动的状态
+            //     // 跨越了介质需要删除和新加 
+            //     // 应该实现一个远程mv的调用 先看看别的怎么实现 
+            //     // to be done !!!!!!!!!!
+            //     // 这里就是trival move需要移动的状态
                 delete c;
                 it = compactions->erase(it);
             }            

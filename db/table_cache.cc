@@ -31,7 +31,7 @@ namespace leveldb {
         cache->Release(h);
     }
 
-// done
+// done 这里的env是sstable_mem模式
     TableCache::TableCache(const std::string &dbname, const std::string &pmname, int levels_in_pm, const Options &options,
                            int entries, DBProfiler *db_profiler)
             : env_(options.env),
@@ -63,6 +63,7 @@ namespace leveldb {
 //        return false;
 //    }
 
+// 只有这里调用了randomaccessfileclientimpl -> newrandomaccesfile ->  sstable_mem模式下打开于内存
     Status
     TableCache::FindTable(AccessCaller caller, const ReadOptions &options,
                           const FileMetaData *meta,

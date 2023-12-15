@@ -301,10 +301,10 @@ def shellGet():
 
 def putAlot(novaClient, ops):
     for i in range(0, ops):
-        novaClient.put(0, key, "a" * value_size, 0)
+        novaClient.put(0, i, "a" * value_size, 0)
 def getAlot(novaClient, ops):
     for i in range(0, ops):
-        novaClient.get(0, key, 0)
+        novaClient.get(0, i, 0)
     
     
     

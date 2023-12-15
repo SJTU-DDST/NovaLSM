@@ -804,15 +804,15 @@ namespace nova {
         }
 
 //开启统计量的线程
-        stat_thread_ = new NovaStatThread;
-        stat_thread_->bg_storage_workers_ = bg_storage_workers;
-        stat_thread_->fg_storage_workers_ = fg_storage_workers;
-        stat_thread_->compaction_storage_workers_ = compaction_storage_workers;
-        stat_thread_->bgs_ = bg_flush_memtable_threads;
+        // stat_thread_ = new NovaStatThread;
+        // stat_thread_->bg_storage_workers_ = bg_storage_workers;
+        // stat_thread_->fg_storage_workers_ = fg_storage_workers;
+        // stat_thread_->compaction_storage_workers_ = compaction_storage_workers;
+        // stat_thread_->bgs_ = bg_flush_memtable_threads;
 
-        stat_thread_->async_workers_ = fg_rdma_msg_handlers;
-        stat_thread_->async_compaction_workers_ = bg_rdma_msg_handlers;
-        stats_t_.emplace_back(std::thread(&NovaStatThread::Start, stat_thread_));
+        // stat_thread_->async_workers_ = fg_rdma_msg_handlers;
+        // stat_thread_->async_compaction_workers_ = bg_rdma_msg_handlers;
+        // stats_t_.emplace_back(std::thread(&NovaStatThread::Start, stat_thread_));
 
 // 等待所有ltc准备完毕
         NovaGlobalVariables::global.is_ready_to_process_requests = true;
