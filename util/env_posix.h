@@ -80,6 +80,7 @@ namespace leveldb {
 //
 // Instances of this class are thread-friendly but not thread-safe, as required
 // by the SequentialFile API.
+// 未使用
     class PosixSequentialFile final : public SequentialFile {
     public:
         PosixSequentialFile(std::string filename, int fd);
@@ -100,6 +101,7 @@ namespace leveldb {
 // Instances of this class are thread-safe, as required by the RandomAccessFile
 // API. Instances are immutable and Read() only calls thread-safe library
 // functions.
+// StoCRandomAccessFileClientImpl中使用
     class PosixRandomAccessFile final : public RandomAccessFile {
     public:
         // The new instance takes ownership of |fd|. |fd_limiter| must outlive this
@@ -126,6 +128,7 @@ namespace leveldb {
 // Instances of this class are thread-safe, as required by the RandomAccessFile
 // API. Instances are immutable and Read() only calls thread-safe library
 // functions.
+// 未使用
     class PosixMmapReadableFile final : public RandomAccessFile {
     public:
         // mmap_base[0, length-1] points to the memory-mapped contents of the file. It
@@ -152,6 +155,7 @@ namespace leveldb {
         const std::string filename_;
     };
 
+// sstable manifest 写使用
     class PosixReadWriteFile final : public ReadWriteFile {
     public:
         PosixReadWriteFile(std::string filename, int fd);
@@ -180,6 +184,41 @@ namespace leveldb {
         const std::string dirname_;  // The directory of filename_.
     };
 
+// 用于PM的sstable manifest等文件的写
+    class PosixPMReadWriteFile final : public ReadWriteFile {
+    public:
+        PosixPMReadWriteFile(std::string filename, int fd, uint32_t file_size);
+
+        ~PosixPMReadWriteFile();
+
+        Status
+        Read(const StoCBlockHandle &stoc_block_handle, uint64_t offset, size_t n,
+             Slice *result, char *scratch) override;
+
+        Status Append(const Slice &data) override;
+
+        Status Close() override;
+
+        Status Flush() override;
+
+        Status Sync() override;
+
+        char* GetMmapBase();
+    private:
+        Status WriteUnbuffered(const char *data, size_t size);
+
+        // buf_[0, pos_ - 1] contains data to be written to fd_.
+        int fd_;
+        char *mmap_base_; // 用于直接写入
+        uint64_t offset_; // 用于维护append的写入 (大概率不会用)
+        std::mutex mutex_; // offset与写入 (大概率不会用)
+        uint32_t file_size_; // mmap的时候直接指定文件的大小
+        const bool is_manifest_ = false;  // True if the file's name starts with MANIFEST.
+        const std::string filename_;
+        const std::string dirname_;  // The directory of filename_.
+    };
+
+// fetchmetadata中使用
     class PosixWritableFile final : public WritableFile {
     public:
         PosixWritableFile(std::string filename, int fd);
@@ -288,6 +327,11 @@ namespace leveldb {
 
         Status NewReadWriteFile(const std::string &fname,
                                 const EnvFileMetadata &metadata,
+                                ReadWriteFile **result) override;
+
+        Status NewReadWriteFile(const std::string &fname,
+                                const EnvFileMetadata &metadata,
+                                uint32_t file_size,
                                 ReadWriteFile **result) override;
 
         Status NewAppendableFile(const std::string &filename,

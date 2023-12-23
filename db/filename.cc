@@ -192,4 +192,14 @@ namespace leveldb {
 //        return s;
 //    }
 
+    bool IsPMfile(const std::string &filename){
+        size_t found = filename.find("pm");
+
+        if (found != std::string::npos) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
 }  // namespace leveldb

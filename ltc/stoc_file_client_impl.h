@@ -19,6 +19,7 @@
 namespace leveldb {
 
 // 从ltc向stoc写的抽象类 相当于一个远程文件 用于manifest和sstable的写 只抽象了写!
+// 这里可以存储一些元信息 用来减少manifest file 每次都要2次rtt
 // 区别
     // A stoc writable file client is implemented based on memfile.
     // It first writes data to its memory and then RDMA WRITEs to StoCs.

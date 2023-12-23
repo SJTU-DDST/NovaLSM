@@ -22,6 +22,7 @@ namespace leveldb {
               log_manager_(log_manager) {
     }
 
+// 第一次往一个log里面写的话 需要先初始化 一个元数据然后encode进去
     void LogCLogWriter::Init(const std::string &log_file_name,
                              uint64_t thread_id,
                              const std::vector<LevelDBLogRecord> &log_records,
@@ -45,6 +46,7 @@ namespace leveldb {
         }
     }
 
+// ltc段第一次要求新建log文件之后 stoc返回消息后 再次下发任务 相当于rdmaclient的任务
     void LogCLogWriter::AckAllocLogBuf(const std::string &log_file_name,
                                        int stoc_server_id, uint64_t offset,
                                        uint64_t size,
@@ -62,7 +64,7 @@ namespace leveldb {
         char *sendbuf = rdma_broker_->GetSendBuf(stoc_server_id);
         sendbuf[0] = leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS;
         leveldb::EncodeFixed32(sendbuf + 1, client_req_id);
-        replicate_log_record_states[stoc_server_id].rdma_wr_id = rdma_broker_->PostWrite(
+        replicate_log_record_states[stoc_server_id].rdma_wr_id = rdma_broker_->PostWrite( // 直接写过去了 write原语 无imm
                 backing_mem, log_record_size,
                 stoc_server_id,
                 meta->stoc_bufs[stoc_server_id].base +
@@ -72,7 +74,7 @@ namespace leveldb {
         replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
     }
 
-//本地server read write replicate log record后，更改本地任务的状态
+// ltc第一或者第二次发送好replicate log的请求后
     bool LogCLogWriter::AckWriteSuccess(const std::string &log_file_name,
                                         int remote_sid, uint64_t wr_id,
                                         StoCReplicateLogRecordState *replicate_log_record_states) {
@@ -85,6 +87,7 @@ namespace leveldb {
         return false;
     }
 
+// 将log记录加入到相应的buffer中 相当于rdmaclient的调用 承担了encode和发送的任务
     bool
     LogCLogWriter::AddRecord(const std::string &log_file_name,
                              uint64_t thread_id,
@@ -105,7 +108,7 @@ namespace leveldb {
         for (int i = 0; i < frag->log_replica_stoc_ids.size(); i++) {
             uint32_t stoc_server_id = cfg->stoc_servers[frag->log_replica_stoc_ids[i]];
             auto &it = logfile_last_buf_[log_file_name];
-            if (it.stoc_bufs[stoc_server_id].is_initializing) {
+            if (it.stoc_bufs[stoc_server_id].is_initializing) { // initialize的时候又来了的话 那就先跳过咯
                 return false;
             }
         }
@@ -113,7 +116,7 @@ namespace leveldb {
         for (int i = 0; i < frag->log_replica_stoc_ids.size(); i++) {
             uint32_t stoc_server_id = cfg->stoc_servers[frag->log_replica_stoc_ids[i]];
             auto &it = logfile_last_buf_[log_file_name];
-            if (it.stoc_bufs[stoc_server_id].base == 0) {
+            if (it.stoc_bufs[stoc_server_id].base == 0) { // 如果是第一次写东西的话 那就需要先allocate
                 it.stoc_bufs[stoc_server_id].is_initializing = true;
                 // Allocate a new buf.
                 char *send_buf = rdma_broker_->GetSendBuf(stoc_server_id);
@@ -127,7 +130,7 @@ namespace leveldb {
                 rdma_broker_->PostSend(
                         send_buf, 1 + 4 + log_file_name.size(),
                         stoc_server_id, client_req_id);
-            } else {
+            } else { // 如果之前已经弄好了那就只写
                 NOVA_ASSERT(!it.stoc_bufs[stoc_server_id].is_initializing);
                 NOVA_ASSERT(
                         it.stoc_bufs[stoc_server_id].offset + log_record_size <=

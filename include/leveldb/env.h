@@ -129,6 +129,11 @@ namespace leveldb {
                                         const EnvFileMetadata &metadata,
                                         ReadWriteFile **result) = 0;
 
+        virtual Status NewReadWriteFile(const std::string &fname,
+                                        const EnvFileMetadata &metadata,
+                                        uint32_t file_size,
+                                        ReadWriteFile **result) = 0;
+
         // Create an object that either appends to an existing file, or
         // writes to a new file (if the file does not exist to begin with).
         // On success, stores a pointer to the new file in *result and
@@ -398,6 +403,13 @@ namespace leveldb {
                                 const EnvFileMetadata &metadata,
                                 ReadWriteFile **result) override {
             return target_->NewReadWriteFile(fname, metadata, result);
+        }
+
+        Status NewReadWriteFile(const std::string &fname,
+                                const EnvFileMetadata &metadata,
+                                uint32_t file_size,
+                                ReadWriteFile **result) override {
+            return target_->NewReadWriteFile(fname, metadata, file_size, result);
         }
 
         Status

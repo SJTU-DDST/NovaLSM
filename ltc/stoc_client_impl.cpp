@@ -113,6 +113,7 @@ namespace leveldb {
         return reqid;
     }
 
+// 只有manifest文件会源源不断地进行写 其他文件都是写入一次
 // 用于向远程stoc指定文件写一段数据 done
 // dbname 以下是initiateappendblock相关
     uint32_t StoCBlockClient::InitiateAppendBlock(
@@ -435,7 +436,7 @@ namespace leveldb {
         rdma_msg_handlers_[seq]->AddTask(task);
     }
 
-// 下发一个读block的rpc请求 handle是读的一些信息 
+// 下发一个读block的rpc请求 handle是读的一些信息 把handle中的东西读到buf这里
     uint32_t StoCBlockClient::InitiateReadDataBlock(
             const leveldb::StoCBlockHandle &block_handle, uint64_t offset, uint32_t size, char *result,
             uint32_t result_size, std::string filename, bool is_foreground_reads) {
@@ -485,7 +486,7 @@ namespace leveldb {
         return reqid;
     }
 
-// 写日志会落到这里
+// 写日志会落到这里 每一个db的每一个memtable都有一个相应的log
     uint32_t StoCBlockClient::InitiateReplicateLogRecords(
             const std::string &log_file_name, uint64_t thread_id,
             uint32_t db_id, uint32_t memtable_id,
@@ -506,6 +507,7 @@ namespace leveldb {
         return 0;
     }
 
+// 每次compaction后会删除很多memtable等文件，这个时候将log文件销毁
     uint32_t StoCBlockClient::InitiateCloseLogFiles(
             const std::vector<std::string> &log_file_name, uint32_t dbid) {
         RDMARequestTask task = {};
@@ -614,6 +616,7 @@ namespace leveldb {
         return req_id;
     }
 
+// 读到指定的buf中
     uint32_t StoCRDMAClient::InitiateReadDataBlock(
             const leveldb::StoCBlockHandle &block_handle, uint64_t offset,
             uint32_t size, char *result, uint32_t result_size,
@@ -778,7 +781,7 @@ namespace leveldb {
         context.memtable_id = memtable_id;
         context.replicate_log_record_states = replicate_log_record_states;
         context.log_record_mem = rdma_backing_mem;
-        context.log_record_size = nova::LogRecordsSize(log_records);
+        context.log_record_size = nova::LogRecordsSize(log_records); // 字节的大小
         request_context_[req_id] = context;
         bool success = rdma_log_writer_->AddRecord(log_file_name,
                                                    thread_id, db_id,
@@ -809,7 +812,7 @@ namespace leveldb {
         return 0;
     }
 
-// RDMA handler中查看isdone
+// RDMA handler中查看isdone!!!!!!
     bool StoCRDMAClient::IsDone(uint32_t req_id, StoCResponse *response,
                                 uint64_t *timeout) {
         if (req_id == 0) { // req_id 什么时候会等于0??
@@ -883,7 +886,7 @@ namespace leveldb {
 //是rdma write类型的
             case IBV_WC_RDMA_WRITE: {
 //如果是replicate log record
-                if (buf[0] == leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS) {
+                if (buf[0] == leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS) { // ltc向stoc发送了rdma write的请求!!!!
                     req_id = leveldb::DecodeFixed32(buf + 1);
                     auto context_it = request_context_.find(req_id);
                     NOVA_ASSERT(context_it != request_context_.end())
@@ -934,7 +937,7 @@ namespace leveldb {
                     // I sent this request a while ago and now it is complete.
                     auto &context = context_it->second;
 //如果对面发送的send是stoc write sstable response类型的
-                    if (buf[0] == STOC_WRITE_SSTABLE_RESPONSE) {
+                    if (buf[0] == STOC_WRITE_SSTABLE_RESPONSE) { // 本机首先发送的打开文件的请求 收到了回复（第一个rtt）
                         NOVA_ASSERT(context.req_type ==
                                     StoCRequestType::STOC_WRITE_SSTABLE);
                         // StoC file handle.
@@ -948,10 +951,10 @@ namespace leveldb {
                         task.server_id = remote_server_id;
                         task.offset = stoc_file_offset;
                         task.thread_id = req_id;
-                        rdma_msg_handler_->private_queue_.push_back(task);
+                        rdma_msg_handler_->private_queue_.push_back(task); // 接到了对面发过来的真实地址 准备直接写进去
 
-                        context.done = false;
-                        context.stoc_file_id = stoc_file_id;
+                        context.done = false; // 还是标记为没有处理完
+                        context.stoc_file_id = stoc_file_id; // 对面发送过来的stoc file id
                         NOVA_LOG(DEBUG) << fmt::format(
                                     "stocclient[{}]: Write StoC file received off id:{} offset:{} req:{}",
                                     stoc_client_id_, stoc_file_id,
@@ -959,7 +962,7 @@ namespace leveldb {
                                     req_id);
                         processed = true;
 //如果对应的本地的任务是stoc read block
-                    } else if (context.req_type == StoCRequestType::STOC_READ_BLOCKS) { // 默认写成功了?????!!!!!!
+                    } else if (context.req_type == StoCRequestType::STOC_READ_BLOCKS) { // 默认写成功了?????!!!!!! 对面通过write with imm方式写入了
 //                        if (context.log_file_name.empty()) {
 //                            NOVA_ASSERT(
 //                                    context.backing_mem[context.size - 1] != 0)
@@ -979,7 +982,7 @@ namespace leveldb {
                         }
 //如果对面发送的是stoc persist response类型的
                     } else if (buf[0] ==
-                               StoCRequestType::STOC_PERSIST_RESPONSE) {
+                               StoCRequestType::STOC_PERSIST_RESPONSE) { //第二个rtt完成 写到对面的数据已经经过了persist
                         NOVA_ASSERT(context.req_type ==
                                     StoCRequestType::STOC_WRITE_SSTABLE);
                         uint32_t msg_size = 1;
@@ -1014,7 +1017,7 @@ namespace leveldb {
                         processed = true;
 //如果对面发送的是stoc alloc log buffer success类型的
                     } else if (buf[0] ==
-                               StoCRequestType::STOC_ALLOCATE_LOG_BUFFER_SUCC) {
+                               StoCRequestType::STOC_ALLOCATE_LOG_BUFFER_SUCC) { // 第一次写log 对面新建完成发送过来
                         uint64_t base = leveldb::DecodeFixed64(buf + 1);
                         uint64_t size = leveldb::DecodeFixed64(buf + 9);
 

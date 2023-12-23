@@ -16,12 +16,16 @@
 
 namespace leveldb {
 
+// 根据存储介质不同 将其修改为直接写或者读 
+// pm：直接读写 不用buf
+// 持久存储：沿用之前的
+
     // Persistent StoC file.
     class StoCPersistentFile {
     public:
         StoCPersistentFile(uint32_t file_id, Env *env, std::string filename,
                            MemManager *mem_manager,
-                           uint32_t thread_id, uint32_t file_size);
+                           uint32_t thread_id, uint32_t file_size, bool is_manifest);
 
         Status
         Read(uint64_t offset, uint32_t size, char *scratch, Slice *result);
@@ -48,16 +52,18 @@ namespace leveldb {
             return file_id_;
         }
 
-        void ForceSeal();
+        void ForceSeal(); // ??
 
         bool sealed() const {
             return sealed_;
         }
 
-        std::string stoc_file_name_;
+        std::string stoc_file_name_; // 初始化时
+        bool is_pm_file_; // 标记这个文件是否在pm中
+        bool is_manifest_; // 是否为manifest文件
     private:
 
-        void Seal();
+        void Seal();// ??
 
         struct AllocatedBuf {
             std::string filename;
@@ -78,27 +84,29 @@ namespace leveldb {
             FileInternalType internal_type;
         };
 
-        Env *env_ = nullptr;
-        ReadWriteFile *file_ = nullptr;
+        Env *env_ = nullptr; // 初始化时
+        ReadWriteFile *file_ = nullptr; // 初始化时 用env构建 使用了file的read append sync close等方法
 
-        std::unordered_map<std::string, StoCPersistStatus> file_block_offset_;
+        std::unordered_map<std::string, StoCPersistStatus> file_block_offset_; // manifest和普通table文件
         std::unordered_map<std::string, StoCPersistStatus> file_meta_block_offset_;
         std::unordered_map<std::string, StoCPersistStatus> file_parity_block_offset_;
 
-        std::list<AllocatedBuf> allocated_bufs_;
+        AllocatedBuf sstable_buf_; // sstable相关的buf
+        std::list<AllocatedBuf> allocated_bufs_; // 当前申请过的buf 以及写入的情况 除了manifest只会有1个
         bool is_full_ = false;
         bool sealed_ = false;
 
-        MemManager *mem_manager_ = nullptr;
-        char *backing_mem_ = nullptr;
-        uint64_t current_disk_offset_ = 0;
-        uint64_t current_mem_offset_ = 0;
-        uint32_t file_size_ = 0;
-        uint32_t allocated_mem_size_ = 0;
-        uint32_t thread_id_ = 0;
-        uint32_t file_id_ = 0;
-        uint32_t persisting_cnt = 0;
-        uint32_t reading_cnt = 0;
+        MemManager *mem_manager_ = nullptr; // 初始化时给定
+        char *backing_mem_ = nullptr; // 初始化时按文件大小申请 初始的时候设定为mmap的地址 close之后取消
+        char *mmap_base_ = nullptr; // 如果使用mmap的话 映射的位置 只用于pm或者不用
+        uint64_t current_disk_offset_ = 0; // 如果持久化了的话 目前磁盘上的偏移
+        uint64_t current_mem_offset_ = 0; // 申请的空间目前的偏移 旧的模式下下一次alloc buffer的位置
+        uint32_t file_size_ = 0; // 初始化为0 
+        uint32_t allocated_mem_size_ = 0; // 初始化时用给定的file size初始化
+        uint32_t thread_id_ = 0;  // 初始化时
+        uint32_t file_id_ = 0; // 初始化时
+        uint32_t persisting_cnt = 0;  
+        uint32_t reading_cnt = 0; 
 
         bool waiting_to_be_deleted = false;
         bool deleted_ = false;

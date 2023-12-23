@@ -92,7 +92,7 @@ namespace nova {
             ctx.response = task.response;
             bool failed = false;
             switch (task.type) {
-                case leveldb::RDMA_CLIENT_ALLOCATE_LOG_BUFFER_SUCC:
+                case leveldb::RDMA_CLIENT_ALLOCATE_LOG_BUFFER_SUCC: // ltc段第一次生成log 对面新建log后发送消息 ltc段再次下发的任务
                     rdma_log_writer_->AckAllocLogBuf(task.log_file_name,
                                                      task.server_id,
                                                      task.offset,
@@ -118,7 +118,7 @@ namespace nova {
                     ctx.req_id = task.thread_id;
                 }
                     break;
-                case leveldb::RDMA_CLIENT_WRITE_SSTABLE_RESPONSE:
+                case leveldb::RDMA_CLIENT_WRITE_SSTABLE_RESPONSE: // 第一个rtt完成了 现在是写入 这里threadid其实是reqid 采取直接写入 这里对面收的话是通过write with imm
                     rdma_broker_->PostWrite(
                             task.write_buf,
                             task.size, task.server_id,
@@ -138,7 +138,7 @@ namespace nova {
                     ctx.req_id = stoc_client_->InitiateReadInMemoryLogFile(
                             task.rdma_log_record_backing_mem, task.server_id, task.remote_stoc_offset, task.size);
                     break;
-                case leveldb::RDMA_CLIENT_REQ_READ:
+                case leveldb::RDMA_CLIENT_REQ_READ: // 读manifest等
                     ctx.req_id = stoc_client_->InitiateReadDataBlock( // 这里的client 是 rdmaclient 不是blockclient！！！
                             task.stoc_block_handle,
                             task.offset,
@@ -153,7 +153,7 @@ namespace nova {
                             task.dbid,
                             task.logfile_offset);
                     break;
-                case leveldb::RDMA_CLIENT_REQ_WRITE_DATA_BLOCKS:
+                case leveldb::RDMA_CLIENT_REQ_WRITE_DATA_BLOCKS: // 向stoc写一段数据 需要回复!!! 
                     ctx.req_id = stoc_client_->InitiateAppendBlock(
                             task.server_id, task.thread_id,
                             nullptr, task.write_buf, task.dbname, task.pmname, task.level, task.levels_in_pm, // done
@@ -178,7 +178,7 @@ namespace nova {
                             task.server_id);
                     break;
                 case leveldb::RDMA_CLIENT_REQ_LOG_RECORD:
-                    ctx.req_id = stoc_client_->InitiateReplicateLogRecords(
+                    ctx.req_id = stoc_client_->InitiateReplicateLogRecords( // 生成log
                             task.log_file_name,
                             task.thread_id,
                             task.dbid,

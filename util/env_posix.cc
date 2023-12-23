@@ -5,6 +5,7 @@
 #include <iostream>
 #include "env_posix.h"
 #include "mutexlock.h"
+#include "db/filename.h"
 
 namespace leveldb {
 
@@ -59,6 +60,7 @@ namespace leveldb {
         acquires_allowed_.fetch_add(1, std::memory_order_relaxed);
     }
 
+// 这个没有用到
     PosixSequentialFile::PosixSequentialFile(std::string filename, int fd)
             : fd_(fd), filename_(filename) {}
 
@@ -88,6 +90,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 这个只用来读
     PosixRandomAccessFile::PosixRandomAccessFile(std::string filename, int fd,
                                                  Limiter *fd_limiter)
             : has_permanent_fd_(fd_limiter->Acquire()),
@@ -137,6 +140,7 @@ namespace leveldb {
         return status;
     }
 
+// 这个没有用到
     PosixMmapReadableFile::PosixMmapReadableFile(std::string filename,
                                                  char *mmap_base,
                                                  size_t length,
@@ -167,6 +171,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 写sstable和manifest的主要相关
     PosixReadWriteFile::PosixReadWriteFile(std::string filename, int fd)
             : fd_(fd),
               is_manifest_(false),
@@ -180,6 +185,7 @@ namespace leveldb {
         }
     }
 
+// 直接读
     Status PosixReadWriteFile::Read(const StoCBlockHandle &stoc_block_handle,
                                     uint64_t offset, size_t n, Slice *result,
                                     char *scratch) {
@@ -233,6 +239,81 @@ namespace leveldb {
             data += write_result;
             size -= write_result;
         }
+        return Status::OK();
+    }
+
+// 用于PM mmap的文件抽象
+    PosixPMReadWriteFile::PosixPMReadWriteFile(std::string filename, int fd, uint32_t file_size)
+            : fd_(fd),
+              file_size_(file_size),
+              mmap_base_(nullptr),
+              offset_(0),
+              is_manifest_(false),
+              filename_(std::move(filename)),
+              dirname_(PosixWritableFile::Dirname(filename_)) {    
+        mmap_base_ = (char *)::mmap(nullptr, file_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);            
+    }
+
+    PosixPMReadWriteFile::~PosixPMReadWriteFile() {
+        if (fd_ >= 0) {
+            munmap(static_cast<void *>(mmap_base_), file_size_);
+            Close();
+        }
+    }
+// mmap区域读
+    Status PosixPMReadWriteFile::Read(const StoCBlockHandle &stoc_block_handle,
+                                    uint64_t offset, size_t n, Slice *result,
+                                    char *scratch) {
+        assert(fd_ != -1);
+
+        if (offset + n > file_size_) {
+            *result = Slice();
+            return PosixError(filename_, EINVAL);
+        }
+        if (scratch) {
+            memcpy(scratch, mmap_base_ + offset, n);
+            *result = Slice(scratch, n);
+        } else {
+            *result = Slice(mmap_base_ + offset, n);
+        }
+        return Status::OK();
+    }
+// 大概率不会有这个 但是先实现吧 ！有写溢出的风险 先不管
+    Status PosixPMReadWriteFile::Append(const Slice &data) {
+        size_t write_size = data.size();
+        const char *write_data = data.data();
+        if (write_size == 0) {
+            return Status::OK();
+        }
+        return WriteUnbuffered(write_data, write_size);
+    }
+
+    Status PosixPMReadWriteFile::Close() {
+        Status status;
+        const int close_result = ::close(fd_);
+        if (close_result < 0 && status.ok()) {
+            status = PosixError(filename_, errno);
+        }
+        fd_ = -1;
+        return status;
+    }
+
+    Status PosixPMReadWriteFile::Flush() { return Status::OK(); }
+// 先没有任何sync
+    Status PosixPMReadWriteFile::Sync() {
+        return Status::OK();
+    }
+
+    char* PosixPMReadWriteFile::GetMmapBase(){
+        return mmap_base_;
+    }
+
+// 大概率不会
+    Status PosixPMReadWriteFile::WriteUnbuffered(const char *data, size_t size) {
+        mutex_.lock();
+        memcpy(mmap_base_ + offset_, data, size);
+        offset_ += size;
+        mutex_.unlock();
         return Status::OK();
     }
 
@@ -515,6 +596,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 这个应该只是为了读 区分两种情况下的读??? emmmm 有点忘了
     Status PosixEnv::NewRandomAccessFile(const std::string &filename,
                                          RandomAccessFile **result) {
         *result = nullptr;
@@ -586,6 +668,7 @@ namespace leveldb {
                NovaSSTableMode::SSTABLE_HYBRID;
     }
 
+// FetchMetadataFiles里面调用 这个调用的原因尚不清楚 emmm
     Status PosixEnv::NewWritableFile(const std::string &filename,
                                      const EnvFileMetadata &metadata,
                                      WritableFile **result) {
@@ -619,6 +702,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 写sstable和manifest文件用的
     Status PosixEnv::NewReadWriteFile(const std::string &filename,
                                       const EnvFileMetadata &metadata,
                                       ReadWriteFile **result) {
@@ -634,6 +718,34 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 为了预先truncate 传入filesize
+    Status PosixEnv::NewReadWriteFile(const std::string &filename,
+                            const EnvFileMetadata &metadata,
+                            uint32_t file_size,
+                            ReadWriteFile **result){
+        int fd = ::open(filename.c_str(),
+                        O_RDWR | O_CREAT | kOpenBaseFlags,
+                        0644);
+        if (fd < 0) {
+            *result = nullptr;
+            return PosixError(filename, errno);
+        }
+
+        if(IsPMfile(filename)){
+            if (ftruncate(fd, file_size) == -1) { // 预先truncate
+                *result = nullptr;
+                return PosixError(filename, errno);
+            }
+            *result = new PosixPMReadWriteFile(filename, fd, file_size);
+            return Status::OK();
+        }else{
+            *result = new PosixReadWriteFile(filename, fd);
+            return Status::OK();
+        }
+        return Status::OK();
+    }
+
+// 没有用到
     Status PosixEnv::NewAppendableFile(const std::string &filename,
                                        WritableFile **result) {
         int fd = ::open(filename.c_str(),

@@ -269,6 +269,7 @@ namespace leveldb {
     }
 
 // 结束这个文件的编写
+// InitiateAppendBlock调用
     Status
     CompactionJob::FinishCompactionOutputFile(const ParsedInternalKey &ik,
                                               CompactionState *compact,

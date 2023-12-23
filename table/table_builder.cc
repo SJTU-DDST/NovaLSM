@@ -21,7 +21,7 @@
 
 namespace leveldb {
 
-// 真正的需要写到数据块中的内容
+// 真正的需要写到数据块中的内容 做sstable时元数据存放和控制类
     struct TableBuilder::Rep {
         Rep(const Options &opt, WritableFile *f)
                 : options(opt),
@@ -147,7 +147,7 @@ namespace leveldb {
         WriteBlock(&r->data_block, &r->pending_handle);
         if (ok()) {
             r->pending_index_entry = true;
-            r->status = r->file->Flush();
+            r->status = r->file->Flush(); // 这里flush没有任何作用
         }
         if (r->filter_block != nullptr) {
             r->filter_block->StartBlock(r->offset);

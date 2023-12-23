@@ -16,8 +16,8 @@
 #include "common/nova_config.h"
 
 namespace leveldb {
-//用这个函数建立了manifest文件，这个文件应该放置于stoc?
-// done ltc用于向stoc写
+//用这个函数建立了manifest文件，这个文件应该放置于stoc? 
+// done ltc用于向stoc写 sstable文件也是这个
     StoCWritableFileClient::StoCWritableFileClient(Env *env,
                                                    const Options &options,
                                                    uint64_t file_number,
@@ -120,7 +120,10 @@ namespace leveldb {
         return Status::OK();
     }
 
-// done
+// done 如果已经打开了的话 直接用本地偏移似乎就可以
+// 如果没有打开那先打开
+// manifest文件的更新调用syncappend 没有其他的直接调用!!!!
+// InitiateAppendBlock的调用
     Status
     StoCWritableFileClient::SyncAppend(const leveldb::Slice &data,
                                        const std::vector<uint32_t> &stoc_ids) {
@@ -191,6 +194,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// sstable写完了调用
     Status StoCWritableFileClient::Fsync() {
         NOVA_ASSERT(used_size_ == meta_.file_size) << fmt::format(
                     "ccremotememfile[{}]: fn:{} db:{} alloc_size:{} used_size:{}",
@@ -200,7 +204,8 @@ namespace leveldb {
         return Status::OK();
     }
 
-
+// 写完了自己还要读出来再分析 然后分发到stoc上
+// InitiateAppendBlock的调用
     void StoCWritableFileClient::Format() {
         Status s;
         int file_size = used_size_;
@@ -217,13 +222,13 @@ namespace leveldb {
         StoCBlockHandle index_handle = {};
         index_handle.offset = footer.index_handle().offset();
         index_handle.size = footer.index_handle().size();
-        s = Table::ReadBlock(index_block_buf, contents, ReadOptions(),
+        s = Table::ReadBlock(index_block_buf, contents, ReadOptions(), // 读出index block
                              index_handle, &index_block_contents);
         NOVA_ASSERT(s.ok());
         index_block_ = new Block(index_block_contents,
                                  file_number_,
                                  footer.index_handle().offset(), true);
-        if (num_data_blocks_ >= nova::NovaConfig::config->num_stocs_scatter_data_blocks) {
+        if (num_data_blocks_ >= nova::NovaConfig::config->num_stocs_scatter_data_blocks) { //num_stocs_scatter_data_blocks代表1个sstable的data要分散到多少个stoc里面 这说明每个stoc要承载多个数据块的分块
             int min_num_data_blocks_in_group =
                     num_data_blocks_ / nova::NovaConfig::config->num_stocs_scatter_data_blocks;
             int remaining = num_data_blocks_ % nova::NovaConfig::config->num_stocs_scatter_data_blocks;
@@ -234,9 +239,9 @@ namespace leveldb {
                     nblocks += 1;
                     remaining -= 1;
                 }
-                nblocks_in_group_.push_back(nblocks);
+                nblocks_in_group_.push_back(nblocks); // nblocks_in_group_ 代表每个stoc要承载多少个数据块
                 assigned_blocks += nblocks;
-            }
+            } // 每个stoc分多少个block的分块
             NOVA_ASSERT(assigned_blocks == num_data_blocks_);
             std::string out;
             for (auto n : nblocks_in_group_) {
@@ -250,7 +255,7 @@ namespace leveldb {
                                    min_num_data_blocks_in_group);
             }
         } else {
-            nblocks_in_group_.push_back(num_data_blocks_);
+            nblocks_in_group_.push_back(num_data_blocks_); // 说明可以完全放入1个stoc里面
         }
         Iterator *it = index_block_->NewIterator(options_.comparator);
         it->SeekToFirst();
@@ -278,7 +283,7 @@ namespace leveldb {
         selector.SelectStorageServers(client,
                                       nova::NovaConfig::config->scatter_policy,
                                       num_stocs_to_select,
-                                      &stocs_to_store_fragments_);
+                                      &stocs_to_store_fragments_); // 选出来的存储文件的stoc
         uint32_t dbid = 0;
         nova::ParseDBIndexFromDBName(dbname_, &dbid);
         std::vector<BlockHandle> data_fragments;
@@ -502,6 +507,7 @@ namespace leveldb {
         return new_file_size;
     }
 
+//InitiateAppendBlock的调用
     uint64_t
     StoCWritableFileClient::WriteMetaDataBlock(uint32_t stoc_id,
                                                uint32_t replica_id,

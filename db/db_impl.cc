@@ -242,6 +242,7 @@ namespace leveldb {
         }
     }
 
+// 除非change config不然不会用到
     void DBImpl::UpdateFileMetaReplicaLocations(
             const std::vector<leveldb::ReplicationPair> &results, uint32_t stoc_server_id, int level,
             StoCClient *client) {
@@ -609,7 +610,7 @@ namespace leveldb {
     Status DBImpl::Recover() {
         timeval start = {};
         gettimeofday(&start, nullptr);
-        uint32_t stoc_id = options_.manifest_stoc_ids[0]; // manifest文件存的地方
+        uint32_t stoc_id = options_.manifest_stoc_ids[0]; // manifest文件存的地方 开了本地就存本地 不开的话存stoc
         std::string manifest = DescriptorFileName(dbname_, 0, 0); // 暂时还是磁盘中
         auto client = reinterpret_cast<StoCBlockClient *> (options_.stoc_client);
         uint32_t manifest_file_size = nova::NovaConfig::config->manifest_file_size;
@@ -1068,7 +1069,7 @@ namespace leveldb {
         }
     }
 
-// key多的subrange的compaction 基本就是把memtable转化为sstable的格式
+// key多的subrange的compaction 基本就是把memtable转化为sstable的格式 这里是直接发送过去了？
 // prune_memtable
     void DBImpl::CompactMemTableStaticPartition(leveldb::EnvBGThread *bg_thread,
                                                 const std::vector<leveldb::EnvBGTask> &tasks,
@@ -1259,6 +1260,7 @@ namespace leveldb {
         delete state;
     }
 
+// 每次minor compaction都要进行manifest文件的更改
     bool DBImpl::CompactMemTable(EnvBGThread *bg_thread,
                                  const std::vector<EnvBGTask> &tasks) {
         VersionEdit edit;
@@ -1434,6 +1436,7 @@ namespace leveldb {
     }
 
 // flush memtable的任务 major compaction的任务
+// 每次compaction都要进行manifest文件的更改
     void DBImpl::PerformCompaction(leveldb::EnvBGThread *bg_thread, const std::vector<EnvBGTask> &tasks) {
         std::vector<EnvBGTask> memtable_tasks;
         std::unordered_map<uint32_t, std::vector<EnvBGTask>> pid_mergable_memtables;
@@ -1480,7 +1483,7 @@ namespace leveldb {
             if (range_index_manager_) {
                 range_index_manager_->DeleteObsoleteVersions();
             }
-            mutex_.Lock();
+            mutex_.Lock(); // 对于整个version的更改 上锁
             Version *v = new Version(&internal_comparator_, table_cache_, &options_, // compaction之后会成立一个新的版本???
                                      versions_->version_id_seq_.fetch_add(1), versions_);
             for (auto &task : memtable_tasks) {
@@ -1505,6 +1508,7 @@ namespace leveldb {
             }
             mutex_.Unlock();
 
+            // 每个partition上自己的锁
             for (const auto &it : pid_tasks) { // 整理每个分区
                 // New verion is installed. Then remove it from the immutable memtables.
                 MemTablePartition *p = partitioned_active_memtables_[it.first];
@@ -1977,6 +1981,7 @@ namespace leveldb {
 // edit是 文件的变化 增加删除等
 // range edit是 对range index table中的文件的更新
 // edits是 主要是l0 l1层的文件变化与memtableid的对应关系 负责对于lookupindex的更新 
+// 每次清理合并现场的时候都要进行manifest的修改
     void DBImpl::CleanupLSMCompaction(CompactionState *state,
                                       VersionEdit &edit,
                                       RangeIndexVersionEdit &range_edit,
@@ -3225,7 +3230,7 @@ namespace leveldb {
         }
     }
 
-// 生成日志record
+// 生成日志record !!!!查看log的写法
     void DBImpl::GenerateLogRecord(const WriteOptions &options,
                                    SequenceNumber last_sequence,
                                    const Slice &key, const Slice &val,

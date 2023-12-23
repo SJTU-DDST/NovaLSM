@@ -80,6 +80,7 @@ namespace leveldb {
     }
 
 // done
+// InitiateAppendBlock调用
     Status
     BuildTable(const std::string &dbname, const std::string &pmname, int level, int levels_in_pm, Env *env, const Options &options,
                TableCache *table_cache, Iterator *iter, FileMetaData *meta,
@@ -92,7 +93,7 @@ namespace leveldb {
             const Comparator *user_comp = reinterpret_cast<const InternalKeyComparator *>(options.comparator)->user_comparator();
             MemManager *mem_manager = bg_thread->mem_manager();
 
-            // 还是要传入一些信息 因为之后会再算一次filename ..
+            // 还是要传入一些信息 因为之后会再算一次filename .. 这里会在本地申请一块backing mem用于存放序列化的数据
             StoCWritableFileClient *stoc_writable_file = new StoCWritableFileClient(
                     env,
                     options,
@@ -150,7 +151,7 @@ namespace leveldb {
 
             // Finish and check for file errors
             if (s.ok()) {
-                s = file->Sync();
+                s = file->Sync(); // 写data
             }
             if (s.ok()) {
                 s = file->Close();
@@ -158,7 +159,7 @@ namespace leveldb {
 
             // Make sure WRITEs are complete before we persist them.
             stoc_writable_file->WaitForPersistingDataBlocks();
-            uint32_t new_file_size = stoc_writable_file->Finalize();
+            uint32_t new_file_size = stoc_writable_file->Finalize(); //写matadata
 
             meta->block_replica_handles = stoc_writable_file->replicas();
             meta->parity_block_handle = stoc_writable_file->parity_block_handle();
