@@ -9,6 +9,7 @@
 
 #include <infiniband/verbs.h>
 
+// done
 //rdma线程的基类
 namespace nova {
     // After calling ibv_poll_cq, this function is invoked for each completion event.

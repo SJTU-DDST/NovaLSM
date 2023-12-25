@@ -9,7 +9,7 @@
 
 #include "qp.hpp"
 
-//rdma的包装类,done
+//rdma的包装类,done done
 namespace rdmaio {
 
     const int MAX_SERVER_SUPPORTED = 32;

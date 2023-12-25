@@ -17,6 +17,7 @@ namespace rdmaio {
         int index;     // mutliple QP may is needed to connect to the node
     } QPIdx;
 
+// 用于做标识
 // some macros for easy computer QP idx, since some use default values
     constexpr QPIdx create_rc_idx(int nid, int wid, int index) {
         return QPIdx{
@@ -100,6 +101,8 @@ namespace rdmaio {
             return res;
         }
 
+// rdma_handler::start->nova_rdmarc_broker::init->nova_rdmarc_broker::InitializeQPs->qp::get_remote_mr
+// 用于获取对方的memory attr进行绑定
 //获取对面的mr星系
         /**
          * Get remote MR attribute
@@ -144,6 +147,7 @@ namespace rdmaio {
             bind_remote_mr(remote_mr);
         }
 
+// rdma_handler::start->nova_rdmarc_broker::init->nova_rdmarc_broker::InitializeQPs->rdma_ctrl::creatercqp
         RRCQP(RNicHandler *rnic, QPIdx idx, MemoryAttr local_mr,
               enum ibv_qp_type qp_type, ibv_cq *cq, ibv_cq *recv_cq)
                 : RRCQP(rnic, idx, qp_type, cq, recv_cq) {
@@ -162,6 +166,7 @@ namespace rdmaio {
             return connect(ip, port, idx_);
         }
 
+// rdma_handler::start->nova_rdmarc_broker::init->nova_rdmarc_broker::InitializeQPs->qp::connect
         ConnStatus connect(std::string ip, int port, QPIdx idx) {
 
             // first check whether QP is valid to connect

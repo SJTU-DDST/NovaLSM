@@ -9,7 +9,7 @@
 #include "nova_rdma_rc_broker.h"
 
 namespace nova {
-    mutex open_device_mutex;
+    mutex open_device_mutex; // device是所有线程公用的 pd是每个线程自己申请
     bool is_device_opened = false;
     RNicHandler *device = nullptr;
 
@@ -23,15 +23,15 @@ namespace nova {
         NOVA_LOG(INFO) << "RDMA client thread " << thread_id_
                        << " initializing";
         RdmaCtrl::DevIdx idx{.dev_id = 0, .port_id = 1}; // using the first RNIC's first port
-        const char *cache_buf = mr_buf_;
+        const char *cache_buf = mr_buf_; // 所有空间的起始地址
         uint64_t my_memory_id = my_server_id_;
 
 //首先打开设备
         open_device_mutex.lock();
         if (!is_device_opened) {
-            device = rdma_ctrl->open_device(idx);
+            device = rdma_ctrl->open_device(idx); // 这里分配了pd 
             is_device_opened = true;
-//register memory，这里好像是把所有空间全部register了
+//register memory，这里好像是把所有空间全部register了 所有的都只会register一次
             NOVA_ASSERT(
                     rdma_ctrl->register_memory(my_memory_id,
                                                cache_buf,
@@ -67,7 +67,7 @@ namespace nova {
             qp_[i] = nullptr;
         }
     }
-
+// rdma_handler::start->nova_rdmarc_broker::init->nova_rdmarc_broker::InitializeQPs 这之前已经登记了pd和mr(当前是1个)
 //初始化qp，对于所有其他server
     void NovaRDMARCBroker::InitializeQPs(RdmaCtrl *rdma_ctrl) {
         uint64_t my_memory_id = my_server_id_;

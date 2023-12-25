@@ -86,6 +86,7 @@ namespace rdmaio {
             return attr.qp_state;
         }
 
+// 向远端请求rdma相关的 memory attr qp
         static ConnStatus
         get_remote_helper(ConnArg *arg, ConnReply *reply, std::string ip,
                           int port) {
@@ -125,7 +126,7 @@ namespace rdmaio {
             close(socket);
             return ret;
         }
-
+// rdma_handler::start->nova_rdmarc_broker::init->nova_rdmarc_broker::InitializeQPs->qp::get_remote_mr->qp_impl::get_remote_mr
         static ConnStatus
         get_remote_mr(std::string ip, int port, uint64_t mr_id,
                       MemoryAttr *attr) {

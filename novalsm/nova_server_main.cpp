@@ -34,13 +34,15 @@ DEFINE_string(all_servers, "localhost:11211", "A list of servers");//server的li
 DEFINE_int64(server_id, -1, "Server id.");//当前这个server的id
 DEFINE_int64(number_of_ltcs, 0, "The first n are LTCs and the rest are StoCs.");//ltc的数量，剩下的都是stoc 这个没有意义
 
-DEFINE_uint64(mem_pool_size_gb, 0, "Memory pool size in GB.");//内存池大小，GB为单位
+DEFINE_uint64(mem_pool_size_gb, 0, "Memory pool size in GB."); //内存池大小，GB为单位 一般申请30个g 那pm也申请30个G算了
+DEFINE_uint64(pmem_pool_size_gb, 0, "Persistent Memory pool size in GB"); //pm池子大小，GB为单位 似乎不需要用平常的模式pm send
+
 DEFINE_uint64(use_fixed_value_size, 0, "Fixed value size.");//使用的value的固定大小
 
 DEFINE_uint64(rdma_port, 0, "The port used by RDMA.");//rdma用的端口
-DEFINE_uint64(rdma_max_msg_size, 0, "The maximum message size used by RDMA.");//最大的rdma message的大小
+DEFINE_uint64(rdma_max_msg_size, 0, "The maximum message size used by RDMA.");//最大的rdma message的大小 一般是256 * 1024 256KB
 DEFINE_uint64(rdma_max_num_sends, 0,
-              "The maximum number of pending RDMA sends. This includes READ/WRITE/SEND. We also post the same number of RECV events. ");//最大的rdma pending请求的数量
+              "The maximum number of pending RDMA sends. This includes READ/WRITE/SEND. We also post the same number of RECV events. ");//最大的rdma pending请求的数量 32 和读一起的话就是64
 DEFINE_uint64(rdma_doorbell_batch_size, 0, "The doorbell batch size.");//rdma的batch size
 DEFINE_bool(enable_rdma, false, "Enable RDMA.");//是否开启rdma
 DEFINE_bool(enable_load_data, false, "Enable loading data.");//是否开启传输数据
@@ -161,9 +163,9 @@ void StartServer() {
 
     auto *buf = (char *) malloc(ntotal);
     memset(buf, 0, ntotal);
-    NovaConfig::config->nova_buf = buf;
+    NovaConfig::config->nova_buf = buf; // 所有空间的开始 这里所有空间rdma都可以接收发送
 //nnovabuf是结尾
-    NovaConfig::config->nnovabuf = ntotal;
+    NovaConfig::config->nnovabuf = ntotal; // 所有空间的大小
     NOVA_ASSERT(buf != NULL) << "Not enough memory";
 
 //如果不恢复数据库，直接删除文件

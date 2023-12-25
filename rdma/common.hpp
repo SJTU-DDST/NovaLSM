@@ -12,6 +12,8 @@
 //static const int RC_MAX_SEND_SIZE = 128;
 //static const int RC_MAX_RECV_SIZE = 512;
 
+// done
+
 namespace rdmaio {
 
 // connection status

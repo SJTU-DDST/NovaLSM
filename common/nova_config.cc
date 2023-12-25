@@ -7,13 +7,13 @@
 #include "nova_config.h"
 
 namespace nova {
-//(读+写)*消息大小 也即一个线程对一个server的rdma的空间需求
+//(读+写)*消息大小 也即一个线程对一个server的rdma的空间需求 32 * 2 * 256 * 1024 = 16 MB
     uint64_t nrdma_buf_unit() {
         return (NovaConfig::config->rdma_max_num_sends * 2) *
                NovaConfig::config->max_msg_size;
     }
 
-//server需要的所有rdma空间的大小，对所有的server进行收发
+//server需要的所有rdma空间的大小，对所有的server进行收发 16 MB * ( 16 + 16 ) * 2 = 1G
     uint64_t nrdma_buf_server() {
         // A CC async/bg thread connects to one thread at each DC.
         uint64_t nrdmatotal = nrdma_buf_unit() *

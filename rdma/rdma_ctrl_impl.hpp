@@ -37,9 +37,9 @@ namespace rdmaio {
  */
     inline uint32_t get_rc_key(const QPIdx idx) {
         // 2^10 (1024) conn_workers. 2^6 (64) nodes. 2^16 (65536) qps per worker
-        return static_cast<uint32_t>(static_cast<uint32_t>(idx.node_id) << 26) |
-               (static_cast<uint32_t>(idx.worker_id) << 16) |
-               static_cast<uint32_t>(idx.index);
+        return static_cast<uint32_t>(static_cast<uint32_t>(idx.node_id) << 26) | // node
+               (static_cast<uint32_t>(idx.worker_id) << 16) | // worker
+               static_cast<uint32_t>(idx.index); // qp
     }
 
     inline QPIdx get_rc_idx(const uint32_t rc_key) {
@@ -92,6 +92,7 @@ namespace rdmaio {
             return rnic_instance();
         }
 
+// rdmahandler->broker->rdmactrl 这里外面上锁了 其实和单例差不多?? 分配了pd!
 //打开idx指定的设备，分配一些东西，然后返回
         RNicHandler *open_device(DevIdx idx) {
 
@@ -188,7 +189,8 @@ namespace rdmaio {
             else
                 return dynamic_cast<T *>(qps_[key]);
         }
-
+//rdma_handler::start->nova_rdmarc_broker::init->nova_rdmarc_broker::InitializeQPs
+// 自己的idx , ~, 之前登记的第一个mr的attr, ~, 发送cq和接收cq
 //建立发送和接收的qp
         RCQP *create_rc_qp(QPIdx idx, RNicHandler *dev, MemoryAttr *attr,
                            enum ibv_qp_type qp_type, ibv_cq *cq,
@@ -255,10 +257,11 @@ namespace rdmaio {
             return res;
         }
 
+// rdma_handler::start->nova_rdmarc_broker::init->rdma_ctrl::register_memory 这里把全部空间都登记了
 //登记一个memory 
         bool register_memory(uint64_t mr_id, const char *buf, uint64_t size,
                              RNicHandler *rnic, int flag) {
-            Memory *m = new Memory(buf, size, rnic->pd, flag);
+            Memory *m = new Memory(buf, size, rnic->pd, flag); // 这里登记mr 最好重新申请一块pm mmap到操作系统对应的空间
             if (!m->valid()) {
                 NOVA_LOG(WARNING) << "register mr to rnic error: "
                                   << strerror(errno);
@@ -267,7 +270,7 @@ namespace rdmaio {
             }
             {
                 SCS s;
-                if (mrs_.find(mr_id) != mrs_.end()) {
+                if (mrs_.find(mr_id) != mrs_.end()) { // 这里限制了自己这个node只能register 1个mr 应该改成允许多个
                     NOVA_LOG(WARNING) << "mr " << mr_id
                                       << " has already been registered!";
                     delete m;
@@ -288,6 +291,7 @@ namespace rdmaio {
             return -1;
         }
 
+// 这里一个 改了可能会变成多个
 //获得本地的mr的信息
         MemoryAttr get_local_mr(uint64_t mr_id) {
             MemoryAttr attr = {};
@@ -371,7 +375,7 @@ namespace rdmaio {
             return ((RdmaCtrlImpl *) context)->connection_handler();
         }
 
-//线程开启，用来管理连接
+//线程开启，用来管理连接 用于rdma之间互相的连接
         /**
          * Using TCP to connect in-coming QP & MR requests
          */
@@ -386,7 +390,8 @@ namespace rdmaio {
                 << "unable to configure socket status.";
             RDMA_VERIFY(ERROR, listen(listenfd, 24) == 0)
                 << "TCP listen error: " << strerror(errno);
-            while (running_) {
+            while (running_) { // new RdmaCtrl后跑到这里卡住 等待后续
+// rdma_handler::start->nova_rdmarc_broker::init->nova_rdmarc_broker::InitializeQPs::get_remote_mr
                 asm volatile("":: : "memory");
                 struct sockaddr_in cli_addr = {0};
                 socklen_t clilen = sizeof(cli_addr);
@@ -427,8 +432,8 @@ namespace rdmaio {
                             reply.ack = SUCC;
                             break;
 //发过来的是mr的请求
-                        case ConnArg::MR:
-                            if (mrs_.find(arg.payload.mr.mr_id) != mrs_.end()) {
+                        case ConnArg::MR: // 首先对面请求本地的mr相关信息 将本方的mr信息返回
+                            if (mrs_.find(arg.payload.mr.mr_id) != mrs_.end()) { // 这里只发送了1个 建立pm之后要发送第二个
                                 memcpy((char *) (&(reply.payload.mr)),
                                        (char *) (&(mrs_[arg.payload.mr.mr_id]->rattr)),
                                        sizeof(MemoryAttr));
@@ -436,7 +441,7 @@ namespace rdmaio {
                             };
                             break;
 //发过来的是qp的请求
-                        case ConnArg::QP: {
+                        case ConnArg::QP: { // 对面获得了本地的mr相关信息，然后就发送qp请求 返回本方的qp attr
                             qp_callback_(
                                     arg.payload.qp); // call the user callback
                             QP *qp = NULL;

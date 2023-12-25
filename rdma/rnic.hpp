@@ -6,6 +6,8 @@
 
 #include "common/nova_console_logging.h"
 
+// done
+
 namespace rdmaio {
 
 // The name of the particular port on the RNIC.
@@ -130,6 +132,7 @@ namespace rdmaio {
 
     class RdmaCtrl;
 
+// rdmahandler->broker->rdmactrl->rNicHandler
 //存储了各种关于网卡设备的信息，就是设备的抽象类
     struct RNicHandler {
 

@@ -14,18 +14,21 @@
 #include "rdma_msg_callback.h"
 #include "common/nova_common.h"
 
+// done
+// 最重要的中间类 用于和线程缓冲区结合对buf等进行发送操作 似乎在这里加入大型pm buffer支持就可以?
 
 namespace nova {
 
     using namespace rdmaio;
 
 //用于处理rdma send，每个线程一个，用circular buffer
+// buf是这个线程对应的开始地址
 
     // Thread local. One thread has one RDMA RC Broker.
     // It maintains a circular buffer to issue RDMA SENDs.
     class NovaRDMARCBroker : public NovaRDMABroker {
     public:
-        NovaRDMARCBroker(char *buf, int thread_id,
+        NovaRDMARCBroker(char *buf, int thread_id, // 初始化的时候做各种空间和元数据
                          const std::vector<QPEndPoint> &end_points,
                          int total_num_servers,
                          uint32_t max_num_sends,
@@ -36,15 +39,15 @@ namespace nova {
                          uint64_t mr_size,
                          uint64_t rdma_port,
                          RDMAMsgCallback *callback) :
-                rdma_buf_(buf),
+                rdma_buf_(buf), // 这个线程对应的buf地址
                 thread_id_(thread_id),
                 end_points_(end_points),
                 max_num_sends_(max_num_sends),
                 max_msg_size_(max_msg_size),
                 doorbell_batch_size_(doorbell_batch_size),
                 my_server_id_(my_server_id),
-                mr_buf_(mr_buf),
-                mr_size_(mr_size),
+                mr_buf_(mr_buf), // 所有空间的大地址 !!!要改的
+                mr_size_(mr_size), // 所有空间的大小 !!!要改的
                 rdma_port_(rdma_port),
                 callback_(callback) {
             NOVA_LOG(DEBUG)
@@ -134,7 +137,7 @@ namespace nova {
             }
         }
 
-        void Init(RdmaCtrl *rdma_ctrl);
+        void Init(RdmaCtrl *rdma_ctrl); // rdma handler里面首先调用 建立连接 qp 等等
 
         uint64_t PostRead(char *localbuf, uint32_t size, int server_id,
                           uint64_t local_offset,
