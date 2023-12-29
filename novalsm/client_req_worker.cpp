@@ -200,6 +200,7 @@ namespace nova {
         read_options.hash = int_key; //输入为uint64_t类型的key
         read_options.stoc_client = worker->stoc_client_;
         read_options.mem_manager = worker->mem_manager_;
+        read_options.pm_manager = worker->pm_manager_;
         read_options.thread_id = worker->thread_id_;
         read_options.rdma_backing_mem = worker->rdma_backing_mem;
         read_options.rdma_backing_mem_size = worker->rdma_backing_mem_size;
@@ -478,6 +479,7 @@ namespace nova {
         leveldb::ReadOptions read_options;
         read_options.stoc_client = worker->stoc_client_;
         read_options.mem_manager = worker->mem_manager_;
+        read_options.pm_manager = worker->pm_manager_;
         read_options.thread_id = worker->thread_id_;
         read_options.rdma_backing_mem = worker->rdma_backing_mem;
         read_options.rdma_backing_mem_size = worker->rdma_backing_mem_size;

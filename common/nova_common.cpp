@@ -223,6 +223,14 @@ namespace nova {
         return dbname + "/" + std::to_string(index);
     }
 
+    std::string PMpoolName(const std::string &pm_path){
+        return pm_path + "/" + "pm.pool";
+    }
+
+    std::string PMpoolMetaName(const std::string &pm_pool_name){
+        return pm_pool_name + "-meta";
+    }
+
 //从数据库的名字里面找到dbid/db_index 这两个其实是一样的(在config的实现中 也适用于pm done
     void ParseDBIndexFromDBName(const std::string &dbname, uint32_t *index) {
         int iend = dbname.size() - 1;

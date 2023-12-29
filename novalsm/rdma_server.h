@@ -15,6 +15,7 @@
 
 #include "rdma/nova_rdma_rc_broker.h"
 #include "common/nova_mem_manager.h"
+#include "common/nova_pm_manager.h"
 #include "log/stoc_log_manager.h"
 #include "stoc/persistent_stoc_file.h"
 #include "stoc/storage_worker.h"
@@ -110,6 +111,7 @@ namespace nova {
     public:
         RDMAServerImpl(rdmaio::RdmaCtrl *rdma_ctrl,
                        NovaMemManager *mem_manager,
+                       NovaPMManager *pm_manager,
                        leveldb::StocPersistentFileManager *stoc_file_manager,
                        StoCInMemoryLogFileManager *log_manager,
                        uint32_t thread_id, bool is_compaction_thread,
@@ -149,6 +151,7 @@ namespace nova {
         uint32_t thread_id_;
         rdmaio::RdmaCtrl *rdma_ctrl_;
         NovaMemManager *mem_manager_;
+        NovaPMManager *pm_manager_;
         StoCInMemoryLogFileManager *log_manager_;
         leveldb::StocPersistentFileManager *stoc_file_manager_;
         RDMAAdmissionCtrl *admission_control_ = nullptr;

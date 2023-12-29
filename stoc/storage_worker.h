@@ -14,6 +14,7 @@
 
 #include "rdma/nova_rdma_rc_broker.h"
 #include "common/nova_mem_manager.h"
+#include "common/nova_pm_manager.h"
 #include "log/stoc_log_manager.h"
 #include "stoc/persistent_stoc_file.h"
 #include "novalsm/rdma_server.h"
@@ -34,6 +35,7 @@ namespace nova {
                       const leveldb::Options &options,
                       leveldb::StoCClient *client,
                       leveldb::MemManager *mem_manager,
+                      leveldb::MemManager *pm_manager,
                       uint64_t thread_id,
                       leveldb::Env *env);
 
@@ -51,6 +53,10 @@ namespace nova {
 
         leveldb::MemManager *mem_manager() override {
             return mem_manager_;
+        }
+
+        leveldb::MemManager *pm_manager() override {
+            return pm_manager_;
         }
 
         uint64_t thread_id() override {
@@ -93,6 +99,7 @@ namespace nova {
 
         leveldb::StoCClient *client_;
         leveldb::MemManager *mem_manager_;
+        leveldb::MemManager *pm_manager_;
         uint64_t thread_id_;
         unsigned int rand_seed_ = 0;
 

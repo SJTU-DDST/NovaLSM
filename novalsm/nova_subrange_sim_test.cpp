@@ -196,7 +196,7 @@ void TestSubRanges() {
     }
 
     leveldb::LTCCompactionThread *reorg = new leveldb::LTCCompactionThread(
-            nullptr);
+            nullptr, nullptr);
     std::thread t(&leveldb::LTCCompactionThread::Start, reorg);
     leveldb::MemManager *mem_manager = new NovaMemManager(buf, 1, 1, 18);
 

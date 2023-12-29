@@ -230,6 +230,8 @@ target_sources(leveldb
         rdma/nova_rdma_broker.h
         common/nova_mem_manager.h
         common/nova_mem_manager.cpp
+        common/nova_pm_manager.h
+        common/nova_pm_manager.cpp
         common/nova_chained_hashtable.cpp
         common/nova_chained_hashtable.h
 

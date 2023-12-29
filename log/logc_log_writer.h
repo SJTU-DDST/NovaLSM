@@ -8,6 +8,7 @@
 #define LEVELDB_LOGC_LOG_WRITER_H
 
 #include "common/nova_mem_manager.h"
+#include "common/nova_pm_manager.h"
 #include "leveldb/status.h"
 #include "leveldb/slice.h"
 #include "leveldb/log_writer.h"
@@ -23,6 +24,7 @@ namespace leveldb {
     public:
         LogCLogWriter(nova::NovaRDMABroker *rdma_broker,
                       MemManager *mem_manager,
+                      MemManager *pm_manager,
                       nova::StoCInMemoryLogFileManager *log_manager);
 
         bool
@@ -88,6 +90,7 @@ namespace leveldb {
         nova::NovaRDMABroker *rdma_broker_ = nullptr;
         std::unordered_map<std::string, LogFileMetadata> logfile_last_buf_;
         MemManager *mem_manager_ = nullptr;
+        MemManager *pm_manager_ = nullptr;
         nova::StoCInMemoryLogFileManager *log_manager_ = nullptr;
     };
 

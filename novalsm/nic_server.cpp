@@ -299,6 +299,8 @@ namespace nova {
         char *buf = rdmabuf;
 //跳过了前面rdma的空间，到了mem_pool的空间这里
         char *cache_buf = buf + nrdma_buf_server();
+//这里是pm_pool的空间
+        char *pm_buf = cache_buf + NovaConfig::config->mem_pool_size_gb * 1024 * 1024 * 1024; // 这样好像不太行??
         uint32_t num_mem_partitions = 1;
         NovaConfig::config->num_mem_partitions = num_mem_partitions;
         uint64_t slab_size_mb = NovaConfig::config->manifest_file_size / 1024 / 1024;//倒退的话manifest_size单位应该是B
@@ -307,6 +309,12 @@ namespace nova {
                                          num_mem_partitions,
                                          NovaConfig::config->mem_pool_size_gb,
                                          slab_size_mb);
+
+        pm_manager = new NovaPMManager(pm_buf, // 用于指定mmap
+                                       PMpoolName(NovaConfig::config->pm_path), // 用于打开或者新建
+                                       NovaConfig::config->pm_pool_size_gb, // 用于truncate或者啥
+                                       cfg->fragments.size()); // 用于分区
+
 //用于管理
         log_manager = new StoCInMemoryLogFileManager(mem_manager);
         NovaConfig::config->add_tid_mapping();
@@ -314,11 +322,11 @@ namespace nova {
 //创建后台的flush线程和compaction线程 flush和compaction由不同的线程负责??
         for (int i = 0; i < NovaConfig::config->num_compaction_workers; i++) {
             {
-                auto bg = new leveldb::LTCCompactionThread(mem_manager);
+                auto bg = new leveldb::LTCCompactionThread(mem_manager, pm_manager);
                 bg_flush_memtable_threads.push_back(bg);
             }
             {
-                auto bg = new leveldb::LTCCompactionThread(mem_manager);
+                auto bg = new leveldb::LTCCompactionThread(mem_manager, pm_manager);
                 bg_compaction_threads.push_back(bg);
             }
         }
@@ -349,7 +357,7 @@ namespace nova {
         env->set_env_option(env_option);
 
 //建立stoc的持久介质中的文件管理器 唯一一次stoc_files_path出现  stoc persistent filemanager中env为disk故用持久介质的文件
-        leveldb::StocPersistentFileManager *stoc_file_manager = new leveldb::StocPersistentFileManager(env, mem_manager,
+        leveldb::StocPersistentFileManager *stoc_file_manager = new leveldb::StocPersistentFileManager(env, mem_manager, pm_manager,
                                                                                                        NovaConfig::config->stoc_files_path,
                                                                                                        NovaConfig::config->max_stoc_file_size);        
         std::vector<nova::RDMAMsgCallback *> rdma_threads;
@@ -360,11 +368,11 @@ namespace nova {
                 continue;
             }
 //如果dragment开这两个线程出来???，其实没有启动线程
-            auto reorg = new leveldb::LTCCompactionThread(mem_manager);
-            auto coord = new leveldb::LTCCompactionThread(mem_manager);
+            auto reorg = new leveldb::LTCCompactionThread(mem_manager, pm_manager);
+            auto coord = new leveldb::LTCCompactionThread(mem_manager, pm_manager);
 
             auto client = new leveldb::StoCBlockClient(db_index, stoc_file_manager);
-            dbs_.push_back(CreateDatabase(0, db_index, block_cache, pool, mem_manager, client, bg_compaction_threads,
+            dbs_.push_back(CreateDatabase(0, db_index, block_cache, pool, mem_manager, pm_manager, client, bg_compaction_threads,
                                           bg_flush_memtable_threads, reorg, coord)); // 观察pool的作用 flush memtable 和 compaction是同种
         }
         for (int db_index = 0; db_index < cfg->fragments.size(); db_index++) {
@@ -391,7 +399,7 @@ namespace nova {
 //这个结构应该是记录本地server对于各个server有多少pending的请求??(发送的)
             RDMAAdmissionCtrl *admission_ctrl = new RDMAAdmissionCtrl;
 //这个是用来???rdma线程的基类，应该是callback类型的函数
-            RDMAMsgHandler *rdma_msg_handler = new RDMAMsgHandler(rdma_ctrl, mem_manager, admission_ctrl);
+            RDMAMsgHandler *rdma_msg_handler = new RDMAMsgHandler(rdma_ctrl, mem_manager, pm_manager, admission_ctrl);
 //记录到rdma线程和前台线程中
             rdma_threads.push_back(rdma_msg_handler);
             fg_rdma_msg_handlers.push_back(rdma_msg_handler);
@@ -433,19 +441,21 @@ namespace nova {
             nova::RDMAServerImpl *rdma_server = new nova::RDMAServerImpl(
                     rdma_ctrl,
                     mem_manager,
+                    pm_manager,
                     stoc_file_manager,
                     log_manager,
                     worker_id,
                     false,
                     admission_ctrl);
 //用于向stoc写入?
-            auto log_writer = new leveldb::LogCLogWriter(broker, mem_manager,
+            auto log_writer = new leveldb::LogCLogWriter(broker, mem_manager, pm_manager,
                                                          log_manager);
 //
             leveldb::StoCRDMAClient *stoc_client = new leveldb::StoCRDMAClient(
                     worker_id,
                     broker,
                     mem_manager,
+                    pm_manager,
                     log_writer,
                     lower_client_req_id,
                     upper_client_req_id,
@@ -467,7 +477,7 @@ namespace nova {
 //处理后台的线程，几乎一样的方式，这些专门的rdma回调好像是专门给各种功能的thread调用的
         for (int i = 0; i < NovaConfig::config->num_bg_rdma_workers; i++) {
             RDMAAdmissionCtrl *admission_ctrl = new RDMAAdmissionCtrl;
-            RDMAMsgHandler *cc = new RDMAMsgHandler(rdma_ctrl, mem_manager, admission_ctrl);
+            RDMAMsgHandler *cc = new RDMAMsgHandler(rdma_ctrl, mem_manager, pm_manager, admission_ctrl);
             rdma_threads.push_back(cc);
             bg_rdma_msg_handlers.push_back(cc);
             NovaRDMABroker *broker = nullptr;
@@ -501,17 +511,19 @@ namespace nova {
             nova::RDMAServerImpl *rdma_server = new nova::RDMAServerImpl(
                     rdma_ctrl,
                     mem_manager,
+                    pm_manager,
                     stoc_file_manager,
                     log_manager,
                     worker_id,
                     true,
                     admission_ctrl);
-            auto log_writer = new leveldb::LogCLogWriter(broker, mem_manager,
+            auto log_writer = new leveldb::LogCLogWriter(broker, mem_manager, pm_manager,
                                                          log_manager);
             leveldb::StoCRDMAClient *stoc_client = new leveldb::StoCRDMAClient(
                     worker_id,
                     broker,
                     mem_manager,
+                    pm_manager,
                     log_writer,
                     lower_client_req_id,
                     upper_client_req_id,
@@ -533,7 +545,7 @@ namespace nova {
         for (int i = 0; i < NovaConfig::config->num_migration_threads; i++) {
             auto client = new leveldb::StoCBlockClient(i, stoc_file_manager);
             client->rdma_msg_handlers_ = bg_rdma_msg_handlers;
-            DBMigration *migrate = new DBMigration(mem_manager, client, log_manager, stoc_file_manager,
+            DBMigration *migrate = new DBMigration(mem_manager, pm_manager, client, log_manager, stoc_file_manager,
                                                    bg_rdma_msg_handlers, bg_compaction_threads,
                                                    bg_flush_memtable_threads);
             db_migration_threads.push_back(migrate);
@@ -551,9 +563,10 @@ namespace nova {
         for (int i = 0; i < NovaConfig::config->num_conn_workers; i++) {
             conn_workers.push_back(new NICClientReqWorker(i));
             conn_workers[i]->mem_manager_ = mem_manager;
+            conn_workers[i]->pm_manager_ = pm_manager;
 
 //每个connection的线程分配一个max_bloacksize的大小，
-            uint32_t scid = mem_manager->slabclassid(0, MAX_BLOCK_SIZE);
+            uint32_t scid = mem_manager->slabclassid(0, MAX_BLOCK_SIZE); // tbd
             conn_workers[i]->rdma_backing_mem = mem_manager->ItemAlloc(0, scid);
             conn_workers[i]->rdma_backing_mem_size = MAX_BLOCK_SIZE;
             memset(conn_workers[i]->rdma_backing_mem, 0, MAX_BLOCK_SIZE);
@@ -592,7 +605,7 @@ namespace nova {
         leveldb::PosixEnv *mem_env = new leveldb::PosixEnv;
         mem_env->set_env_option(mem_env_option);
         auto user_comparator = new leveldb::YCSBKeyComparator();
-        leveldb::Options storage_options = BuildStorageOptions(mem_manager,
+        leveldb::Options storage_options = BuildStorageOptions(mem_manager, pm_manager,
                                                                mem_env);
         storage_options.comparator = new leveldb::InternalKeyComparator(
                 user_comparator);
@@ -608,6 +621,7 @@ namespace nova {
                     storage_options,
                     client,
                     mem_manager,
+                    pm_manager,
                     i, mem_env);
             bg_storage_workers.push_back(worker);
         }
@@ -622,6 +636,7 @@ namespace nova {
                     storage_options,
                     client,
                     mem_manager,
+                    pm_manager,
                     i, mem_env);
             fg_storage_workers.push_back(worker);
         }
@@ -636,6 +651,7 @@ namespace nova {
                     storage_options,
                     client,
                     mem_manager,
+                    pm_manager,
                     i, mem_env);
             compaction_storage_workers.push_back(worker);
         }

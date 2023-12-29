@@ -46,6 +46,8 @@ namespace leveldb {
 
         virtual MemManager *mem_manager() = 0;
 
+        virtual MemManager *pm_manager() = 0;
+
         virtual uint64_t thread_id() = 0;
 
         virtual uint32_t num_running_tasks() = 0;

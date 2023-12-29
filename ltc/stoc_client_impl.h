@@ -147,11 +147,13 @@ namespace leveldb {
         StoCRDMAClient(uint32_t stoc_client_id,
                        nova::NovaRDMABroker *rdma_broker,
                        nova::NovaMemManager *mem_manager,
+                       nova::NovaPMManager *pm_manager,
                        leveldb::LogCLogWriter *rdma_log_writer,
                        uint32_t lower_req_id, uint32_t upper_req_id,
                        RDMAServer *rdma_server)
                 : stoc_client_id_(stoc_client_id), rdma_broker_(rdma_broker),
                   mem_manager_(mem_manager),
+                  pm_manager_(pm_manager),
                   rdma_log_writer_(rdma_log_writer),
                   lower_req_id_(lower_req_id), upper_req_id_(upper_req_id),
                   current_req_id_(lower_req_id), rdma_server_(rdma_server) {
@@ -244,6 +246,7 @@ namespace leveldb {
         uint32_t stoc_client_id_ = 0;
         nova::NovaRDMABroker *rdma_broker_;
         nova::NovaMemManager *mem_manager_;
+        nova::NovaPMManager *pm_manager_;
         RDMAServer *rdma_server_;
         leveldb::LogCLogWriter *rdma_log_writer_ = nullptr;
 

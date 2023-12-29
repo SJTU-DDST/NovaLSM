@@ -11,6 +11,7 @@
 #include "common/nova_console_logging.h"
 #include "common/nova_common.h"
 #include "common/nova_config.h"
+#include "common/nova_pm_manager.h"
 
 namespace leveldb {
 
@@ -66,30 +67,40 @@ namespace leveldb {
                                            leveldb::Env *env,
                                            std::string filename,
                                            MemManager *mem_manager,
+                                           MemManager *pm_manager,
                                            uint32_t thread_id,
-                                           uint32_t file_size) :
+                                           uint32_t file_size,
+                                           bool is_manifest) :
             file_id_(file_id), env_(env), stoc_file_name_(filename),
-            mem_manager_(mem_manager), thread_id_(thread_id) {
-        EnvFileMetadata meta; // 这个meta没有任何用处
-        meta.level = 0;
-        Status s = env_->NewReadWriteFile(filename, meta, &file_); // 也许会用pm使用 有则直接打开 无则新建
-        NOVA_ASSERT(s.ok()) << s.ToString();
+            mem_manager_(mem_manager), pm_manager_(pm_manager), thread_id_(thread_id),
+            is_pm_file_(IsPMfile(filename)), is_manifest_(is_manifest){
+        if(!is_pm_file_){ // l1层及以上的sstable
+            EnvFileMetadata meta; // 这个meta没有任何用处
+            meta.level = 0;
+            Status s = env_->NewReadWriteFile(filename, meta, &file_); // 也许会用pm使用 有则直接打开 无则新建
+            NOVA_ASSERT(s.ok()) << s.ToString();
 
-        uint32_t scid = mem_manager_->slabclassid(thread_id,
-                                                  file_size);
-        backing_mem_ = mem_manager->ItemAlloc(thread_id, scid);
-        file_size_ = 0;
-        allocated_mem_size_ = file_size;
+            uint32_t scid = mem_manager_->slabclassid(thread_id,
+                                                    file_size);
+            backing_mem_ = mem_manager->ItemAlloc(thread_id, scid);
+            file_size_ = 0;
+            allocated_mem_size_ = file_size;
 
-        NOVA_LOG(rdmaio::DEBUG)
-            << fmt::format(
-                    "StoC file {} created with t:{} file size {} allocated size {}",
-                    file_id_, thread_id,
-                    file_size_, allocated_mem_size_);
+            NOVA_LOG(rdmaio::DEBUG)
+                << fmt::format(
+                        "StoC file {} created with t:{} file size {} allocated size {}",
+                        file_id_, thread_id,
+                        file_size_, allocated_mem_size_);
 
-        NOVA_ASSERT(backing_mem_) << "Running out of memory";
+            NOVA_ASSERT(backing_mem_) << "Running out of memory";
+        }else{ // manifest和l0层sstable
+            mmap_base_ = backing_mem_ = dynamic_cast<nova::NovaPMManager*>(pm_manager_)->ItemAlloc(0, filename);
+            file_size_ = 0;
+            allocated_mem_size_ = file_size;
+        }
     }
 
+// to be done
     Status
     StoCPersistentFile::ReadForReplication(uint64_t offset, uint32_t size,
                                            char *scratch, Slice *result) {
@@ -101,13 +112,19 @@ namespace leveldb {
         reading_cnt++;
         mutex_.unlock();
 
-        StoCBlockHandle h = {};
-        nova::NovaGlobalVariables::global.stoc_queue_depth += 1;
-        nova::NovaGlobalVariables::global.stoc_pending_disk_reads += size;
-        nova::NovaGlobalVariables::global.total_disk_reads += size;
-        Status status = file_->Read(h, offset, size, result, scratch);
-        nova::NovaGlobalVariables::global.stoc_queue_depth -= 1;
-        nova::NovaGlobalVariables::global.stoc_pending_disk_reads -= size;
+        if(!is_pm_file_){ // l1及以上层
+            StoCBlockHandle h = {};
+            nova::NovaGlobalVariables::global.stoc_queue_depth += 1;
+            nova::NovaGlobalVariables::global.stoc_pending_disk_reads += size;
+            nova::NovaGlobalVariables::global.total_disk_reads += size;
+            Status status = file_->Read(h, offset, size, result, scratch);
+            nova::NovaGlobalVariables::global.stoc_queue_depth -= 1;
+            nova::NovaGlobalVariables::global.stoc_pending_disk_reads -= size;
+        }else{ // manifest和l0层sstable
+            nova::NovaGlobalVariables::global.total_disk_reads += size;
+            memcpy(scratch, backing_mem_ + offset, size);
+            *result = Slice(scratch, size);
+        }
 
         mutex_.lock();
         reading_cnt--;
@@ -116,33 +133,43 @@ namespace leveldb {
             deleted_ = true;
             NOVA_LOG(rdmaio::DEBUG) << fmt::format(
                         "Delete  Stoc File {}.", stoc_file_name_);
-            NOVA_ASSERT(file_);
-            Status s = file_->Close();
-            NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
-            delete file_;
-            file_ = nullptr;
-            s = env_->DeleteFile(stoc_file_name_);
-            NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
+            if(!is_pm_file_){ // l1及以上层的sstable
+                NOVA_ASSERT(file_);
+                Status s = file_->Close();
+                NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
+                delete file_;
+                file_ = nullptr;
+                s = env_->DeleteFile(stoc_file_name_);
+                NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
+            }else{
+                dynamic_cast<nova::NovaPMManager*>(pm_manager_)->FreeItem(0, stoc_file_name_, backing_mem_);
+            }
         }
         if (deleted_) {
             mutex_.unlock();
             return Status::NotFound("");
         }
         mutex_.unlock();
-        return status;
+        return Status::OK();
     }
 
     Status
     StoCPersistentFile::Read(uint64_t offset, uint32_t size, char *scratch,
                              Slice *result) {
-        StoCBlockHandle h = {};
-        nova::NovaGlobalVariables::global.stoc_queue_depth += 1;
-        nova::NovaGlobalVariables::global.stoc_pending_disk_reads += size;
-        nova::NovaGlobalVariables::global.total_disk_reads += size;
-        Status status = file_->Read(h, offset, size, result, scratch);
-        nova::NovaGlobalVariables::global.stoc_queue_depth -= 1;
-        nova::NovaGlobalVariables::global.stoc_pending_disk_reads -= size;
-        return status;
+        if(!is_pm_file_){ // l1层及以上的sstable
+            StoCBlockHandle h = {};
+            nova::NovaGlobalVariables::global.stoc_queue_depth += 1;
+            nova::NovaGlobalVariables::global.stoc_pending_disk_reads += size;
+            nova::NovaGlobalVariables::global.total_disk_reads += size;
+            Status status = file_->Read(h, offset, size, result, scratch);
+            nova::NovaGlobalVariables::global.stoc_queue_depth -= 1;
+            nova::NovaGlobalVariables::global.stoc_pending_disk_reads -= size;
+            return status;            
+        }else{ // manifest和l0层的sstable
+            nova::NovaGlobalVariables::global.total_disk_reads += size;
+            memcpy(scratch, backing_mem_ + offset, size); // 直接读出 后面应该不用这样
+            return Status::OK();
+        }
     }
 
 //用来标记persistent文件中哪部分写了没有
@@ -151,238 +178,187 @@ namespace leveldb {
             uint64_t offset) {
         NOVA_ASSERT(given_file_id_for_assertion == file_id_)
             << fmt::format("{} {}", given_file_id_for_assertion, file_id_);
-        bool found = false;
-        mutex_.lock();
-        uint64_t relative_off = offset - (uint64_t) (backing_mem_);
-        for (auto it = allocated_bufs_.rbegin();
-             it != allocated_bufs_.rend(); it++) {
-            if (it->offset == relative_off) {
-                it->written_to_mem = true;
-                found = true;
-                break;
+        if(is_manifest_){
+            bool found = false;
+            mutex_.lock();
+            uint64_t relative_off = offset - (uint64_t) (backing_mem_);
+            for (auto it = allocated_bufs_.rbegin();
+                it != allocated_bufs_.rend(); it++) {
+                if (it->offset == relative_off) {
+                    it->written_to_mem = true;
+                    found = true;
+                    break;
+                }
             }
+            mutex_.unlock();
+            if (!found) {
+                NOVA_LOG(rdmaio::INFO)
+                    << fmt::format("stocfile:{} id:{}", stoc_file_name_,
+                                file_id_);
+            }
+            return found;
+        }else{
+            bool found = false;
+            uint64_t relative_off = offset - (uint64_t) (backing_mem_);
+            if(sstable_buf_.offset == relative_off){
+                sstable_buf_.written_to_mem = true;
+                found = true;
+            }
+            if (!found) {
+                NOVA_LOG(rdmaio::INFO)
+                    << fmt::format("stocfile:{} id:{}", stoc_file_name_,
+                                file_id_);
+            }
+            return found;               
         }
-        mutex_.unlock();
-        if (!found) {
-            NOVA_LOG(rdmaio::INFO)
-                << fmt::format("stocfile:{} id:{}", stoc_file_name_,
-                               file_id_);
-        }
-        return found;
     }
 
     uint64_t StoCPersistentFile::AllocateBuf(const std::string &filename,
                                              uint32_t size,
                                              FileInternalType internal_type) {
-        NOVA_ASSERT(current_mem_offset_ + size <= allocated_mem_size_)
-            << "exceed maximum stoc file size "
-            << size << ","
-            << allocated_mem_size_;
-        leveldb::FileType type = leveldb::FileType::kCurrentFile;
-        NOVA_ASSERT(ParseFileName(filename, &type));
-        mutex_.lock();
-        if (is_full_ || current_mem_offset_ + size > allocated_mem_size_) {
-            Seal();
+        if(is_manifest_){
+            NOVA_ASSERT(current_mem_offset_ + size <= allocated_mem_size_)
+                << "exceed maximum stoc file size "
+                << size << ","
+                << allocated_mem_size_;
+            leveldb::FileType type = leveldb::FileType::kCurrentFile;
+            NOVA_ASSERT(ParseFileName(filename, &type));        
+            mutex_.lock();
+            // if (is_full_ || current_mem_offset_ + size > allocated_mem_size_) {
+            //     Seal();
+            //     mutex_.unlock();
+            //     return UINT64_MAX;
+            // } 
+            NOVA_ASSERT(!is_full_);
+            NOVA_ASSERT(current_mem_offset_ + size <= allocated_mem_size_);       
+            NOVA_ASSERT(!sealed_);
+            uint32_t off = current_mem_offset_;
+            current_mem_offset_ += size;
+            AllocatedBuf allocated_buf = {};
+            allocated_buf.filename = filename;
+            allocated_buf.offset = off;
+            allocated_buf.size = size;
+            allocated_buf.written_to_mem = false;
+            allocated_buf.internal_type = internal_type;
+            allocated_bufs_.push_back(allocated_buf);
+            file_size_ += size;
             mutex_.unlock();
-            return UINT64_MAX;
+            return (uint64_t) (backing_mem_) + off;  
+        }else{
+            leveldb::FileType type = leveldb::FileType::kCurrentFile;
+            NOVA_ASSERT(ParseFileName(filename, &type));
+            mutex_.lock();
+            uint32_t off = current_mem_offset_;
+            // 这里应该可以直接加入 不过无所谓了
+            if (internal_type == FileInternalType::kFileMetadata) {
+                NOVA_ASSERT(file_meta_block_offset_.find(filename) == file_meta_block_offset_.end());
+            } else if (internal_type == FileInternalType::kFileParity) {
+                NOVA_ASSERT(file_parity_block_offset_.find(filename) == file_parity_block_offset_.end());
+            } else if (type == leveldb::FileType::kTableFile) {
+                NOVA_ASSERT(file_block_offset_.find(filename) == file_block_offset_.end());
+            }
+            current_mem_offset_ += size; // 这里大概率直接设置为目标大小了
+            sstable_buf_.filename = filename;
+            sstable_buf_.offset = off;
+            sstable_buf_.size = size;
+            sstable_buf_.written_to_mem = false;
+            sstable_buf_.internal_type = internal_type;
+            //allocated_bufs_.push_back(allocated_buf); 无需加入大的buf
+            file_size_ += size; // 同上
+            mutex_.unlock();
+            return (uint64_t) (backing_mem_) + off; // backing mem已经做过适配了            
         }
-        NOVA_ASSERT(!sealed_);
-        uint32_t off = current_mem_offset_;
-        BlockHandle handle = {};
-        handle.set_offset(off);
-        handle.set_size(size);
-
-        if (internal_type == FileInternalType::kFileMetadata) {
-            NOVA_ASSERT(file_meta_block_offset_.find(filename) == file_meta_block_offset_.end());
-        } else if (internal_type == FileInternalType::kFileParity) {
-            NOVA_ASSERT(file_parity_block_offset_.find(filename) == file_parity_block_offset_.end());
-        } else if (type == leveldb::FileType::kTableFile) {
-            NOVA_ASSERT(file_block_offset_.find(filename) == file_block_offset_.end());
-        }
-
-        current_mem_offset_ += size;
-        AllocatedBuf allocated_buf = {};
-        allocated_buf.filename = filename;
-        allocated_buf.offset = off;
-        allocated_buf.size = size;
-        allocated_buf.written_to_mem = false;
-        allocated_buf.internal_type = internal_type;
-        allocated_bufs_.push_back(allocated_buf);
-        file_size_ += size;
-        mutex_.unlock();
-        return (uint64_t) (backing_mem_) + off;
     }
 
     uint64_t
     StoCPersistentFile::Persist(uint32_t given_file_id_for_assertion) {
         NOVA_ASSERT(given_file_id_for_assertion == file_id_)
             << fmt::format("{} {}", given_file_id_for_assertion, file_id_);
-
-        uint64_t persisted_bytes = 0;
-        mutex_.lock();
-        if (allocated_bufs_.empty()) {
-            Seal();
-            mutex_.unlock();
-            return persisted_bytes;
-        }
-
-        // sequential IOs to disk.
-        auto buf = allocated_bufs_.begin();
-        while (buf != allocated_bufs_.end()) {
-            if (!buf->written_to_mem) {
-                buf++;
-                continue;
+        if(is_manifest_){
+            uint64_t persisted_bytes = 0;
+            mutex_.lock();
+            if (allocated_bufs_.empty()) {
+                Seal();
+                mutex_.unlock();
+                return persisted_bytes;
             }
 
+            auto buf = allocated_bufs_.begin();
+            while (buf != allocated_bufs_.end()) {
+                if (!buf->written_to_mem) {
+                    buf++;
+                    continue;
+                }
+                leveldb::FileType type = leveldb::FileType::kCurrentFile;
+                NOVA_ASSERT(leveldb::ParseFileName(buf->filename, &type));
+    // 在这里加入当前handle的信息 改为确认是manifest
+                NOVA_ASSERT(type == leveldb::FileType::kDescriptorFile);
+                StoCPersistStatus &s = file_block_offset_[buf->filename]; // 对于manifest来说好像无所谓因为不会读取这个所谓的handle?
+                s.disk_handle.set_offset(current_disk_offset_);
+                s.disk_handle.set_size(buf->size);
+                s.persisted = true;
+                current_disk_offset_ += buf->size;
+                // nova::NovaGlobalVariables::global.total_disk_writes += buf->size;
+                persisted_bytes += buf->size; // 直接persist了
+                buf = allocated_bufs_.erase(buf);
+            }
+            NOVA_ASSERT(current_disk_offset_ <= file_size_);
+            mutex_.unlock();
+        }else{
+            uint64_t persisted_bytes = 0;
             leveldb::FileType type = leveldb::FileType::kCurrentFile;
-            NOVA_ASSERT(leveldb::ParseFileName(buf->filename, &type));
-
-            if (buf->internal_type == FileInternalType::kFileMetadata) {
+            NOVA_ASSERT(leveldb::ParseFileName(sstable_buf_.filename, &type));
+            mutex_.lock();
+            NOVA_ASSERT(!sstable_buf_.filename.empty());     
+            if (sstable_buf_.internal_type == FileInternalType::kFileMetadata) {
                 NOVA_ASSERT(
-                        file_meta_block_offset_.find(buf->filename) ==
+                        file_meta_block_offset_.find(sstable_buf_.filename) ==
                         file_meta_block_offset_.end());
-                StoCPersistStatus &s = file_meta_block_offset_[buf->filename];
+                StoCPersistStatus &s = file_meta_block_offset_[sstable_buf_.filename];
                 s.disk_handle.set_offset(current_disk_offset_);
-                s.disk_handle.set_size(buf->size);
-                s.persisted = false;
-            } else if (buf->internal_type == FileInternalType::kFileParity) {
+                s.disk_handle.set_size(sstable_buf_.size);
+                s.persisted = true;
+            } else if (sstable_buf_.internal_type == FileInternalType::kFileParity) {
                 NOVA_ASSERT(
-                        file_parity_block_offset_.find(buf->filename) ==
+                        file_parity_block_offset_.find(sstable_buf_.filename) ==
                         file_parity_block_offset_.end());
-                StoCPersistStatus &s = file_parity_block_offset_[buf->filename];
+                StoCPersistStatus &s = file_parity_block_offset_[sstable_buf_.filename];
                 s.disk_handle.set_offset(current_disk_offset_);
-                s.disk_handle.set_size(buf->size);
-                s.persisted = false;
+                s.disk_handle.set_size(sstable_buf_.size);
+                s.persisted = true;
             } else {
                 if (type == leveldb::FileType::kTableFile) {
                     NOVA_ASSERT(
-                            file_block_offset_.find(buf->filename) ==
+                            file_block_offset_.find(sstable_buf_.filename) ==
                             file_block_offset_.end());
                 }
-                StoCPersistStatus &s = file_block_offset_[buf->filename];
+                StoCPersistStatus &s = file_block_offset_[sstable_buf_.filename];
                 s.disk_handle.set_offset(current_disk_offset_);
-                s.disk_handle.set_size(buf->size);
-                s.persisted = false;
+                s.disk_handle.set_size(sstable_buf_.size);
+                s.persisted = true;
             }
-
-            BlockHandle mem_handle = {};
-            mem_handle.set_offset(buf->offset);
-            mem_handle.set_size(buf->size);
-            persisting_cnt += 1;
-            current_disk_offset_ += buf->size;
-
-            BatchWrite bw = {};
-            bw.mem_handle.set_offset(buf->offset);
-            bw.mem_handle.set_size(buf->size);
-            bw.sstable = buf->filename;
-            bw.internal_type = buf->internal_type;
-            written_mem_blocks_.push_back(bw);
-            buf = allocated_bufs_.erase(buf);
-        }
-
-        NOVA_ASSERT(current_disk_offset_ <= file_size_);
-        mutex_.unlock();
-
-        persist_mutex_.lock();
-        // Make a copy of written_mem_blocks.
-        mutex_.lock();
-        std::vector<BatchWrite> writes;
-        for (int i = 0; i < written_mem_blocks_.size(); i++) {
-            writes.push_back(written_mem_blocks_[i]);
-        }
-        if (writes.empty()) {
-            Seal();
-        }
-        mutex_.unlock();
-
-        if (writes.empty()) {
-            persist_mutex_.unlock();
-            return persisted_bytes;
-        }
-
-
-        int i = 1;
-        int persisted_i = 0;
-        uint64_t offset = writes[0].mem_handle.offset();
-        uint64_t size = writes[0].mem_handle.size();
-        while (i < writes.size()) {
-            if (offset + size == writes[i].mem_handle.offset()) {
-                size += writes[i].mem_handle.size();
-                i++;
-                continue;
-            }
-
-            // persist offset -> size.
-            nova::NovaGlobalVariables::global.stoc_queue_depth += 1;
-            nova::NovaGlobalVariables::global.stoc_pending_disk_writes += size;
-            nova::NovaGlobalVariables::global.total_disk_writes += size;
-            persisted_bytes += size;
-
-            Status s = file_->Append(Slice(backing_mem_ + offset, size));
-            NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
-            s = file_->Sync();
-            NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
-
-            nova::NovaGlobalVariables::global.stoc_queue_depth -= 1;
-            nova::NovaGlobalVariables::global.stoc_pending_disk_writes -= size;
-
-            mutex_.lock();
-            for (int j = persisted_i; j < i; j++) {
-                if (writes[j].internal_type == FileInternalType::kFileMetadata) {
-                    NOVA_ASSERT(file_meta_block_offset_.find(writes[j].sstable) != file_meta_block_offset_.end());
-                    file_meta_block_offset_[writes[j].sstable].persisted = true;
-                } else if (writes[j].internal_type == FileInternalType::kFileParity) {
-                    NOVA_ASSERT(file_parity_block_offset_.find(writes[j].sstable) != file_parity_block_offset_.end());
-                    file_parity_block_offset_[writes[j].sstable].persisted = true;
-                } else {
-                    NOVA_ASSERT(file_block_offset_.find(writes[j].sstable) != file_block_offset_.end());
-                    file_block_offset_[writes[j].sstable].persisted = true;
-                }
-                persisting_cnt -= 1;
-            }
+            // persist cnt不用改因为rdma写过来就是写完了
+            current_disk_offset_ += sstable_buf_.size;
+            NOVA_ASSERT(current_disk_offset_ <= file_size_);
             mutex_.unlock();
-            persisted_i = i;
-            offset = writes[i].mem_handle.offset();
-            size = writes[i].mem_handle.size();
-            i += 1;
+
+            nova::NovaGlobalVariables::global.total_disk_writes += sstable_buf_.size;
+            persisted_bytes += sstable_buf_.size;
+
+            // mutex_.lock();            
+            // if (sstable_buf_.internal_type == FileInternalType::kFileMetadata) {
+            //     NOVA_ASSERT(file_meta_block_offset_.find(sstable_buf_.filename) != file_meta_block_offset_.end());
+            //     file_meta_block_offset_[sstable_buf_.filename].persisted = true;
+            // } else if (sstable_buf_.internal_type == FileInternalType::kFileParity) {
+            //     NOVA_ASSERT(file_parity_block_offset_.find(sstable_buf_.filename) != file_parity_block_offset_.end());
+            //     file_parity_block_offset_[sstable_buf_.filename].persisted = true;
+            // } else {
+            //     NOVA_ASSERT(file_block_offset_.find(sstable_buf_.filename) != file_block_offset_.end());
+            //     file_block_offset_[sstable_buf_.filename].persisted = true;
+            // }
+            // mutex_.unlock();
+            return persisted_bytes;                   
         }
-        // Persist the last range.
-        nova::NovaGlobalVariables::global.stoc_queue_depth += 1;
-        nova::NovaGlobalVariables::global.stoc_pending_disk_writes += size;
-        nova::NovaGlobalVariables::global.total_disk_writes += size;
-        persisted_bytes += size;
-
-        Status s = file_->Append(Slice(backing_mem_ + offset, size));
-        NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
-        s = file_->Sync();
-        NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
-
-        nova::NovaGlobalVariables::global.stoc_queue_depth -= 1;
-        nova::NovaGlobalVariables::global.stoc_pending_disk_writes -= size;
-
-        mutex_.lock();
-        for (int j = persisted_i; j < writes.size(); j++) {
-            if (writes[j].internal_type == FileInternalType::kFileMetadata) {
-                NOVA_ASSERT(file_meta_block_offset_.find(writes[j].sstable) != file_meta_block_offset_.end());
-                file_meta_block_offset_[writes[j].sstable].persisted = true;
-            } else if (writes[j].internal_type == FileInternalType::kFileParity) {
-                NOVA_ASSERT(file_parity_block_offset_.find(writes[j].sstable) != file_parity_block_offset_.end());
-                file_parity_block_offset_[writes[j].sstable].persisted = true;
-            } else {
-                NOVA_ASSERT(file_block_offset_.find(writes[j].sstable) != file_block_offset_.end());
-                file_block_offset_[writes[j].sstable].persisted = true;
-            }
-            persisting_cnt -= 1;
-        }
-        mutex_.unlock();
-
-        mutex_.lock();
-        written_mem_blocks_.erase(written_mem_blocks_.begin(),
-                                  written_mem_blocks_.begin() + writes.size());
-        Seal();
-        mutex_.unlock();
-        persist_mutex_.unlock();
-        return persisted_bytes;
     }
 
 // 删除当前这个文件
@@ -442,14 +418,20 @@ namespace leveldb {
             return false;
         }
         NOVA_LOG(rdmaio::DEBUG) << fmt::format("Delete SSTable {} from Stoc File {}.", filename, stoc_file_name_);
-        NOVA_ASSERT(file_);
-        Status s = file_->Close();
-        NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
-        delete file_;
-        file_ = nullptr;
-        s = env_->DeleteFile(stoc_file_name_);
-        NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
-        return true;
+
+        if(!is_pm_file_){
+            NOVA_ASSERT(file_);
+            Status s = file_->Close();
+            NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
+            delete file_;
+            file_ = nullptr;
+            s = env_->DeleteFile(stoc_file_name_);
+            NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
+            return true;
+        }else{
+            dynamic_cast<nova::NovaPMManager*>(pm_manager_)->FreeItem(0, stoc_file_name_, backing_mem_); //待会改成mmap_base最好
+            return true;            
+        }
     }
 
     void StoCPersistentFile::Close() {
@@ -458,13 +440,16 @@ namespace leveldb {
         NOVA_ASSERT(persisting_cnt == 0);
         is_full_ = true;
         Seal();
-
-        NOVA_ASSERT(file_);
-        Status s = file_->Close();
-        NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
-        delete file_;
-        file_ = nullptr;
-        mutex_.unlock();
+        if(!is_pm_file_){ // l1及以上层
+            NOVA_ASSERT(file_);
+            Status s = file_->Close();
+            NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
+            delete file_;
+            file_ = nullptr;
+            mutex_.unlock();            
+        }else{
+            ;
+        }
     }
 
     void StoCPersistentFile::ForceSeal() {
@@ -499,10 +484,17 @@ namespace leveldb {
                     file_id_, thread_id_,
                     file_size_, allocated_mem_size_);
         NOVA_ASSERT(backing_mem_);
-        uint32_t scid = mem_manager_->slabclassid(thread_id_,
-                                                  allocated_mem_size_);
-        mem_manager_->FreeItem(thread_id_, backing_mem_, scid);
-        backing_mem_ = nullptr;
+        if(!is_pm_file_){
+            uint32_t scid = mem_manager_->slabclassid(thread_id_,
+                                                    allocated_mem_size_);
+            mem_manager_->FreeItem(thread_id_, backing_mem_, scid);
+            backing_mem_ = nullptr;
+        }else{
+            mmap_base_ = backing_mem_;
+            backing_mem_ = nullptr;
+        }
+
+
     }
 
     BlockHandle
@@ -672,7 +664,8 @@ namespace leveldb {
                     fileid, env_,
                     fn,
                     mem_manager_,
-                    0, stoc_file_size_);
+                    pm_manager_,
+                    0, stoc_file_size_, false);
             stoc_file->ForceSeal();
             NOVA_ASSERT(stoc_files_[fileid] == nullptr)
                 << fmt::format("{} {} {}", fileid, it.first,
@@ -721,8 +714,10 @@ namespace leveldb {
         StoCPersistentFile *stoc_file = new StoCPersistentFile(id, env_,
                                                                filename,
                                                                mem_manager_,
+                                                               pm_manager_,
                                                                thread_id,
-                                                               file_size);
+                                                               file_size,
+                                                               (type == FileType::kDescriptorFile));
         mutex_.lock();
         NOVA_ASSERT(stoc_files_[id] == nullptr);
         stoc_files_[id] = stoc_file;
@@ -763,9 +758,10 @@ namespace leveldb {
     StocPersistentFileManager::StocPersistentFileManager(
             leveldb::Env *env,
             leveldb::MemManager *mem_manager,
+            leveldb::MemManager *pm_manager,
             const std::string &stoc_file_path,
             uint32_t stoc_file_size) :
-            env_(env), mem_manager_(mem_manager),
+            env_(env), mem_manager_(mem_manager), pm_manager_(pm_manager),
             stoc_file_path_(stoc_file_path),
             stoc_file_size_(stoc_file_size) {
     }

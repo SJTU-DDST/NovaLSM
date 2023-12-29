@@ -35,8 +35,9 @@ namespace nova {
     public:
         RDMAMsgHandler(RdmaCtrl *rdma_ctrl,
                        NovaMemManager *mem_manager,
+                       NovaPMManager *pm_manager,
                        RDMAAdmissionCtrl *admission_control) :
-                rdma_ctrl_(rdma_ctrl), mem_manager_(mem_manager),
+                rdma_ctrl_(rdma_ctrl), mem_manager_(mem_manager), pm_manager_(pm_manager),
                 admission_control_(admission_control) {
             stat_tasks_ = 0;
             sem_init(&sem_, 0, 0);
@@ -91,6 +92,7 @@ namespace nova {
         std::list<RequestCtx> pending_reqs_;
         RdmaCtrl *rdma_ctrl_ = nullptr;
         NovaMemManager *mem_manager_ = nullptr;
+        NovaPMManager *pm_manager_ = nullptr;
         bool is_running_ = false;
         RDMAAdmissionCtrl *admission_control_ = nullptr;
         leveldb::port::Mutex mutex_;

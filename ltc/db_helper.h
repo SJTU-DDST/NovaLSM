@@ -47,6 +47,7 @@ namespace leveldb {
     BuildDBOptions(int cfg_id, int db_index, leveldb::Cache *cache,
                    leveldb::MemTablePool *memtable_pool,
                    leveldb::MemManager *mem_manager,
+                   leveldb::MemManager *pm_manager,
                    leveldb::StoCClient *stoc_client,
                    const std::vector<leveldb::EnvBGThread *> &bg_compaction_threads,
                    const std::vector<leveldb::EnvBGThread *> &bg_flush_memtable_threads,
@@ -54,12 +55,13 @@ namespace leveldb {
                    leveldb::EnvBGThread *compaction_coord_thread,
                    leveldb::Env *env);
 
-    leveldb::Options BuildStorageOptions(leveldb::MemManager *mem_manager,
+    leveldb::Options BuildStorageOptions(leveldb::MemManager *mem_manager, leveldb::MemManager *pm_manager,
                                          leveldb::Env *env);
 
     leveldb::DB *CreateDatabase(int cfg_id, int db_index, leveldb::Cache *cache,
                                 leveldb::MemTablePool *memtable_pool,
                                 leveldb::MemManager *mem_manager,
+                                leveldb::MemManager *pm_manager,
                                 leveldb::StoCClient *stoc_client,
                                 const std::vector<leveldb::EnvBGThread *> &bg_compaction_threads,
                                 const std::vector<leveldb::EnvBGThread *> &bg_flush_memtable_threads,

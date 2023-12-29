@@ -20,8 +20,8 @@ namespace leveldb {
     class StoCPersistentFile {
     public:
         StoCPersistentFile(uint32_t file_id, Env *env, std::string filename,
-                           MemManager *mem_manager,
-                           uint32_t thread_id, uint32_t file_size);
+                           MemManager *mem_manager, MemManager *pm_manager,
+                           uint32_t thread_id, uint32_t file_size, bool is_manifest);
 
         Status
         Read(uint64_t offset, uint32_t size, char *scratch, Slice *result);
@@ -55,6 +55,8 @@ namespace leveldb {
         }
 
         std::string stoc_file_name_;
+        bool is_pm_file_;
+        bool is_manifest_;
     private:
 
         void Seal();
@@ -85,12 +87,15 @@ namespace leveldb {
         std::unordered_map<std::string, StoCPersistStatus> file_meta_block_offset_;
         std::unordered_map<std::string, StoCPersistStatus> file_parity_block_offset_;
 
+        AllocatedBuf sstable_buf_;
         std::list<AllocatedBuf> allocated_bufs_;
         bool is_full_ = false;
         bool sealed_ = false;
 
         MemManager *mem_manager_ = nullptr;
+        MemManager *pm_manager_ = nullptr;
         char *backing_mem_ = nullptr;
+        char *mmap_base_ = nullptr;
         uint64_t current_disk_offset_ = 0;
         uint64_t current_mem_offset_ = 0;
         uint32_t file_size_ = 0;
@@ -113,6 +118,7 @@ namespace leveldb {
     public:
         StocPersistentFileManager(Env *env,
                                   MemManager *mem_manager,
+                                  MemManager *pm_manager,
                                   const std::string &stoc_file_path,
                                   uint32_t stoc_file_size);
 
@@ -139,6 +145,7 @@ namespace leveldb {
     private:
         Env *env_ = nullptr;
         MemManager *mem_manager_ = nullptr;
+        MemManager *pm_manager_ = nullptr;
         uint32_t stoc_file_size_ = 0;
         std::string stoc_file_path_;
         // 0 is reserved so that read knows to fetch the block from a local file.

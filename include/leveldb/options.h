@@ -75,6 +75,7 @@ namespace leveldb {
         bool debug = false;
 
         MemManager *mem_manager = nullptr;
+        MemManager *pm_manager = nullptr;
         uint32_t num_recovery_thread = 0;
 
         StoCClient *stoc_client = nullptr;
@@ -251,6 +252,7 @@ namespace leveldb {
         uint32_t cfg_id;
 
         MemManager *mem_manager = nullptr;
+        MemManager *pm_manager = nullptr;
 
         StoCClient *stoc_client = nullptr;
         char *rdma_backing_mem = nullptr;

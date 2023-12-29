@@ -28,12 +28,13 @@ namespace nova {
             const leveldb::Options &options,
             leveldb::StoCClient *client,
             leveldb::MemManager *mem_manager,
+            leveldb::MemManager *pm_manager,
             uint64_t thread_id, leveldb::Env *env)
             : stoc_file_manager_(
             stoc_file_manager), rdma_servers_(rdma_servers), user_comparator_(
             user_comparator), options_(options), icmp_(user_comparator),
               client_(client),
-              mem_manager_(mem_manager), thread_id_(thread_id), env_(env) {
+              mem_manager_(mem_manager), pm_manager_(pm_manager), thread_id_(thread_id), env_(env) {
         stat_tasks_ = 0;
         stat_read_bytes_ = 0;
         stat_write_bytes_ = 0;

@@ -16,6 +16,7 @@
 namespace nova {
 //都是初始化
     DBMigration::DBMigration(leveldb::MemManager *mem_manager,
+                             leveldb::MemManager *pm_manager,
                              leveldb::StoCBlockClient *client,
                              nova::StoCInMemoryLogFileManager *log_manager,
                              leveldb::StocPersistentFileManager *stoc_file_manager,
@@ -24,6 +25,7 @@ namespace nova {
                              const std::vector<leveldb::EnvBGThread *> &bg_flush_memtable_threads)
             :
             mem_manager_(mem_manager),
+            pm_manager_(pm_manager),
             client_(client),
             log_manager_(log_manager),
             stoc_file_manager_(stoc_file_manager),
@@ -261,10 +263,10 @@ namespace nova {
         NOVA_LOG(rdmaio::INFO)
             << fmt::format("!!!!!Recover {} {} {} {} {} {}", cfg_id, dbindex, version_id, last_sequence,
                            next_file_number, memtable_id_seq);
-        auto reorg = new leveldb::LTCCompactionThread(mem_manager_);
-        auto coord = new leveldb::LTCCompactionThread(mem_manager_);
+        auto reorg = new leveldb::LTCCompactionThread(mem_manager_, pm_manager_);
+        auto coord = new leveldb::LTCCompactionThread(mem_manager_, pm_manager_);
         auto client = new leveldb::StoCBlockClient(dbindex, stoc_file_manager_);
-        auto db = CreateDatabase(cfg_id, dbindex, nullptr, nullptr, mem_manager_, client, bg_compaction_threads_,
+        auto db = CreateDatabase(cfg_id, dbindex, nullptr, nullptr, mem_manager_, pm_manager_, client, bg_compaction_threads_,
                                  bg_flush_memtable_threads_, reorg, coord);
         coord->db_ = db;
         coord->stoc_client_ = new leveldb::StoCBlockClient(dbindex, stoc_file_manager_);

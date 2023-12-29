@@ -16,7 +16,7 @@
 #include "common/nova_config.h"
 
 namespace leveldb {
-//用这个函数建立了manifest文件，这个文件应该放置于stoc?
+//用这个函数建立了manifest文件，这个文件应该放置于stoc? 这里的env模式全是mem
 // done ltc用于向stoc写
     StoCWritableFileClient::StoCWritableFileClient(Env *env,
                                                    const Options &options,

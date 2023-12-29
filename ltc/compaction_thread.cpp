@@ -9,8 +9,8 @@
 namespace leveldb {
 
 //初始化一些东西
-    LTCCompactionThread::LTCCompactionThread(MemManager *mem_manager)
-            : mem_manager_(mem_manager) {
+    LTCCompactionThread::LTCCompactionThread(MemManager *mem_manager, MemManager *pm_manager)
+            : mem_manager_(mem_manager), pm_manager_(pm_manager) {
         sem_init(&signal, 0, 0);
         for (int i = 0; i < BUCKET_SIZE; i++) {
             memtable_size[i] = 0;

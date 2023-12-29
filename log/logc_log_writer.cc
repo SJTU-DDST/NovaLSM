@@ -17,8 +17,9 @@ namespace leveldb {
 // "*dest" must remain live while this Writer is in use.
     LogCLogWriter::LogCLogWriter(nova::NovaRDMABroker *rdma_broker,
                                  MemManager *mem_manager,
+                                 MemManager *pm_manager,
                                  nova::StoCInMemoryLogFileManager *log_manager)
-            : rdma_broker_(rdma_broker), mem_manager_(mem_manager),
+            : rdma_broker_(rdma_broker), mem_manager_(mem_manager), pm_manager_(pm_manager),
               log_manager_(log_manager) {
     }
 

@@ -38,6 +38,7 @@ namespace nova {
     public:
         DBMigration(
                 leveldb::MemManager *mem_manager,
+                leveldb::MemManager *pm_manager,
                 leveldb::StoCBlockClient *client,
                 nova::StoCInMemoryLogFileManager *log_manager,
                 leveldb::StocPersistentFileManager *stoc_file_manager,
@@ -76,6 +77,7 @@ namespace nova {
         std::vector<std::thread> threads_for_new_dbs_;
 
         leveldb::MemManager *mem_manager_ = nullptr;
+        leveldb::MemManager *pm_manager_ = nullptr;
         leveldb::StoCBlockClient *client_ = nullptr;
         nova::StoCInMemoryLogFileManager *log_manager_ = nullptr;
         leveldb::StocPersistentFileManager *stoc_file_manager_ = nullptr;

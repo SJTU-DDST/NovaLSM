@@ -11,6 +11,7 @@
 
 #include "db/memtable.h"
 #include "common/nova_mem_manager.h"
+#include "common/nova_pm_manager.h"
 #include "db/dbformat.h"
 #include "leveldb/log_writer.h"
 

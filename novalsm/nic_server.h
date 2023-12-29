@@ -9,6 +9,7 @@
 
 #include "leveldb/db_types.h"
 #include "common/nova_mem_manager.h"
+#include "common/nova_pm_manager.h"
 #include "client_req_worker.h"
 #include "common/nova_config.h"
 #include "rdma/nova_rdma_broker.h"
@@ -61,6 +62,7 @@ namespace nova {
 
         std::vector<leveldb::DB *> dbs_;
         NovaMemManager *mem_manager;
+        NovaPMManager *pm_manager;
         StoCInMemoryLogFileManager *log_manager;
 
         std::vector<NICClientReqWorker *> conn_workers;

@@ -78,6 +78,10 @@ namespace leveldb {
     bool ParseFileName(const std::string &filename,
                        FileType *type);
 
+    bool IsPMfile(const std::string &filename);
+
+    bool ParseDBindexFromFilename(const std::string &filename, int *index);
+
 // Make the CURRENT file point to the descriptor file with the
 // specified number.
 //    Status SetCurrentFile(Env *env, const std::string &dbname,

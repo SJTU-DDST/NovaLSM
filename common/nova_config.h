@@ -215,6 +215,7 @@ namespace nova {
         uint32_t major_compaction_max_tables_in_a_set = 0;
 
         uint64_t mem_pool_size_gb = 0;
+        uint64_t pm_pool_size_gb = 0;
         uint32_t num_mem_partitions = 0;
         char *nova_buf = nullptr;
         uint64_t nnovabuf = 0;

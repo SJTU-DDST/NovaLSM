@@ -192,4 +192,21 @@ namespace leveldb {
 //        return s;
 //    }
 
+// manifest也放进pm里面
+    bool IsPMfile(const std::string &filename){
+        size_t found = filename.find("pm");
+        size_t foundm = filename.find("MANIFEST");
+        if (found != std::string::npos || foundm != std::string::npos) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+// tbd
+    bool ParseDBindexFromFilename(const std::string &filename, int *index){
+        *index = 0;
+        return true;
+    }
+
 }  // namespace leveldb

@@ -195,6 +195,10 @@ namespace nova {
     std::string
     DBName(const std::string &dbname, uint32_t index);
 
+    std::string PMpoolName(const std::string &pm_path);
+
+    std::string PMpoolMetaName(const std::string &pm_pool_name);
+
 // done
     void ParseDBIndexFromDBName(const std::string &dbname,
                                 uint32_t *index);

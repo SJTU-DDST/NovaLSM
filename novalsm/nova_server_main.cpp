@@ -35,7 +35,7 @@ DEFINE_int64(server_id, -1, "Server id.");//当前这个server的id
 DEFINE_int64(number_of_ltcs, 0, "The first n are LTCs and the rest are StoCs.");//ltc的数量，剩下的都是stoc 这个没有意义
 
 DEFINE_uint64(mem_pool_size_gb, 0, "Memory pool size in GB."); //内存池大小，GB为单位 一般申请30个g 那pm也申请30个G算了
-DEFINE_uint64(pmem_pool_size_gb, 0, "Persistent Memory pool size in GB"); //pm池子大小，GB为单位 似乎不需要用平常的模式pm send
+DEFINE_uint64(pm_pool_size_gb, 0, "Persistent Memory pool size in GB"); //pm池子大小，GB为单位 似乎不需要用平常的模式pm send
 
 DEFINE_uint64(use_fixed_value_size, 0, "Fixed value size.");//使用的value的固定大小
 
@@ -150,7 +150,7 @@ NovaGlobalVariables NovaGlobalVariables::global;//全局统计量
 //开启服务器
 void StartServer() {
 //rdma的管理器
-    RdmaCtrl *rdma_ctrl = new RdmaCtrl(NovaConfig::config->my_server_id,
+    RdmaCtrl *rdma_ctrl = new RdmaCtrl(NovaConfig::config->my_server_id, // 这里就等着连接
                                        NovaConfig::config->rdma_port);
 //    if (NovaConfig::config->my_server_id < FLAGS_number_of_ltcs) {
 //        NovaConfig::config->mem_pool_size_gb = 10;
@@ -159,13 +159,15 @@ void StartServer() {
     uint64_t nrdmatotal = nrdma_buf_server();
     uint64_t ntotal = nrdmatotal;
     ntotal += NovaConfig::config->mem_pool_size_gb * 1024 * 1024 * 1024;
+    uint64_t ndram = ntotal; // dram的长度
+    ntotal += NovaConfig::config->pm_pool_size_gb * 1024 * 1024 * 1024; // 加上 pm pool的大小 rdma + 30G + 30G
     NOVA_LOG(INFO) << "Allocated buffer size in bytes: " << ntotal;
 
-    auto *buf = (char *) malloc(ntotal);
-    memset(buf, 0, ntotal);
+    auto *buf = (char *)aligned_alloc(4096, ndram);//(char *) malloc(ntotal); 改为对齐分配
+    memset(buf, 0, ndram); //pm的区域不用清理
     NovaConfig::config->nova_buf = buf; // 所有空间的开始 这里所有空间rdma都可以接收发送
 //nnovabuf是结尾
-    NovaConfig::config->nnovabuf = ntotal; // 所有空间的大小
+    NovaConfig::config->nnovabuf = ndram; // ntotal; // 所有空间的大小(包括了) dram的空间
     NOVA_ASSERT(buf != NULL) << "Not enough memory";
 
 //如果不恢复数据库，直接删除文件
@@ -210,6 +212,7 @@ int main(int argc, char *argv[]) {
     NovaConfig::config->stoc_files_path = FLAGS_stoc_files_path;
 
     NovaConfig::config->mem_pool_size_gb = FLAGS_mem_pool_size_gb;
+    NovaConfig::config->pm_pool_size_gb = FLAGS_pm_pool_size_gb;
     NovaConfig::config->load_default_value_size = FLAGS_use_fixed_value_size;
     // RDMA
     NovaConfig::config->rdma_port = FLAGS_rdma_port;

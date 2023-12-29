@@ -515,6 +515,7 @@ namespace leveldb {
         return Status::OK();
     }
 
+// 全是mem模式
     Status PosixEnv::NewRandomAccessFile(const std::string &filename,
                                          RandomAccessFile **result) {
         *result = nullptr;
@@ -586,6 +587,8 @@ namespace leveldb {
                NovaSSTableMode::SSTABLE_HYBRID;
     }
 
+// 本地留存了元数据的信息 也就是sstable meta相关的
+// 全部都是memtable模式
     Status PosixEnv::NewWritableFile(const std::string &filename,
                                      const EnvFileMetadata &metadata,
                                      WritableFile **result) {

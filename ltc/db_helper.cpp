@@ -19,6 +19,7 @@
 
 #include "leveldb/db_types.h"
 #include "common/nova_mem_manager.h"
+#include "common/nova_pm_manager.h"
 #include "common/nova_config.h"
 #include "rdma/nova_rdma_broker.h"
 #include "rdma/nova_rdma_rc_broker.h"
@@ -34,6 +35,7 @@ namespace leveldb {
     BuildDBOptions(int cfg_id, int db_index, leveldb::Cache *cache,
                    leveldb::MemTablePool *memtable_pool,
                    leveldb::MemManager *mem_manager,
+                   leveldb::MemManager *pm_manager,
                    leveldb::StoCClient *stoc_client,
                    const std::vector<leveldb::EnvBGThread *> &bg_compaction_threads,
                    const std::vector<leveldb::EnvBGThread *> &bg_flush_memtable_threads,
@@ -57,6 +59,7 @@ namespace leveldb {
             options.client_access_pattern = ClientAccessPattern::kClientAccessSkewed;
         }
         options.mem_manager = mem_manager;
+        options.pm_manager = pm_manager;
         options.stoc_client = stoc_client;
         options.num_memtable_partitions = nova::NovaConfig::config->num_memtable_partitions;
         options.num_memtables = nova::NovaConfig::config->num_memtables;
@@ -127,7 +130,7 @@ namespace leveldb {
     }
 
 //设置了关于存储的选项 最大的重点在于sstable_mem
-    leveldb::Options BuildStorageOptions(leveldb::MemManager *mem_manager, leveldb::Env *env) {
+    leveldb::Options BuildStorageOptions(leveldb::MemManager *mem_manager, leveldb::MemManager *pm_manager, leveldb::Env *env) {
         leveldb::Options options;
         options.block_cache = nullptr;
         options.memtable_pool = nullptr;
@@ -138,6 +141,7 @@ namespace leveldb {
             options.max_file_size = nova::NovaConfig::config->sstable_size;
         }
         options.mem_manager = mem_manager;
+        options.pm_manager = pm_manager;
         options.stoc_client = nullptr;
         options.num_memtable_partitions = nova::NovaConfig::config->num_memtable_partitions;
         options.num_memtables = nova::NovaConfig::config->num_memtables;
@@ -170,6 +174,7 @@ namespace leveldb {
     leveldb::DB *CreateDatabase(int cfg_id, int db_index, leveldb::Cache *cache,
                                 leveldb::MemTablePool *memtable_pool,
                                 leveldb::MemManager *mem_manager,
+                                leveldb::MemManager *pm_manager,
                                 leveldb::StoCClient *stoc_client,
                                 const std::vector<leveldb::EnvBGThread *> &bg_compaction_threads,
                                 const std::vector<leveldb::EnvBGThread *> &bg_flush_memtable_threads,
@@ -185,6 +190,7 @@ namespace leveldb {
         leveldb::Options options = BuildDBOptions(cfg_id, db_index, cache,
                                                   memtable_pool,
                                                   mem_manager,
+                                                  pm_manager,
                                                   stoc_client,
                                                   bg_compaction_threads,
                                                   bg_flush_memtable_threads,

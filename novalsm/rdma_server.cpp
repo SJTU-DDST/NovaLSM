@@ -30,6 +30,7 @@ namespace nova {
 //处理当前的这个worker的rdma的客户端请求
     RDMAServerImpl::RDMAServerImpl(rdmaio::RdmaCtrl *rdma_ctrl,
                                    NovaMemManager *mem_manager,
+                                   NovaPMManager *pm_manager,
                                    leveldb::StocPersistentFileManager *stoc_file_manager,
                                    StoCInMemoryLogFileManager *log_manager,
                                    uint32_t thread_id,
@@ -37,6 +38,7 @@ namespace nova {
                                    RDMAAdmissionCtrl *admission_control)
             : rdma_ctrl_(rdma_ctrl),
               mem_manager_(mem_manager),
+              pm_manager_(pm_manager),
               stoc_file_manager_(stoc_file_manager),
               log_manager_(log_manager), thread_id_(thread_id),
               is_compaction_thread_(is_compaction_thread),

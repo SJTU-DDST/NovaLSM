@@ -19,6 +19,7 @@
 #include "common/nova_common.h"
 #include "common/nova_config.h"
 #include "common/nova_mem_manager.h"
+#include "common/nova_pm_manager.h"
 #include "leveldb/db.h"
 #include "rdma_msg_handler.h"
 #include "log/logc_log_writer.h"
@@ -145,6 +146,7 @@ namespace nova {
 
         leveldb::StoCBlockClient *stoc_client_;
         NovaMemManager *mem_manager_;
+        NovaPMManager *pm_manager_;
 
         int nconns = 0;
 

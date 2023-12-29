@@ -44,6 +44,10 @@ namespace leveldb {
             return mem_manager_;
         };
 
+        MemManager *pm_manager() override {
+            return nullptr;
+        }
+
         unsigned int *rand_seed() override {
             return &rand_seed_;
         }
@@ -76,7 +80,7 @@ namespace leveldb {
 
     class LTCCompactionThread : public EnvBGThread {
     public:
-        explicit LTCCompactionThread(MemManager *mem_manager);
+        explicit LTCCompactionThread(MemManager *mem_manager, MemManager *pm_manager);
 
         bool Schedule(const EnvBGTask &task) override;
 
@@ -91,6 +95,10 @@ namespace leveldb {
         MemManager *mem_manager() override {
             return mem_manager_;
         };
+
+        MemManager *pm_manager() override {
+            return pm_manager_;
+        }
 
         unsigned int *rand_seed() override {
             return &rand_seed_;
@@ -114,6 +122,7 @@ namespace leveldb {
         std::atomic_int_fast32_t num_tasks_;
 
         MemManager *mem_manager_ = nullptr;
+        MemManager *pm_manager_ = nullptr;
         bool is_running_ = false;
         unsigned int rand_seed_;
     };
