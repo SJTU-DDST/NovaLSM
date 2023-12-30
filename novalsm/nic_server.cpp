@@ -300,7 +300,6 @@ namespace nova {
 //跳过了前面rdma的空间，到了mem_pool的空间这里
         char *cache_buf = buf + nrdma_buf_server();
 //这里是pm_pool的空间
-        char *pm_buf = cache_buf + NovaConfig::config->mem_pool_size_gb * 1024 * 1024 * 1024; // 这样好像不太行??
         uint32_t num_mem_partitions = 1;
         NovaConfig::config->num_mem_partitions = num_mem_partitions;
         uint64_t slab_size_mb = NovaConfig::config->manifest_file_size / 1024 / 1024;//倒退的话manifest_size单位应该是B
@@ -310,10 +309,13 @@ namespace nova {
                                          NovaConfig::config->mem_pool_size_gb,
                                          slab_size_mb);
 
-        pm_manager = new NovaPMManager(pm_buf, // 用于指定mmap
+        char* pm_buf = nullptr;
+        pm_manager = new NovaPMManager(&pm_buf, // 用于指定mmap
                                        PMpoolName(NovaConfig::config->pm_path), // 用于打开或者新建
                                        NovaConfig::config->pm_pool_size_gb, // 用于truncate或者啥
                                        cfg->fragments.size()); // 用于分区
+        NovaConfig::config->pm_nova_buf = pm_buf;
+        NovaConfig::config->pm_nnovabuf = NovaConfig::config->pm_pool_size_gb * 1024 * 1024 * 1024;
 
 //用于管理
         log_manager = new StoCInMemoryLogFileManager(mem_manager);
@@ -429,6 +431,8 @@ namespace nova {
                                               NovaConfig::config->my_server_id,
                                               NovaConfig::config->nova_buf,
                                               NovaConfig::config->nnovabuf,
+                                              NovaConfig::config->pm_nova_buf,
+                                              NovaConfig::config->pm_nnovabuf,
                                               NovaConfig::config->rdma_port,
                                               fg_rdma_msg_handlers[worker_id]);
 //这个应该是用不上
@@ -503,6 +507,8 @@ namespace nova {
                                               NovaConfig::config->my_server_id,
                                               NovaConfig::config->nova_buf,
                                               NovaConfig::config->nnovabuf,
+                                              NovaConfig::config->pm_nova_buf,
+                                              NovaConfig::config->pm_nnovabuf,                                              
                                               NovaConfig::config->rdma_port,
                                               cc);
             } else {

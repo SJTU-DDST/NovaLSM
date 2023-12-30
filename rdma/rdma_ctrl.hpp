@@ -20,6 +20,11 @@ namespace rdmaio {
 
     class RdmaCtrl {
     public:
+        enum MemoryType : char {
+            MDram = 'd',
+            MPm = 'p'
+        };
+
 //默认构造方法
         RdmaCtrl(int node_id, int tcp_base_port,
                  connection_callback_t callback = [](const QPConnArg &) {
@@ -72,7 +77,7 @@ namespace rdmaio {
         /**
          * Register memory to a specific RNIC handler
          */
-        bool register_memory(uint64_t id, const char *buf, uint64_t size, RNicHandler *rnic,
+        bool register_memory(uint64_t id, const char *buf, uint64_t size, RNicHandler *rnic, MemoryType mtype,
                              int flag = Memory::DEFAULT_PROTECTION_FLAG);
 
         ibv_cq *create_cq(RNicHandler *dev, int cqe);
@@ -81,7 +86,7 @@ namespace rdmaio {
          * Get the local registered memory
          * undefined if mr_id has been registered
          */
-        MemoryAttr get_local_mr(uint64_t mr_id);
+        MemoryAttr get_local_mr(uint64_t mr_id, MemoryType mtype);
 
         /**
          * Return an arbitrary registered MR
@@ -97,7 +102,7 @@ namespace rdmaio {
          * If local_attr = nullptr, then this QP is unbind to any MR.
          */
         RCQP *
-        create_rc_qp(QPIdx idx, RNicHandler *dev, MemoryAttr *attr = NULL, ibv_cq *cq = NULL, ibv_cq *recv_cq = NULL);
+        create_rc_qp(QPIdx idx, RNicHandler *dev, MemoryAttr *attr = NULL, MemoryAttr *pm_attr = NULL, ibv_cq *cq = NULL, ibv_cq *recv_cq = NULL);
 
         void
         destroy_rc_qp(QPIdx idx);

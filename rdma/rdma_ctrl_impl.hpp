@@ -192,7 +192,7 @@ namespace rdmaio {
 //rdma_handler::start->nova_rdmarc_broker::init->nova_rdmarc_broker::InitializeQPs
 // 自己的idx , ~, 之前登记的第一个mr的attr, ~, 发送cq和接收cq
 //建立发送和接收的qp
-        RCQP *create_rc_qp(QPIdx idx, RNicHandler *dev, MemoryAttr *attr,
+        RCQP *create_rc_qp(QPIdx idx, RNicHandler *dev, MemoryAttr *attr, MemoryAttr *pm_attr, 
                            enum ibv_qp_type qp_type, ibv_cq *cq,
                            ibv_cq *recv_cq) {
 
@@ -208,7 +208,7 @@ namespace rdmaio {
                     if (attr == NULL)
                         res = new RCQP(dev, idx, qp_type, cq, recv_cq);
                     else
-                        res = new RCQP(dev, idx, *attr, qp_type, cq, recv_cq);
+                        res = new RCQP(dev, idx, *attr, *pm_attr, qp_type, cq, recv_cq, nullptr);
                     qps_.insert(std::make_pair(qid, res));
                 }
             };
@@ -260,7 +260,7 @@ namespace rdmaio {
 // rdma_handler::start->nova_rdmarc_broker::init->rdma_ctrl::register_memory 这里把全部空间都登记了
 //登记一个memory 
         bool register_memory(uint64_t mr_id, const char *buf, uint64_t size,
-                             RNicHandler *rnic, int flag) {
+                             RNicHandler *rnic, MemoryType mtype, int flag) {
             Memory *m = new Memory(buf, size, rnic->pd, flag); // 这里登记mr 最好重新申请一块pm mmap到操作系统对应的空间
             if (!m->valid()) {
                 NOVA_LOG(WARNING) << "register mr to rnic error: "
@@ -270,12 +270,22 @@ namespace rdmaio {
             }
             {
                 SCS s;
-                if (mrs_.find(mr_id) != mrs_.end()) { // 这里限制了自己这个node只能register 1个mr 应该改成允许多个
-                    NOVA_LOG(WARNING) << "mr " << mr_id
-                                      << " has already been registered!";
-                    delete m;
-                } else {
-                    mrs_.insert(std::make_pair(mr_id, m));
+                if(mtype == MemoryType::MDram){
+                    if (mrs_.find(mr_id) != mrs_.end()) { // 这里限制了自己这个node只能register 1个mr 应该改成允许多个
+                        NOVA_LOG(WARNING) << "dram mr " << mr_id
+                                        << " has already been registered!";
+                        delete m;
+                    } else {
+                        mrs_.insert(std::make_pair(mr_id, m));
+                    }
+                }else if(mtype == MemoryType::MPm){
+                    if(pm_mrs_.find(mr_id) != pm_mrs_.end()){
+                        NOVA_LOG(WARNING) << "pm mr " << mr_id
+                                        << " has already been registered!";
+                        delete m;
+                    } else {
+                        pm_mrs_.insert(std::make_pair(mr_id, m));
+                    }
                 }
             };
             return true;
@@ -293,12 +303,19 @@ namespace rdmaio {
 
 // 这里一个 改了可能会变成多个
 //获得本地的mr的信息
-        MemoryAttr get_local_mr(uint64_t mr_id) {
+        MemoryAttr get_local_mr(uint64_t mr_id, MemoryType mtype) {
             MemoryAttr attr = {};
             {
                 SCS s;
-                if (mrs_.find(mr_id) != mrs_.end())
-                    attr = mrs_[mr_id]->rattr;
+                if(mtype == MemoryType::MDram){
+                    if (mrs_.find(mr_id) != mrs_.end()){
+                        attr = mrs_[mr_id]->rattr;
+                    }                    
+                }else if(mtype == MemoryType::MPm){
+                    if (pm_mrs_.find(mr_id) != pm_mrs_.end()){
+                        attr = pm_mrs_[mr_id]->rattr;
+                    }                      
+                }
             }
             return attr;
         }
@@ -433,13 +450,23 @@ namespace rdmaio {
                             break;
 //发过来的是mr的请求
                         case ConnArg::MR: // 首先对面请求本地的mr相关信息 将本方的mr信息返回
-                            if (mrs_.find(arg.payload.mr.mr_id) != mrs_.end()) { // 这里只发送了1个 建立pm之后要发送第二个
-                                memcpy((char *) (&(reply.payload.mr)),
-                                       (char *) (&(mrs_[arg.payload.mr.mr_id]->rattr)),
-                                       sizeof(MemoryAttr));
-                                reply.ack = SUCC;
-                            };
-                            break;
+                            if(arg.payload.mr.which == 0){
+                                if (mrs_.find(arg.payload.mr.mr_id) != mrs_.end()) { // 这里只发送了1个 建立pm之后要发送第二个
+                                    memcpy((char *) (&(reply.payload.mr)),
+                                        (char *) (&(mrs_[arg.payload.mr.mr_id]->rattr)),
+                                        sizeof(MemoryAttr));
+                                    reply.ack = SUCC;
+                                };
+                                break;
+                            }else if(arg.payload.mr.which == 1){
+                                if (pm_mrs_.find(arg.payload.mr.mr_id) != pm_mrs_.end()) { // 这里只发送了1个 建立pm之后要发送第二个
+                                    memcpy((char *) (&(reply.payload.mr)),
+                                        (char *) (&(pm_mrs_[arg.payload.mr.mr_id]->rattr)),
+                                        sizeof(MemoryAttr));
+                                    reply.ack = SUCC;
+                                };
+                                break;                                
+                            }
 //发过来的是qp的请求
                         case ConnArg::QP: { // 对面获得了本地的mr相关信息，然后就发送qp请求 返回本方的qp attr
                             qp_callback_(
@@ -511,7 +538,8 @@ namespace rdmaio {
         std::vector<RNicInfo> cached_infos_;
 
         // registered MRs at this control manager
-        std::map<uint64_t, Memory *> mrs_;
+        std::map<uint64_t, Memory *> mrs_; // dram 包括正常消息发送和大的write read区
+        std::map<uint64_t, Memory *> pm_mrs_;
 
 //key->qp的映射
         // created QPs on this control manager
@@ -648,13 +676,13 @@ namespace rdmaio {
 //参数都对的上，只是类定义的时候搞了个默认参数
     inline __attribute__ ((always_inline))
     bool RdmaCtrl::register_memory(uint64_t id, const char *buf, uint64_t size,
-                                   RNicHandler *rnic, int flag) {
-        return impl_->register_memory(id, buf, size, rnic, flag);
+                                   RNicHandler *rnic, MemoryType mtype, int flag) {
+        return impl_->register_memory(id, buf, size, rnic, mtype, flag);
     }
 
     inline __attribute__ ((always_inline))
-    MemoryAttr RdmaCtrl::get_local_mr(uint64_t mr_id) {
-        return impl_->get_local_mr(mr_id);
+    MemoryAttr RdmaCtrl::get_local_mr(uint64_t mr_id, MemoryType mtype) {
+        return impl_->get_local_mr(mr_id, mtype);
     }
 
     inline __attribute__ ((always_inline))
@@ -663,9 +691,9 @@ namespace rdmaio {
     }
 
     inline __attribute__ ((always_inline))
-    RCQP *RdmaCtrl::create_rc_qp(QPIdx idx, RNicHandler *dev, MemoryAttr *attr,
+    RCQP *RdmaCtrl::create_rc_qp(QPIdx idx, RNicHandler *dev, MemoryAttr *attr, MemoryAttr *pm_attr,
                                  ibv_cq *cq, ibv_cq *recv_cq) {
-        return impl_->create_rc_qp(idx, dev, attr, IBV_QPT_RC, cq, recv_cq);
+        return impl_->create_rc_qp(idx, dev, attr, pm_attr, IBV_QPT_RC, cq, recv_cq);
     }
 
     inline __attribute__ ((always_inline))
@@ -681,7 +709,7 @@ namespace rdmaio {
     inline __attribute__ ((always_inline))
     RCQP *RdmaCtrl::create_uc_qp(QPIdx idx, RNicHandler *dev, MemoryAttr *attr,
                                  ibv_cq *cq, ibv_cq *recv_cq) {
-        return impl_->create_rc_qp(idx, dev, attr, IBV_QPT_UC, cq, recv_cq);
+        return impl_->create_rc_qp(idx, dev, attr, nullptr, IBV_QPT_UC, cq, recv_cq);
     }
 
     inline __attribute__ ((always_inline))

@@ -91,7 +91,7 @@ namespace nova {
 
     class NovaPMManager : public leveldb::MemManager {
     public:
-        NovaPMManager(char* buf, std::string pm_pool_name, uint64_t pm_pool_size_gb, int db_numbers);
+        NovaPMManager(char** buf, std::string pm_pool_name, uint64_t pm_pool_size_gb, int db_numbers);
 
         char *ItemAlloc(uint64_t key, uint32_t scid) override;
 
@@ -113,7 +113,6 @@ namespace nova {
         char* GetdbBufStart(int db_index);
         char* GetdbBufEnd(int db_index);
 
-        char *buf_ = nullptr;
         std::string pm_pool_name_;
         uint64_t pm_pool_size_;
         int db_numbers_;

@@ -200,6 +200,8 @@ int main(int argc, char *argv[]) {
                                            FLAGS_server_id,
                                            rdma_buf,
                                            ntotal,
+                                           nullptr,
+                                           0,
                                            FLAGS_rdma_port,
                                            server_worker);
         client->mem_manager_ = mem_manager;

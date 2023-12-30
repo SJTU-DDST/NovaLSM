@@ -89,6 +89,10 @@ namespace rdmaio {
             local_mr_ = attr;
         }
 
+        void bind_pm_local_mr(MemoryAttr attr){
+            pm_local_mr_ = attr;
+        }
+
         QPAttr get_attr() const {
             QPAttr res = {
                     .addr     = rnic_->query_addr(),
@@ -109,8 +113,8 @@ namespace rdmaio {
          */
         static ConnStatus
         get_remote_mr(std::string ip, int port, uint64_t mr_id,
-                      MemoryAttr *attr) {
-            return QPImpl::get_remote_mr(ip, port, mr_id, attr);
+                      MemoryAttr *attr, uint8_t which) {
+            return QPImpl::get_remote_mr(ip, port, mr_id, attr, which);
         }
 
         // QP identifiers
@@ -123,6 +127,7 @@ namespace rdmaio {
 
         // local MR used to post reqs
         MemoryAttr local_mr_;
+        MemoryAttr pm_local_mr_;
         RNicHandler *rnic_;
 
     protected:
@@ -152,6 +157,13 @@ namespace rdmaio {
               enum ibv_qp_type qp_type, ibv_cq *cq, ibv_cq *recv_cq)
                 : RRCQP(rnic, idx, qp_type, cq, recv_cq) {
             bind_local_mr(local_mr);
+        }
+
+        RRCQP(RNicHandler *rnic, QPIdx idx, MemoryAttr local_mr, MemoryAttr pm_local_mr,
+              enum ibv_qp_type qp_type, ibv_cq *cq, ibv_cq *recv_cq, void* differ)
+                : RRCQP(rnic, idx, qp_type, cq, recv_cq) {
+            bind_local_mr(local_mr);
+            bind_pm_local_mr(pm_local_mr);
         }
 
         RRCQP(RNicHandler *rnic, QPIdx idx, enum ibv_qp_type qp_type,
@@ -218,6 +230,10 @@ namespace rdmaio {
             remote_mr_ = attr;
         }
 
+        void bind_pm_remote_mr(MemoryAttr attr){
+            pm_remote_mr_ = attr;
+        }
+
         ConnStatus post_send_to_mr(MemoryAttr &local_mr, MemoryAttr &remote_mr,
                                    ibv_wr_opcode op, char *local_buf,
                                    uint32_t len, uint64_t off, int flags,
@@ -257,6 +273,7 @@ namespace rdmaio {
         }
 
 //下发recv工作请求
+//recv一律都用 dram接着?? done
         ConnStatus
         post_recv(char *local_buf, uint32_t len, uint64_t wr_id = 0) {
             int ret = 0;
@@ -393,6 +410,7 @@ namespace rdmaio {
         uint64_t low_watermark_ = 0;
 
         MemoryAttr remote_mr_;
+        MemoryAttr pm_remote_mr_;
         enum ibv_qp_type qp_type_;
         struct ibv_cq *recv_cq_ = NULL;
     };

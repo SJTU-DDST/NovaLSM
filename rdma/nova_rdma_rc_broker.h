@@ -37,6 +37,8 @@ namespace nova {
                          uint32_t my_server_id,
                          char *mr_buf,
                          uint64_t mr_size,
+                         char *pm_mr_buf,
+                         uint64_t pm_mr_size,
                          uint64_t rdma_port,
                          RDMAMsgCallback *callback) :
                 rdma_buf_(buf), // 这个线程对应的buf地址
@@ -48,6 +50,8 @@ namespace nova {
                 my_server_id_(my_server_id),
                 mr_buf_(mr_buf), // 所有空间的大地址 !!!要改的
                 mr_size_(mr_size), // 所有空间的大小 !!!要改的
+                pm_mr_buf_(pm_mr_buf),
+                pm_mr_size_(pm_mr_size),
                 rdma_port_(rdma_port),
                 callback_(callback) {
             NOVA_LOG(DEBUG)
@@ -189,6 +193,8 @@ namespace nova {
         const uint32_t my_server_id_ = 0;
         const char *mr_buf_ = nullptr;
         const uint64_t mr_size_ = 0;
+        const char *pm_mr_buf_ = nullptr;
+        const uint64_t pm_mr_size_ = 0;
         const uint64_t rdma_port_ = 0;
         const uint32_t max_num_sends_ = 0;
         const uint32_t max_msg_size_ = 0;

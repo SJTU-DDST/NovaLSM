@@ -57,6 +57,7 @@ namespace rdmaio {
  */
 //标识mr的信息
     struct MRConnArg {
+        uint8_t which;
         uint64_t mr_id;
     };
 

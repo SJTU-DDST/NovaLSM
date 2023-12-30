@@ -161,9 +161,9 @@ void StartServer() {
     ntotal += NovaConfig::config->mem_pool_size_gb * 1024 * 1024 * 1024;
     uint64_t ndram = ntotal; // dram的长度
     ntotal += NovaConfig::config->pm_pool_size_gb * 1024 * 1024 * 1024; // 加上 pm pool的大小 rdma + 30G + 30G
-    NOVA_LOG(INFO) << "Allocated buffer size in bytes: " << ntotal;
+    NOVA_LOG(INFO) << "Allocated buffer size in bytes: " << ndram;
 
-    auto *buf = (char *)aligned_alloc(4096, ndram);//(char *) malloc(ntotal); 改为对齐分配
+    auto *buf = (char *) malloc(ndram); // (char *)aligned_alloc(4096, ndram);// 改为对齐分配
     memset(buf, 0, ndram); //pm的区域不用清理
     NovaConfig::config->nova_buf = buf; // 所有空间的开始 这里所有空间rdma都可以接收发送
 //nnovabuf是结尾

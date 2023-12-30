@@ -219,6 +219,8 @@ namespace nova {
         uint32_t num_mem_partitions = 0;
         char *nova_buf = nullptr;
         uint64_t nnovabuf = 0;
+        char *pm_nova_buf = nullptr;
+        uint64_t pm_nnovabuf = 0;
 
         ScatterPolicy scatter_policy = ScatterPolicy::POWER_OF_TWO;
         NovaLogRecordMode log_record_mode = NovaLogRecordMode::LOG_NONE;

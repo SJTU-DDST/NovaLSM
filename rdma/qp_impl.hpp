@@ -129,12 +129,13 @@ namespace rdmaio {
 // rdma_handler::start->nova_rdmarc_broker::init->nova_rdmarc_broker::InitializeQPs->qp::get_remote_mr->qp_impl::get_remote_mr
         static ConnStatus
         get_remote_mr(std::string ip, int port, uint64_t mr_id,
-                      MemoryAttr *attr) {
+                      MemoryAttr *attr, uint8_t which) {
 
             ConnArg arg;
             ConnReply reply;
             arg.type = ConnArg::MR;
             arg.payload.mr.mr_id = mr_id;
+            arg.payload.mr.which = which;
 
             auto ret = get_remote_helper(&arg, &reply, ip, port);
             if (ret == SUCC) {

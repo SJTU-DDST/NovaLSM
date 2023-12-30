@@ -89,21 +89,20 @@ namespace nova{
 
 // 最大的块64MB 64MB 18MB 210KB 
 // pm_pool_name这个持久内存池应该是本node所有的db公用的
-    NovaPMManager::NovaPMManager(char* buf, std::string pm_pool_name, uint64_t pm_pool_size_gb, int db_numbers)
-            : buf_(buf), 
-            pm_pool_name_(pm_pool_name), 
+    NovaPMManager::NovaPMManager(char** buf, std::string pm_pool_name, uint64_t pm_pool_size_gb, int db_numbers)
+            :pm_pool_name_(pm_pool_name), 
             pm_pool_size_(pm_pool_size_gb * 1024 * 1024 * 1024), 
             db_numbers_(db_numbers) {
         // 打开并且mmap
         fd_ = ::open(pm_pool_name.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0644);
         NOVA_ASSERT(fd_ >= 0) << "pm pool file open failed";
         NOVA_ASSERT(ftruncate(fd_, pm_pool_size_) >= 0) << "pm pool file ftruncate failed";
-        mmap_base_ = (char *)::mmap((void *)(buf), pm_pool_size_, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd_, 0);
-        NOVA_ASSERT(mmap_base_ == buf_) << "pm pool file mmap unproperly";
-
+        mmap_base_ = (char *)::mmap(nullptr, pm_pool_size_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
+        *buf = mmap_base_;
+        // NOVA_ASSERT(mmap_base_ == buf_) << "pm pool file mmap unproperly";
         // 按db划分pm区域
         uint64_t partition_size =  pm_pool_size_ / db_numbers;
-        char *base = buf_;
+        char *base = mmap_base_;
         for (int i = 0; i < db_numbers; i++) {
             db_partitioned_pm_managers_.push_back(new NovaPartitionedPMManager(i, base, partition_size));
             base += partition_size;
