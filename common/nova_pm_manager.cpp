@@ -96,7 +96,8 @@ namespace nova{
         // 打开并且mmap
         fd_ = ::open(pm_pool_name.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0644);
         NOVA_ASSERT(fd_ >= 0) << "pm pool file open failed";
-        NOVA_ASSERT(ftruncate(fd_, pm_pool_size_) >= 0) << "pm pool file ftruncate failed";
+        //NOVA_ASSERT(ftruncate(fd_, pm_pool_size_) >= 0) << "pm pool file ftruncate failed";
+        NOVA_ASSERT(posix_fallocate(fd_, 0, pm_pool_size_)) << "pm pool file fallocate failed";
         mmap_base_ = (char *)::mmap(nullptr, pm_pool_size_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
         *buf = mmap_base_;
         // NOVA_ASSERT(mmap_base_ == buf_) << "pm pool file mmap unproperly";

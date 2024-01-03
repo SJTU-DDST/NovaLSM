@@ -223,10 +223,12 @@ namespace nova {
         return dbname + "/" + std::to_string(index);
     }
 
+// 固定
     std::string PMpoolName(const std::string &pm_path){
-        return pm_path + "/" + "pm.pool";
+        return "/dev/dax0.0";
     }
 
+// 大概不会用到 或者 只有恢复的时候会用到
     std::string PMpoolMetaName(const std::string &pm_pool_name){
         return pm_pool_name + "-meta";
     }

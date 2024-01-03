@@ -228,6 +228,7 @@ namespace nova {
                             remote_addr, is_offset, 0);
     }
 
+// rpc的请求
 // 加一个send的请求
     uint64_t
     NovaRDMARCBroker::PostSend(const char *localbuf, uint32_t size,
@@ -269,6 +270,7 @@ namespace nova {
         }
     }
 
+// wal log的写会调用 还有就是写sstable的时候第二个rtt会调用 还有read block的时候会调用
     uint64_t
     NovaRDMARCBroker::PostWrite(const char *localbuf, uint32_t size,
                                 int server_id,
@@ -282,6 +284,7 @@ namespace nova {
                             remote_offset, is_remote_offset, imm_data);
     }
 
+// rdma msg handler调用 本方的send结束 send和recv应该都在dram中 只有write和read会牵扯到pm
 //这个是处理send请求的
     uint32_t NovaRDMARCBroker::PollSQ(int server_id, uint32_t *new_requests) {
         uint32_t qp_idx = to_qp_idx(server_id);
@@ -323,6 +326,7 @@ namespace nova {
         return n;
     }
 
+// dram用于发送和接收正常的消息 这里不用改 / 或者为了统一之后可以改
 // done
 // 给server_id对应的qp发一个recv工作请求?
     void NovaRDMARCBroker::PostRecv(int server_id, int recv_buf_index) {
@@ -339,6 +343,7 @@ namespace nova {
 // done
     void NovaRDMARCBroker::FlushPendingRecvs() {}
 
+// rdma msg handler调用
 // 处理之前post下去的recv的完成
     uint32_t NovaRDMARCBroker::PollRQ(int server_id, uint32_t *new_requests) {
         uint32_t qp_idx = to_qp_idx(server_id);
@@ -372,6 +377,7 @@ namespace nova {
         return nullptr;
     }
 
+// 只取dram作为send的buf
 // done
     char *NovaRDMARCBroker::GetSendBuf(int server_id) {
         uint32_t qp_idx = to_qp_idx(server_id);
