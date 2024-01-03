@@ -63,8 +63,8 @@ namespace nova {
             filename2buf_[key] = buf;
             mutex_.unlock();
             freecount_--;
+            return buf;
         }
-    
     };
 
     class NovaPartitionedPMManager {

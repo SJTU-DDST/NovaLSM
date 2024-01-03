@@ -55,19 +55,21 @@ namespace nova{
         if(type == leveldb::FileType::kDescriptorFile){
             buf = manifest_units_.getunit(key);
             NOVA_ASSERT(buf != nullptr) << "pm allocator oom for manifest";
+            return buf;
         }
         // meta
         if(key.find("meta") != std::string::npos){
             uint64_t index = CityHash64(key.c_str(), key.size());
             buf = sstable_meta_units_[index].getunit(key);
             NOVA_ASSERT(buf != nullptr) << "pm allocator oom for sstable meta";
+            return buf;
         }else{// sstable
             uint64_t index = CityHash64(key.c_str(), key.size());
             buf = sstable_units_[index].getunit(key);
             NOVA_ASSERT(buf != nullptr) << "pm allocator oom for sstable";
+            return buf;
         }
-
-
+        NOVA_ASSERT(false) << "receive unknown file type";
     }
 
     void NovaPartitionedPMManager::FreeItem(int db_index, std::string key, char *buf){
