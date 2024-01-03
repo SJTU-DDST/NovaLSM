@@ -168,6 +168,7 @@ namespace leveldb {
         }else{ // manifest和l0层的sstable
             nova::NovaGlobalVariables::global.total_disk_reads += size;
             memcpy(scratch, backing_mem_ + offset, size); // 直接读出 后面应该不用这样
+            *result = Slice(scratch, size); // 注意修改
             return Status::OK();
         }
     }
@@ -491,7 +492,7 @@ namespace leveldb {
             backing_mem_ = nullptr;
         }else{
             mmap_base_ = backing_mem_;
-            backing_mem_ = nullptr;
+            // backing_mem_ = nullptr;
         }
 
 

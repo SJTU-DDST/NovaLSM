@@ -63,12 +63,12 @@ namespace leveldb {
         char *sendbuf = rdma_broker_->GetSendBuf(stoc_server_id);
         sendbuf[0] = leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS;
         leveldb::EncodeFixed32(sendbuf + 1, client_req_id);
-        replicate_log_record_states[stoc_server_id].rdma_wr_id = rdma_broker_->PostWrite(
+        replicate_log_record_states[stoc_server_id].rdma_wr_id = rdma_broker_->PostWrite( // 本地dram到远程dram 目前
                 backing_mem, log_record_size,
                 stoc_server_id,
                 meta->stoc_bufs[stoc_server_id].base +
                 meta->stoc_bufs[stoc_server_id].offset, /*is_remote_offset=*/
-                false, 0);
+                false, 0, 0, 0);
         meta->stoc_bufs[stoc_server_id].offset += log_record_size;
         replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
     }
@@ -137,11 +137,11 @@ namespace leveldb {
                 char *sendbuf = rdma_broker_->GetSendBuf(stoc_server_id);
                 sendbuf[0] = leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS;
                 leveldb::EncodeFixed32(sendbuf + 1, client_req_id);
-                replicate_log_record_states[stoc_server_id].rdma_wr_id = rdma_broker_->PostWrite(
+                replicate_log_record_states[stoc_server_id].rdma_wr_id = rdma_broker_->PostWrite( // 本地dram发送给远程dram 目前
                         rdma_backing_buf, log_record_size, stoc_server_id,
                         it.stoc_bufs[stoc_server_id].base +
                         it.stoc_bufs[stoc_server_id].offset,
-                        false, 0);
+                        false, 0, 0, 0);
                 it.stoc_bufs[stoc_server_id].offset += log_record_size;
                 replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
             }

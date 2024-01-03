@@ -161,12 +161,12 @@ namespace nova {
             } else if (task.request_type ==
                        leveldb::StoCRequestType::STOC_READ_BLOCKS) { // 用write原语发过去
                 char *sendbuf = rdma_broker_->GetSendBuf(task.remote_server_id); // rdma的大buff中的对应的东西
-                uint64_t wr_id = rdma_broker_->PostWrite(task.rdma_buf, // rdma_buf 是本地申请的 装了读出来的数据的buf
+                uint64_t wr_id = rdma_broker_->PostWrite(task.rdma_buf, // rdma_buf 是本地申请的 装了读出来的数据的buf 这里也需要区分本地是什么 这里应该是stoc向ltc发送
                                                          task.size,
                                                          task.remote_server_id,
                                                          task.ltc_mr_offset, // 远程的内存
                                                          false,
-                                                         task.stoc_req_id);
+                                                         task.stoc_req_id, 0, 0); //暂时先不改全部照旧 之后会去掉read的buf
                 NOVA_LOG(rdmaio::DEBUG)
                     << fmt::format("Read {} s:{} req:{} mr:{} size:{} off:{}", task.stoc_block_handle.DebugString(),
                                    task.remote_server_id, task.stoc_req_id, task.ltc_mr_offset, task.size, (uint64_t) (task.rdma_buf));
@@ -373,7 +373,7 @@ namespace nova {
                                 thread_id_, nfiles);
                     processed = true;
                 } else if (buf[0] ==
-                           leveldb::StoCRequestType::STOC_READ_BLOCKS) { //
+                           leveldb::StoCRequestType::STOC_READ_BLOCKS) { // stoc第一次接收到ltc的读请求
                     uint32_t msg_size = 1;
                     uint32_t stoc_file_id = 0;
                     uint64_t offset = 0;

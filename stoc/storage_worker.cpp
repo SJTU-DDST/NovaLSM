@@ -162,7 +162,7 @@ namespace nova {
                 ct.stoc_block_handle = task.stoc_block_handle;
 
 // 读取文件
-                if (task.request_type ==
+                if (task.request_type == // stoc收到ltc发送过来的请求 读文件
                     leveldb::StoCRequestType::STOC_READ_BLOCKS) {
                     leveldb::Slice result;
                     stoc_file_manager_->ReadDataBlock(task.stoc_block_handle,

@@ -182,6 +182,8 @@ namespace leveldb {
         task.write_size = size;
         task.sem = &sem_;
         task.internal_type = internal_type;
+        task.local_which = 0; // 目前假设所有发送都来源于dram
+        task.remote_which = (level <= levels_in_pm ? 1 : 0); // 如果level小 那么就是直接写入pm, 如果level大, 那就是写入dram缓冲区
 
         uint32_t reqid = req_id_;
         StoCResponse *response = new StoCResponse;
@@ -478,6 +480,8 @@ namespace leveldb {
         task.filename = filename;
         task.sem = &sem_;
         task.is_foreground_reads = is_foreground_reads;
+        task.local_which = 0;
+        task.remote_which = IsPMfile(filename) ? 1 : 0;// 是pmfile从pm读
         AddAsyncTask(task);
 
         uint32_t reqid = req_id_;
@@ -628,6 +632,8 @@ namespace leveldb {
         context.size = size;
         context.done = false;
         context.log_file_name = filename;
+        context.local_which = 0;
+        context.remote_which = IsPMfile(filename) ? 1 : 0; // 如果是pm文件 那就pm读 不是的话还是dram缓冲区
 
         char *send_buf = rdma_broker_->GetSendBuf(block_handle.server_id);
         uint32_t msg_size = 1;
@@ -732,6 +738,8 @@ namespace leveldb {
         StoCRequestContext context = {};
         context.done = false;
         context.req_type = StoCRequestType::STOC_WRITE_SSTABLE;
+        context.local_which = 0; // 当前设置全是dram写入
+        context.remote_which = (level <= levels_in_pm ? 1 : 0); // 如果level小说明直接写入pm 否则写入dram缓冲区
 
         char *send_buf = rdma_broker_->GetSendBuf(stoc_id);
         uint32_t msg_size = 2;
@@ -948,6 +956,8 @@ namespace leveldb {
                         task.server_id = remote_server_id;
                         task.offset = stoc_file_offset;
                         task.thread_id = req_id;
+                        task.local_which = context.local_which;
+                        task.remote_which = context.remote_which;
                         rdma_msg_handler_->private_queue_.push_back(task);
 
                         context.done = false;

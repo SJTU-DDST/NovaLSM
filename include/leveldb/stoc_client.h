@@ -95,6 +95,9 @@ namespace leveldb {
         uint32_t size = 0;
         bool done = false;
 
+        int local_which;
+        int remote_which;
+
         uint64_t wr_id = 0;
         uint32_t stoc_file_id = 0;
         std::vector<StoCBlockHandle> stoc_block_handles;
@@ -194,6 +197,8 @@ namespace leveldb {
         std::string pmname;
         int level;
         int levels_in_pm;
+        int local_which; // 用于标识发送的东西(write)发送到哪个mr中
+        int remote_which; // 用于标识发送的东西
         uint64_t file_number = 0;
         uint32_t replica_id = 0;
         uint32_t write_size = 0;

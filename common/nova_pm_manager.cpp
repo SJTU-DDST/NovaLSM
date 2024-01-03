@@ -59,12 +59,12 @@ namespace nova{
         }
         // meta
         if(key.find("meta") != std::string::npos){
-            uint64_t index = CityHash64(key.c_str(), key.size());
+            uint64_t index = CityHash64(key.c_str(), key.size()) % PMUNITSIZE;
             buf = sstable_meta_units_[index].getunit(key);
             NOVA_ASSERT(buf != nullptr) << "pm allocator oom for sstable meta";
             return buf;
         }else{// sstable
-            uint64_t index = CityHash64(key.c_str(), key.size());
+            uint64_t index = CityHash64(key.c_str(), key.size()) % PMUNITSIZE;
             buf = sstable_units_[index].getunit(key);
             NOVA_ASSERT(buf != nullptr) << "pm allocator oom for sstable";
             return buf;
@@ -101,6 +101,7 @@ namespace nova{
         //NOVA_ASSERT(ftruncate(fd_, pm_pool_size_) >= 0) << "pm pool file ftruncate failed";
         NOVA_ASSERT(posix_fallocate(fd_, 0, pm_pool_size_)) << "pm pool file fallocate failed";
         mmap_base_ = (char *)::mmap(nullptr, pm_pool_size_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
+        memset(mmap_base_, 0, MANIFESTMAXSIZE);
         *buf = mmap_base_;
         // NOVA_ASSERT(mmap_base_ == buf_) << "pm pool file mmap unproperly";
         // 按db划分pm区域

@@ -152,7 +152,7 @@ namespace nova {
 
         uint64_t PostWrite(const char *localbuf, uint32_t size, int server_id,
                            uint64_t remote_offset, bool is_remote_offset,
-                           uint32_t imm_data);
+                           uint32_t imm_data, int local_which, int remote_which);
 
         void FlushPendingSends();
 
@@ -188,7 +188,7 @@ namespace nova {
                      int qp_idx,
                      uint64_t local_offset,
                      uint64_t remote_addr, bool is_offset,
-                     uint32_t imm_data);
+                     uint32_t imm_data, int local_which = 0, int remote_which = 0);
 
         const uint32_t my_server_id_ = 0;
         const char *mr_buf_ = nullptr;

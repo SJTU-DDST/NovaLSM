@@ -28,7 +28,7 @@ namespace nova {
         virtual uint64_t
         PostWrite(const char *localbuf, uint32_t size, int server_id,
                   uint64_t remote_offset,
-                  bool is_remote_offset, uint32_t imm_data) = 0;
+                  bool is_remote_offset, uint32_t imm_data, int local_which, int remote_which) = 0;
 
         virtual void FlushPendingSends() = 0;
 
@@ -65,7 +65,7 @@ namespace nova {
 
         uint64_t PostWrite(const char *localbuf, uint32_t size, int server_id,
                            uint64_t remote_offset, bool is_remote_offset,
-                           uint32_t imm_data) { return 0; }
+                           uint32_t imm_data, int local_which, int remote_which) { return 0; }
 
         void FlushPendingSends(int peer_sid) {}
 

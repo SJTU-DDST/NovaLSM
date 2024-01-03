@@ -168,13 +168,14 @@ namespace nova {
         }
     }
 
+// 加上标识的mr
     uint64_t
     NovaRDMARCBroker::PostRDMASEND(const char *localbuf, ibv_wr_opcode opcode,
                                    uint32_t size,
                                    int server_id,
                                    uint64_t local_offset,
                                    uint64_t remote_addr, bool is_offset,
-                                   uint32_t imm_data) {
+                                   uint32_t imm_data, int local_which, int remote_which) {
         uint32_t qp_idx = to_qp_idx(server_id);
         uint64_t wr_id = psend_index_[qp_idx];
         const char *sendbuf = rdma_send_buf_[qp_idx] + wr_id * max_msg_size_;
@@ -186,7 +187,13 @@ namespace nova {
         ibv_send_wr *swr = send_wrs_[qp_idx];
         ssge[ssge_idx].addr = (uintptr_t) sendbuf + local_offset;
         ssge[ssge_idx].length = size;
-        ssge[ssge_idx].lkey = qp_[qp_idx]->local_mr_.key;
+        if(local_which == 0){
+            ssge[ssge_idx].lkey = qp_[qp_idx]->local_mr_.key;
+        }else if(local_which == 1){
+            ssge[ssge_idx].lkey = qp_[qp_idx]->pm_local_mr_.key;            
+        }else{
+            NOVA_ASSERT(false) << "unknown local which type";
+        }
         swr[ssge_idx].wr_id = wr_id;
         swr[ssge_idx].sg_list = &ssge[ssge_idx];
         swr[ssge_idx].num_sge = 1;
@@ -199,7 +206,13 @@ namespace nova {
         } else {
             swr[ssge_idx].wr.rdma.remote_addr = remote_addr;
         }
-        swr[ssge_idx].wr.rdma.rkey = qp_[qp_idx]->remote_mr_.key;
+        if(remote_which == 0){
+            swr[ssge_idx].wr.rdma.rkey = qp_[qp_idx]->remote_mr_.key;
+        }else if(remote_which == 1){
+            swr[ssge_idx].wr.rdma.rkey = qp_[qp_idx]->pm_remote_mr_.key;
+        }else{
+            NOVA_ASSERT(false) << "unknown remote which type";
+        }
         swr[ssge_idx].next = NULL;
         psend_index_[qp_idx]++;
         npending_send_[qp_idx]++;
@@ -219,6 +232,7 @@ namespace nova {
         return wr_id;
     }
 
+// 有一个用到了 但是完全没调用可以忽略 InitiateReadInMemoryLogFile
     uint64_t
     NovaRDMARCBroker::PostRead(char *localbuf, uint32_t size, int server_id,
                                uint64_t local_offset,
@@ -228,6 +242,8 @@ namespace nova {
                             remote_addr, is_offset, 0);
     }
 
+// wal的分配和删除 还有rdma server给rpc发起端回复 各种initiate 看起来都是用dram
+// 大概率是给对方什么任务而非写入文件
 // rpc的请求
 // 加一个send的请求
     uint64_t
@@ -275,13 +291,13 @@ namespace nova {
     NovaRDMARCBroker::PostWrite(const char *localbuf, uint32_t size,
                                 int server_id,
                                 uint64_t remote_offset, bool is_remote_offset,
-                                uint32_t imm_data) {
+                                uint32_t imm_data, int local_which, int remote_which) {
         ibv_wr_opcode wr = IBV_WR_RDMA_WRITE;
         if (imm_data != 0) {
             wr = IBV_WR_RDMA_WRITE_WITH_IMM;
         }
         return PostRDMASEND(localbuf, wr, size, server_id, 0,
-                            remote_offset, is_remote_offset, imm_data);
+                            remote_offset, is_remote_offset, imm_data, local_which, remote_which);
     }
 
 // rdma msg handler调用 本方的send结束 send和recv应该都在dram中 只有write和read会牵扯到pm

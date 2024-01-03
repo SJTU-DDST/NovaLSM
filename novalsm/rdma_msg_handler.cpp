@@ -106,7 +106,7 @@ namespace nova {
                 case leveldb::RDMA_CLIENT_RDMA_WRITE_REQUEST:
                     ctx.req_id = stoc_client_->InitiateRDMAWRITE(task.server_id, task.write_buf, task.size);
                     break;
-                case leveldb::RDMA_CLIENT_RDMA_WRITE_REMOTE_BUF_ALLOCATED: {
+                case leveldb::RDMA_CLIENT_RDMA_WRITE_REMOTE_BUF_ALLOCATED: { // 目前是dram到dram的 这里是第一次所以加了imm?
                     char *sendbuf = rdma_broker_->GetSendBuf(task.server_id);
                     sendbuf[0] = leveldb::StoCRequestType::RDMA_WRITE_REMOTE_BUF_ALLOCATED;
                     leveldb::EncodeFixed32(sendbuf + 1,
@@ -114,15 +114,15 @@ namespace nova {
                     rdma_broker_->PostWrite(
                             task.write_buf,
                             task.write_size, task.server_id,
-                            task.offset, false, task.thread_id);
+                            task.offset, false, task.thread_id, 0, 0);
                     ctx.req_id = task.thread_id;
                 }
                     break;
-                case leveldb::RDMA_CLIENT_WRITE_SSTABLE_RESPONSE:
+                case leveldb::RDMA_CLIENT_WRITE_SSTABLE_RESPONSE: // 1个rtt之后 ltc收到要写的位置 然后开始写
                     rdma_broker_->PostWrite(
                             task.write_buf,
                             task.size, task.server_id,
-                            task.offset, false, task.thread_id);
+                            task.offset, false, task.thread_id, task.local_which, task.remote_which);
                     ctx.req_id = task.thread_id;
                     break;
                 case leveldb::RDMA_CLIENT_COMPACTION:
