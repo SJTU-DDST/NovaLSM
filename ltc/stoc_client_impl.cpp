@@ -120,7 +120,7 @@ namespace leveldb {
             char *buf, const std::string &dbname, const std::string &pmname, int level, int levels_in_pm, uint64_t file_number,
             uint32_t replica_id,
             uint32_t size, FileInternalType internal_type) {
-        if (stoc_id == nova::NovaConfig::config->my_server_id) {
+        if (stoc_id == nova::NovaConfig::config->my_server_id) { // 本地写修改好了
             std::string filename;
             if (file_number == 0) {
                 filename = leveldb::DescriptorFileName(dbname, 0, replica_id);
@@ -445,7 +445,7 @@ namespace leveldb {
             << fmt::format("{} {} {} {}", block_handle.DebugString(), filename,
                            size, result_size);
         // 如果发现这个请求是对自己这个server的 就不用发rpc了                   
-        if (block_handle.server_id == nova::NovaConfig::config->my_server_id) {
+        if (block_handle.server_id == nova::NovaConfig::config->my_server_id) { // 本地化已经改好了 或许本地的文件如果在pm里面可以省去变成memfile? 之后再说
             StoCBlockHandle converted_handle = {};
             uint32_t stoc_file_id = block_handle.stoc_file_id;
             if (!filename.empty()) {
@@ -969,7 +969,7 @@ namespace leveldb {
                                     req_id);
                         processed = true;
 //如果对应的本地的任务是stoc read block
-                    } else if (context.req_type == StoCRequestType::STOC_READ_BLOCKS) { // 默认写成功了?????!!!!!!
+                    } else if (context.req_type == StoCRequestType::STOC_READ_BLOCKS) { // 默认写成功了?????!!!!!! ltc收到了来自stoc的带imm的write
 //                        if (context.log_file_name.empty()) {
 //                            NOVA_ASSERT(
 //                                    context.backing_mem[context.size - 1] != 0)

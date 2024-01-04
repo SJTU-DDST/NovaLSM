@@ -160,18 +160,30 @@ namespace nova {
                 ct.rdma_buf = task.rdma_buf;
                 ct.ltc_mr_offset = task.ltc_mr_offset;
                 ct.stoc_block_handle = task.stoc_block_handle;
+                ct.ispmfile = task.ispmfile;
 
 // 读取文件
-                if (task.request_type == // stoc收到ltc发送过来的请求 读文件
+                if (task.request_type == // stoc收到ltc发送过来的请求 读文件 第一次收到ltc发送过来的请求 如果不是pmfile应该用这个路径
                     leveldb::StoCRequestType::STOC_READ_BLOCKS) {
                     leveldb::Slice result;
-                    stoc_file_manager_->ReadDataBlock(task.stoc_block_handle,
-                                                      task.stoc_block_handle.offset,
-                                                      task.stoc_block_handle.size,
-                                                      task.rdma_buf, &result);
-                    ct.size = result.size();
-                    NOVA_ASSERT(result.size() <= task.stoc_block_handle.size);
-                    stat_read_bytes_ += task.stoc_block_handle.size;
+                    if(task.ispmfile){
+                        stoc_file_manager_->GetDataBlockDirect(task.stoc_block_handle,
+                                                        task.stoc_block_handle.offset,
+                                                        task.stoc_block_handle.size,
+                                                        &task.rdma_buf, &result);
+                        ct.rdma_buf = task.rdma_buf;
+                        ct.size = result.size();
+                        NOVA_ASSERT(result.size() <= task.stoc_block_handle.size);
+                        stat_read_bytes_ += task.stoc_block_handle.size;
+                    }else{
+                        stoc_file_manager_->ReadDataBlock(task.stoc_block_handle,
+                                                        task.stoc_block_handle.offset,
+                                                        task.stoc_block_handle.size,
+                                                        task.rdma_buf, &result);
+                        ct.size = result.size();
+                        NOVA_ASSERT(result.size() <= task.stoc_block_handle.size);
+                        stat_read_bytes_ += task.stoc_block_handle.size;
+                    }
                 } else if (task.request_type ==
                            leveldb::StoCRequestType::STOC_PERSIST) {
                     NOVA_ASSERT(task.persist_pairs.size() == 1);

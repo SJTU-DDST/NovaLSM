@@ -657,6 +657,66 @@ namespace leveldb {
         block_cache_->Release(cache_handle); //  还要release????
     }
 
+// 之前的设计都是没有block cache的 保证这个只会被pm调用
+    void StocPersistentFileManager::GetDataBlockDirect(const StoCBlockHandle &stoc_block_handle, uint64_t offset,uint32_t size, char **scratch,
+            Slice *result) {
+        // 保证可以读到
+        StoCPersistentFile *stoc_file = FindStoCFile(stoc_block_handle.stoc_file_id);
+        NOVA_ASSERT(stoc_file) << stoc_block_handle.stoc_file_id;
+        NOVA_ASSERT(IsPMfile(stoc_file->stoc_file_name_)) << "non pm file calling a direct get";
+        // 如果设置的是没有cache
+        if (!block_cache_) {
+            leveldb::FileType type;
+            NOVA_ASSERT(ParseFileName(stoc_file->stoc_file_name_, &type));
+            NOVA_LOG(rdmaio::DEBUG)
+                << fmt::format("Read {} from stoc file {} offset:{} size:{}",
+                               stoc_block_handle.DebugString(), stoc_file->file_id(), offset, size);
+            // NOVA_ASSERT(stoc_file->Read(offset, size, scratch, result).ok());
+            *scratch = stoc_file->backing_mem_ + offset; // 起始地址
+            *result = Slice(stoc_file->backing_mem_ + offset, size);
+
+            if (type == leveldb::FileType::kTableFile) { // 大概率只会读
+                NOVA_ASSERT(result->size() == size)
+                    << fmt::format("fn:{} given size:{} read size:{}",
+                                   stoc_file->stoc_file_name_, size, result->size());
+                NOVA_ASSERT(stoc_file->sealed()) << fmt::format("Read but not sealed {}", stoc_file->stoc_file_name_);
+//                NOVA_ASSERT(scratch[size - 1] != 0)
+//                    << fmt::format(
+//                            "Read {} from stoc file {} offset:{} size:{} result:{}",
+//                            stoc_block_handle.DebugString(), stoc_file->file_id(), offset, size, result->size());
+            } else {
+                NOVA_LOG(rdmaio::DEBUG)
+                    << fmt::format("Read file {} read size {}:{}", stoc_file->stoc_file_name_, size,
+                                   result->size());
+            }
+            return;
+        }
+
+        NOVA_ASSERT(false) << "there should not be block cacache in persistent file manager";
+        // // 没有cache 大概率是不会进入到这里的 不会进入 随便改改 即使有 pm的也不会加入cache中!!
+        // char cache_key_buffer[StoCBlockHandle::HandleSize()];
+        // stoc_block_handle.EncodeHandle(cache_key_buffer);
+        // Slice key(cache_key_buffer, sizeof(cache_key_buffer));
+        // auto cache_handle = block_cache_->Lookup(key);
+
+        // // 找到了就直接 复制到目标位置
+        // if (cache_handle != nullptr) {
+        //     auto block = reinterpret_cast<char *>(block_cache_->Value(
+        //             cache_handle));
+        //     memcpy(scratch, block, stoc_block_handle.size);
+            
+        // } else {
+        // // 没找到就读到目标位置 然后把新的插入
+        //     stoc_file->Read(offset, size, scratch, result);
+        //     char *block = new char[size];
+        //     memcpy(block, scratch, size);
+        //     cache_handle = block_cache_->Insert(key, block,
+        //                                         size,
+        //                                         &DeleteCachedBlock);
+        // }
+        // block_cache_->Release(cache_handle); //  还要release????        
+    }
+
 // 传入一个filename -> fileid的集合 打开里面所有的文件
     void StocPersistentFileManager::OpenStoCFiles(
             const std::unordered_map<std::string, uint32_t> &fn_files) {

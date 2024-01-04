@@ -57,6 +57,8 @@ namespace leveldb {
         std::string stoc_file_name_;
         bool is_pm_file_;
         bool is_manifest_;
+        char *backing_mem_ = nullptr;
+        char *mmap_base_ = nullptr;
     private:
 
         void Seal();
@@ -94,8 +96,6 @@ namespace leveldb {
 
         MemManager *mem_manager_ = nullptr;
         MemManager *pm_manager_ = nullptr;
-        char *backing_mem_ = nullptr;
-        char *mmap_base_ = nullptr;
         uint64_t current_disk_offset_ = 0;
         uint64_t current_mem_offset_ = 0;
         uint32_t file_size_ = 0;
@@ -127,6 +127,10 @@ namespace leveldb {
         void
         ReadDataBlock(const StoCBlockHandle &stoc_block_handle, uint64_t offset,
                       uint32_t size, char *scratch, Slice *result);
+
+        void
+        GetDataBlockDirect(const StoCBlockHandle &stoc_block_handle, uint64_t offset,
+                      uint32_t size, char **scratch, Slice *result);
 
         bool
         ReadDataBlockForReplication(const StoCBlockHandle &stoc_block_handle,

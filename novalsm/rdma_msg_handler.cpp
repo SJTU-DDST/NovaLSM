@@ -106,7 +106,7 @@ namespace nova {
                 case leveldb::RDMA_CLIENT_RDMA_WRITE_REQUEST:
                     ctx.req_id = stoc_client_->InitiateRDMAWRITE(task.server_id, task.write_buf, task.size);
                     break;
-                case leveldb::RDMA_CLIENT_RDMA_WRITE_REMOTE_BUF_ALLOCATED: { // 目前是dram到dram的 这里是第一次所以加了imm?
+                case leveldb::RDMA_CLIENT_RDMA_WRITE_REMOTE_BUF_ALLOCATED: { // 目前是dram到dram的 这里是第一次所以加了imm? 这里也是log相关的
                     char *sendbuf = rdma_broker_->GetSendBuf(task.server_id);
                     sendbuf[0] = leveldb::StoCRequestType::RDMA_WRITE_REMOTE_BUF_ALLOCATED;
                     leveldb::EncodeFixed32(sendbuf + 1,
@@ -118,7 +118,7 @@ namespace nova {
                     ctx.req_id = task.thread_id;
                 }
                     break;
-                case leveldb::RDMA_CLIENT_WRITE_SSTABLE_RESPONSE: // 1个rtt之后 ltc收到要写的位置 然后开始写
+                case leveldb::RDMA_CLIENT_WRITE_SSTABLE_RESPONSE: // 1个rtt之后 ltc收到要写的位置 然后开始写 这个是initiateappendblock相关的
                     rdma_broker_->PostWrite(
                             task.write_buf,
                             task.size, task.server_id,
@@ -138,7 +138,7 @@ namespace nova {
                     ctx.req_id = stoc_client_->InitiateReadInMemoryLogFile(
                             task.rdma_log_record_backing_mem, task.server_id, task.remote_stoc_offset, task.size);
                     break;
-                case leveldb::RDMA_CLIENT_REQ_READ:
+                case leveldb::RDMA_CLIENT_REQ_READ: // block到rdma的read
                     ctx.req_id = stoc_client_->InitiateReadDataBlock( // 这里的client 是 rdmaclient 不是blockclient！！！
                             task.stoc_block_handle,
                             task.offset,
@@ -288,7 +288,7 @@ namespace nova {
 //先修改一下计数
             admission_control_->RemoveRequests(remote_server_id, 1);
         }
-        if (opcode == IBV_WC_SEND) {
+        if (opcode == IBV_WC_SEND) { // 第一次发了read 请求之后 ltc方面不需要做什么
             return true;
         }
         //如果是上面的类型 说明是本服务器发给别人的 下面的类型应该是IBV_WC_ERCV 代表别的服务器发送给我的请求

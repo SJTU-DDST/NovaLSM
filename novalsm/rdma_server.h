@@ -40,6 +40,7 @@ namespace nova {
 
         // Read request
         leveldb::StoCBlockHandle stoc_block_handle = {};
+        bool ispmfile;
         char *rdma_buf = nullptr;
         uint64_t ltc_mr_offset = 0;
         leveldb::FileInternalType internal_type;
@@ -69,6 +70,7 @@ namespace nova {
 
         // Read result.
         char *rdma_buf = nullptr;
+        bool ispmfile;
         uint32_t size = 0;
         uint64_t ltc_mr_offset = 0;
         leveldb::StoCBlockHandle stoc_block_handle = {};

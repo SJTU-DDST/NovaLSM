@@ -158,15 +158,15 @@ namespace nova {
                                        NovaGlobalVariables::global.stoc_pending_disk_writes);
                 rdma_broker_->PostSend(sendbuf, 13, task.remote_server_id,
                                        task.stoc_req_id);
-            } else if (task.request_type ==
+            } else if (task.request_type == // stoc端已经将ltc要求的东西读出来了 发回去
                        leveldb::StoCRequestType::STOC_READ_BLOCKS) { // 用write原语发过去
-                char *sendbuf = rdma_broker_->GetSendBuf(task.remote_server_id); // rdma的大buff中的对应的东西
+                char *sendbuf = rdma_broker_->GetSendBuf(task.remote_server_id); // rdma的大buff中的对应的东西 这个是为了回收资源
                 uint64_t wr_id = rdma_broker_->PostWrite(task.rdma_buf, // rdma_buf 是本地申请的 装了读出来的数据的buf 这里也需要区分本地是什么 这里应该是stoc向ltc发送
                                                          task.size,
                                                          task.remote_server_id,
                                                          task.ltc_mr_offset, // 远程的内存
                                                          false,
-                                                         task.stoc_req_id, 0, 0); //暂时先不改全部照旧 之后会去掉read的buf
+                                                         task.stoc_req_id, task.ispmfile ? 1: 0 , 0); //暂时先不改全部照旧 之后会去掉read的buf 如果是pmfile 那就用1 如果是缓冲区那就0
                 NOVA_LOG(rdmaio::DEBUG)
                     << fmt::format("Read {} s:{} req:{} mr:{} size:{} off:{}", task.stoc_block_handle.DebugString(),
                                    task.remote_server_id, task.stoc_req_id, task.ltc_mr_offset, task.size, (uint64_t) (task.rdma_buf));
@@ -174,6 +174,7 @@ namespace nova {
                 leveldb::EncodeFixed64(sendbuf + 1, wr_id);
                 leveldb::EncodeFixed32(sendbuf + 9, task.stoc_block_handle.size);
                 leveldb::EncodeFixed64(sendbuf + 13, (uint64_t) (task.rdma_buf));
+                leveldb::EncodeBool(sendbuf + 21, task.ispmfile);
             } else if (task.request_type ==
                        leveldb::StoCRequestType::STOC_PERSIST) {
                 char *sendbuf = rdma_broker_->GetSendBuf(task.remote_server_id);
@@ -264,16 +265,21 @@ namespace nova {
 //完成的工作是rdma write类型的
             case IBV_WC_RDMA_WRITE:
 //如果是stoc read blocks类型的，释放掉之前的空间
-                if (buf[0] == leveldb::StoCRequestType::STOC_READ_BLOCKS) { // recover 的 server端的 write的wc
+                if (buf[0] == leveldb::StoCRequestType::STOC_READ_BLOCKS) { // recover 的 server端的 write的wc stoc端响应ltc端read block之后 留下的write with imm 的结束 用于清理资源 第一个rtt结束
                     uint64_t written_wr_id = leveldb::DecodeFixed64(buf + 1);
                     if (written_wr_id == wr_id) {
                         uint32_t size = leveldb::DecodeFixed32(buf + 9);
                         uint64_t allocated_buf_int = leveldb::DecodeFixed64(
                                 buf + 13);
                         char *allocated_buf = (char *) (allocated_buf_int);
-                        uint32_t scid = mem_manager_->slabclassid(thread_id_,
-                                                                  size);
-                        mem_manager_->FreeItem(thread_id_, allocated_buf, scid);
+                        bool ispmfile = leveldb::DecodeBool(buf + 21);
+                        if(ispmfile){ // 如果是pm的文件的话 不需要释放
+                            ;
+                        }else{
+                            uint32_t scid = mem_manager_->slabclassid(thread_id_,
+                                                                    size);
+                            mem_manager_->FreeItem(thread_id_, allocated_buf, scid);                            
+                        }
                         processed = true;
                         NOVA_LOG(DEBUG) << fmt::format(
                                     "rdma-server[{}]: imm:{} type:{} allocated buf:{} size:{} wr:{}.",
@@ -394,16 +400,24 @@ namespace nova {
                     NOVA_LOG(DEBUG) << fmt::format(
                                 "rdma-server{}: Read blocks of StoC file {} offset:{} size:{} ltc_mr_offset:{} file:{}",
                                 thread_id_, stoc_file_id, offset, size, ltc_mr_offset, filename);
+                    // 这里似乎不必要 加入storage worker里面 可以直接将ct加入 先看看
 
                     if (!filename.empty()) {
                         stoc_file_id = stoc_file_manager_->OpenStoCFile(thread_id_, filename)->file_id();
                     }
 
-                    uint32_t scid = mem_manager_->slabclassid(thread_id_, size);
-                    char *rdma_buf = mem_manager_->ItemAlloc(thread_id_, scid);
-                    NOVA_ASSERT(rdma_buf);
-
+                    char* rdma_buf = nullptr;
                     StorageTask task = {};
+
+                    if(leveldb::IsPMfile(filename)){ // 如果是pm的文件的话 就不申请空间进行复制
+                        task.ispmfile = true;
+                    }else{
+                        task.ispmfile = false;
+                        uint32_t scid = mem_manager_->slabclassid(thread_id_, size);
+                        rdma_buf = mem_manager_->ItemAlloc(thread_id_, scid);
+                        NOVA_ASSERT(rdma_buf);
+                    }
+
                     task.stoc_req_id = stoc_req_id;
                     task.rdma_server_thread_id = thread_id_;
                     task.remote_server_id = remote_server_id;
