@@ -305,7 +305,10 @@ def putAlot(novaClient, ops):
 def getAlot(novaClient, ops):
     for i in range(0, ops):
         novaClient.get(0, i, 0)
-    
+
+def getSample(novaClient, maxkey):
+    for i in range(0, int(maxkey / 1000)):
+        novaClient.get(0, i * 1000, 0)
     
     
 if __name__ == "__main__":
@@ -431,6 +434,8 @@ if __name__ == "__main__":
             if command[0] == "end":
                 print("end")
                 break
+            elif command[0] == "gs":
+                getSample(novaClient, int(recordcount))
             else:
                 print("incorrect command")
                 continue

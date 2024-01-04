@@ -220,7 +220,7 @@ namespace nova {
         response_size += value_size;
         response_buf += value_size;
         memcpy(response_buf, value.data(), value.size());
-        response_buf[0] = MSG_TERMINATER_CHAR;
+        response_buf[0] = MSG_TERMINATER_CHAR; // 这里没有增加value.size直接发送了
         response_size += 1;
         conn->response_size = response_size;
 
