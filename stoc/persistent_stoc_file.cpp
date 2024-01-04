@@ -345,7 +345,12 @@ namespace leveldb {
 
             nova::NovaGlobalVariables::global.total_disk_writes += sstable_buf_.size;
             persisted_bytes += sstable_buf_.size;
-
+            if(!IsPMfile(stoc_file_name_)){ // 如果不是pm文件要进行写入！
+                Status s = file_->Append(Slice(backing_mem_ + sstable_buf_.offset, sstable_buf_.size));
+                NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
+                s = file_->Sync();
+                NOVA_ASSERT(s.ok()) << fmt::format("{}", s.ToString());
+            }
             // mutex_.lock();            
             // if (sstable_buf_.internal_type == FileInternalType::kFileMetadata) {
             //     NOVA_ASSERT(file_meta_block_offset_.find(sstable_buf_.filename) != file_meta_block_offset_.end());

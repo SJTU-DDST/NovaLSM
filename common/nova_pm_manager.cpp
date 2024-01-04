@@ -78,15 +78,19 @@ namespace nova{
         // manifest
         if(type == leveldb::FileType::kDescriptorFile){
             manifest_units_.addunit(key, buf);
+            return ;
         }
         // meta
         if(key.find("meta") != std::string::npos){
-            uint64_t index = CityHash64(key.c_str(), key.size());
+            uint64_t index = CityHash64(key.c_str(), key.size()) % PMUNITSIZE;
             sstable_meta_units_[index].addunit(key, buf);
+            return ;
         }else{// sstable
-            uint64_t index = CityHash64(key.c_str(), key.size());
+            uint64_t index = CityHash64(key.c_str(), key.size()) % PMUNITSIZE;
             sstable_units_[index].addunit(key, buf);
+            return ;
         }
+        NOVA_ASSERT(false) << "receive unknown file type";        
     }
 
 // 最大的块64MB 64MB 18MB 210KB 
