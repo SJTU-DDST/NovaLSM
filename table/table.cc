@@ -67,6 +67,7 @@ namespace leveldb {
         h.size = Footer::kEncodedLength;
 
         auto f = reinterpret_cast<StoCRandomAccessFileClient *>(file);
+        NOVA_ASSERT(f != nullptr) << "stoc random acess file client impl null";
         Status s = f->Read(read_options, h, size - Footer::kEncodedLength,
                            Footer::kEncodedLength,
                            &footer_input, footer_space);

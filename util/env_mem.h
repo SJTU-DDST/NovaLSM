@@ -117,7 +117,7 @@ namespace leveldb {
     public:
         MemRandomAccessFile(MemFile *file);
 
-        ~MemRandomAccessFile() override { file_->Unref(); }
+        ~MemRandomAccessFile() override { file_->Unref(); } // 可能在这里析构
 
         Status Read(const StoCBlockHandle &stoc_block_handle, uint64_t offset, size_t n, Slice *result,
                     char *scratch) override;

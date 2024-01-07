@@ -789,6 +789,7 @@ namespace leveldb {
             size_t n, leveldb::Slice *result, char *scratch) {
         NOVA_ASSERT(scratch);
         if (block_handle.stoc_file_id == 0) {
+            NOVA_ASSERT(local_ra_file_ != nullptr) << "local_ra_file_ null";
             return local_ra_file_->Read(block_handle, offset, n, result,
                                         scratch);
         }

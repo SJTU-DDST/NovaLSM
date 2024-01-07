@@ -522,6 +522,7 @@ namespace leveldb {
             auto fn = NormalizePath(filename);
             MutexLock lock(&mutex_);
             if (file_map_.find(fn) != file_map_.end()) {
+                NOVA_LOG(rdmaio::INFO) << fmt::format("find file: {} already exist", filename);
                 auto *f = file_map_[fn];
                 if (f->is_lock_file()) {
                     return Status::InvalidArgument(fn,
@@ -574,7 +575,7 @@ namespace leveldb {
         assert(path == NormalizePath(path));
         const auto &pair = file_map_.find(path);
         if (pair != file_map_.end()) {
-            pair->second->Unref();
+            pair->second->Unref(); // 可能在这里析构
             file_map_.erase(path);
         }
     }

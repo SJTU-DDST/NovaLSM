@@ -88,6 +88,7 @@ namespace leveldb {
                 NOVA_ASSERT(s.ok());
                 s = writable_file->Flush();
                 NOVA_ASSERT(s.ok());
+                NOVA_ASSERT(writable_file != nullptr) << "writable file null";
                 s = writable_file->Sync();
                 NOVA_ASSERT(s.ok());
                 s = writable_file->Close();

@@ -5,6 +5,7 @@
 //
 
 #include "env_mem.h"
+#include "common/nova_console_logging.h"
 
 namespace leveldb {
 //这里应该就是在内存里面模仿一个文件的读写等性质
@@ -56,6 +57,7 @@ namespace leveldb {
         }
 
         if (do_delete) {
+            NOVA_LOG(rdmaio::INFO) << fmt::format("delete memfile: {}", fn_);
             delete this;
         }
     }
@@ -148,7 +150,10 @@ namespace leveldb {
     Status MemRandomAccessFile::Read(const StoCBlockHandle &stoc_block_handle,
                                      uint64_t offset, size_t n, Slice *result,
                                      char *scratch) {
-        return file_->Read(offset, n, result, scratch);
+        NOVA_ASSERT(file_ != nullptr) << "file_ null";
+        NOVA_ASSERT((file_->Read(offset, n, result, scratch)).ok()) << "read not ok";
+        return Status::OK();
+        //return file_->Read(offset, n, result, scratch);
     }
 
     MemRandomRWFile::MemRandomRWFile(MemFile *file) : file_(
@@ -158,7 +163,10 @@ namespace leveldb {
     MemRandomRWFile::Read(const StoCBlockHandle &stoc_block_handle, uint64_t offset,
                           size_t n, Slice *result,
                           char *scratch) {
-        return file_->Read(offset, n, result, scratch);
+        NOVA_ASSERT(file_ != nullptr) << "file_ null";
+        NOVA_ASSERT((file_->Read(offset, n, result, scratch)).ok()) << "read not ok";
+        return Status::OK();
+        //return file_->Read(offset, n, result, scratch);
     }
 
     MemWritableFile::MemWritableFile(MemFile *file)
@@ -174,7 +182,12 @@ namespace leveldb {
 
     Status MemWritableFile::Flush() { return Status::OK(); }
 
-    Status MemWritableFile::Sync() { return file_->Fsync(); }
+    Status MemWritableFile::Sync() { 
+        NOVA_ASSERT(file_ != nullptr) << "file_ missed";
+        NOVA_ASSERT((file_->Fsync()).ok()) << "fsync not ok"; // 这里出错代表 file_不为null 但是file_这个时候已经被delete了
+        return Status::OK();
+        //return file_->Fsync(); 
+    }
 
     MemEnvFileLock::MemEnvFileLock(const std::string &fname) : fname_(
             fname) {}
