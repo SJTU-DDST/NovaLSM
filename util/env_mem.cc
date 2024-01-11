@@ -5,6 +5,7 @@
 //
 
 #include "env_mem.h"
+#include "common/nova_console_logging.h"
 
 namespace leveldb {
 //这里应该就是在内存里面模仿一个文件的读写等性质
@@ -56,6 +57,7 @@ namespace leveldb {
         }
 
         if (do_delete) {
+            NOVA_LOG(rdmaio::INFO) << fmt::format("delete memfile {}", fn_);
             delete this;
         }
     }
