@@ -69,7 +69,7 @@ namespace nova {
         uint32_t stoc_file_id = 0;
         uint64_t stoc_file_buf_offset = 0;
 
-        nova::NovaLogType log_type = nova::NovaLogType::LOG_DRAM;
+        leveldb::StoCLogType log_type = leveldb::StoCLogType::STOC_LOG_DRAM;
         // Read result.
         char *rdma_buf = nullptr;
         bool ispmfile;

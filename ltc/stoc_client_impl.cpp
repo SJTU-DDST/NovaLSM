@@ -497,7 +497,7 @@ namespace leveldb {
             char *rdma_backing_mem,
             const std::vector<LevelDBLogRecord> &log_records,
             StoCReplicateLogRecordState *replicate_log_record_states,
-            nova::NovaLogType log_type) {
+            StoCLogType log_type) {
         RDMARequestTask task = {};
         task.type = RDMAClientRequestType::RDMA_CLIENT_REQ_LOG_RECORD;
         task.log_file_name = log_file_name;
@@ -780,7 +780,7 @@ namespace leveldb {
             char *rdma_backing_mem,
             const std::vector<LevelDBLogRecord> &log_records,
             StoCReplicateLogRecordState *replicate_log_record_states,
-            nova::NovaLogType log_type) {
+            StoCLogType log_type) {
         uint32_t req_id = current_req_id_;
         StoCRequestContext context = {};
         context.done = false;
@@ -1032,7 +1032,15 @@ namespace leveldb {
 //如果对面发送的是stoc alloc log buffer success类型的
                     } else if (buf[0] ==
                                StoCRequestType::STOC_ALLOCATE_LOG_BUFFER_SUCC) { // ltc第一次发送log给stoc 第一个rtt结束 stoc发送地址和大小
-                        nova::NovaLogType log_type = buf[1];
+                        StoCLogType log_type = StoCLogType::STOC_LOG_DRAM; //= static_cast<StoCLogType>(buf[1])
+                        if(buf[1] == StoCLogType::STOC_LOG_DRAM){
+                            log_type = StoCLogType::STOC_LOG_DRAM;
+                        }else if(buf[1] == StoCLogType::STOC_LOG_PM){
+                            log_type = StoCLogType::STOC_LOG_PM;
+                        }else if(buf[1] == StoCLogType::STOC_LOG_DISK){
+                            log_type = StoCLogType::STOC_LOG_DISK;// tbd
+                        }
+
                         uint64_t base = leveldb::DecodeFixed64(buf + 2);
                         uint64_t size = leveldb::DecodeFixed64(buf + 10);
 

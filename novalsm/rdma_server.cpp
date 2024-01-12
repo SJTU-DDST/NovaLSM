@@ -521,21 +521,29 @@ namespace nova {
                     // dbname 这里上面是initiateappendblock的部分
                 } else if (buf[0] ==
                            leveldb::StoCRequestType::STOC_ALLOCATE_LOG_BUFFER) { // stoc端第一次收到ltc的log的申请
-                    nova::NovaLogType log_type = buf[1]; // 依次顺延
+                    //leveldb::StoCLogType log_type = buf[1]; // 依次顺延
+                    leveldb::StoCLogType log_type = leveldb::StoCLogType::STOC_LOG_DRAM; //= static_cast<StoCLogType>(buf[1])
+                    if(buf[1] == leveldb::StoCLogType::STOC_LOG_DRAM){
+                        log_type = leveldb::StoCLogType::STOC_LOG_DRAM;
+                    }else if(buf[1] == leveldb::StoCLogType::STOC_LOG_PM){
+                        log_type = leveldb::StoCLogType::STOC_LOG_PM;
+                    }else if(buf[1] == leveldb::StoCLogType::STOC_LOG_DISK){
+                        log_type = leveldb::StoCLogType::STOC_LOG_DISK;// tbd
+                    }                    
                     uint32_t size = leveldb::DecodeFixed32(buf + 2);
                     std::string log_file(buf + 6, size);
                     uint32_t db_index;
                     nova::ParseDBIndexFromLogFileName(log_file, &db_index);
                     char *rdma_buf = nullptr; // 几种情况的都包括了
-                    if(log_type == nova::NovaLogType::LOG_DRAM){
+                    if(log_type == leveldb::StoCLogType::STOC_LOG_DRAM){
                         uint32_t slabclassid = mem_manager_->slabclassid(thread_id_,
                                                                         nova::NovaConfig::config->max_stoc_file_size);
                         rdma_buf = mem_manager_->ItemAlloc(thread_id_, slabclassid);  
                         NOVA_ASSERT(rdma_buf) << "Running out of memory";                      
-                    }else if(log_type == nova::NovaLogType::LOG_PM){
+                    }else if(log_type == leveldb::StoCLogType::STOC_LOG_PM){
                         rdma_buf = pm_manager_->ItemAlloc(db_index, log_file);
                         NOVA_ASSERT(rdma_buf) << "Running out of memory";
-                    }else if(log_type == nova::NovaLogType::LOG_DISK){
+                    }else if(log_type == leveldb::StoCLogType::STOC_LOG_DISK){
                         //这个之后再说
                         //tbd
                     }

@@ -1174,7 +1174,7 @@ namespace leveldb {
             wo.rdma_backing_mem = backing_mem;
             wo.rdma_backing_mem_size = nova::NovaConfig::config->max_stoc_file_size;
             wo.is_loading_db = false;
-            GenerateLogRecord(wo, log_records, output_memtable->memtableid(), nova::NovaConfig->log_type); // 新的memtable中的写入日志 以及新生成的memtable的id
+            GenerateLogRecord(wo, log_records, output_memtable->memtableid(), nova::NovaConfig::config->log_type); // 新的memtable中的写入日志 以及新生成的memtable的id
             bg_thread->mem_manager()->FreeItem(0, backing_mem, scid);
         }
         iterators.clear();
@@ -3212,6 +3212,15 @@ namespace leveldb {
     void DBImpl::GenerateLogRecord(const leveldb::WriteOptions &options,
                                    const std::vector<leveldb::LevelDBLogRecord> &log_records,
                                    uint32_t memtable_id, nova::NovaLogType log_type) {
+        leveldb::StoCLogType stoc_log_type = leveldb::StoCLogType::STOC_LOG_DRAM;
+        if(log_type == nova::NovaLogType::LOG_DRAM){
+            stoc_log_type = leveldb::StoCLogType::STOC_LOG_DRAM;
+        }else if(log_type == nova::NovaLogType::LOG_PM){
+            stoc_log_type = leveldb::StoCLogType::STOC_LOG_PM;
+        }else if(log_type == nova::NovaLogType::LOG_DISK){
+            stoc_log_type = leveldb::StoCLogType::STOC_LOG_DISK;
+        }
+
         if (nova::NovaConfig::config->log_record_mode ==
             nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) {
             auto stoc = reinterpret_cast<leveldb::StoCBlockClient *>(options.stoc_client);
@@ -3221,7 +3230,7 @@ namespace leveldb {
                     options.thread_id, dbid_, memtable_id,
                     options.rdma_backing_mem, log_records,
                     options.replicate_log_record_states,
-                    log_type);
+                    stoc_log_type);
             stoc->Wait();
         }
     }
@@ -3231,6 +3240,14 @@ namespace leveldb {
                                    SequenceNumber last_sequence,
                                    const Slice &key, const Slice &val,
                                    uint32_t memtable_id, nova::NovaLogType log_type) {
+        leveldb::StoCLogType stoc_log_type = leveldb::StoCLogType::STOC_LOG_DRAM;
+        if(log_type == nova::NovaLogType::LOG_DRAM){
+            stoc_log_type = leveldb::StoCLogType::STOC_LOG_DRAM;
+        }else if(log_type == nova::NovaLogType::LOG_PM){
+            stoc_log_type = leveldb::StoCLogType::STOC_LOG_PM;
+        }else if(log_type == nova::NovaLogType::LOG_DISK){
+            stoc_log_type = leveldb::StoCLogType::STOC_LOG_DISK;
+        }
     // 只有这个情况才会生成record
         if (nova::NovaConfig::config->log_record_mode ==
             nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) { 
@@ -3247,7 +3264,7 @@ namespace leveldb {
                     options.thread_id, dbid_, memtable_id,
                     options.rdma_backing_mem, {log_record},
                     options.replicate_log_record_states,
-                    log_type);
+                    stoc_log_type);
             stoc->Wait();
         }
     }

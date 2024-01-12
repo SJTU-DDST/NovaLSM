@@ -28,7 +28,7 @@ namespace leveldb {
                              uint64_t thread_id,
                              const std::vector<LevelDBLogRecord> &log_records,
                              char *backing_buf,
-                             nova::NovaLogType log_type) {
+                             StoCLogType log_type) {
         auto it = logfile_last_buf_.find(log_file_name);
         if (it == logfile_last_buf_.end()) { // 第一次调用 还没有建立文件
             LogFileMetadata meta = {};
@@ -57,7 +57,7 @@ namespace leveldb {
                                        uint32_t log_record_size,
                                        uint32_t client_req_id,
                                        StoCReplicateLogRecordState *replicate_log_record_states,
-                                       nova::NovaLogType log_type) {
+                                       StoCLogType log_type) {
         log_manager_->AddRemoteBuf(log_file_name, stoc_server_id, offset, log_type);
         replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::ALLOC_SUCCESS;
         auto meta = &logfile_last_buf_[log_file_name];
@@ -73,7 +73,7 @@ namespace leveldb {
                 stoc_server_id,
                 meta->stoc_bufs[stoc_server_id].base +
                 meta->stoc_bufs[stoc_server_id].offset, /*is_remote_offset=*/
-                false, 0, 0, (meta->log_type == nova::NovaLogType::LOG_DRAM ? 0 : 1)); // dram是0 pm是1
+                false, 0, 0, (meta->log_type == StoCLogType::STOC_LOG_DRAM ? 0 : 1)); // dram是0 pm是1
         meta->stoc_bufs[stoc_server_id].offset += log_record_size;
         replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
     }
@@ -101,7 +101,7 @@ namespace leveldb {
                              const std::vector<LevelDBLogRecord> &log_records,
                              uint32_t client_req_id,
                              StoCReplicateLogRecordState *replicate_log_record_states,
-                             nova::NovaLogType log_type) {
+                             StoCLogType log_type) {
         uint32_t cfgid = replicate_log_record_states[0].cfgid;
         auto cfg = nova::NovaConfig::config->cfgs[cfgid];
         nova::LTCFragment *frag = cfg->fragments[dbid];
@@ -150,7 +150,7 @@ namespace leveldb {
                         rdma_backing_buf, log_record_size, stoc_server_id,
                         it.stoc_bufs[stoc_server_id].base +
                         it.stoc_bufs[stoc_server_id].offset,
-                        false, 0, 0, (it.log_type == nova::NovaLogType::LOG_DRAM ? 0 : 1)); // 
+                        false, 0, 0, (it.log_type == StoCLogType::STOC_LOG_DRAM ? 0 : 1)); // 
                 it.stoc_bufs[stoc_server_id].offset += log_record_size;
                 replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
             }

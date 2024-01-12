@@ -89,7 +89,7 @@ namespace nova {
 // stoc端建立本地的log文件
     void
     StoCInMemoryLogFileManager::AddLocalBuf(const std::string &log_file,
-                                            char *local_buf, nova::NovaLogType log_type) {
+                                            char *local_buf, leveldb::StoCLogType log_type) {
         uint32_t db_index;
         ParseDBIndexFromLogFileName(log_file, &db_index);
         NOVA_LOG(rdmaio::DEBUG)
@@ -116,7 +116,7 @@ namespace nova {
 
 // ltc端建立远程的log文件
     void StoCInMemoryLogFileManager::AddRemoteBuf(const std::string &log_file, uint32_t remote_server_id,
-                                                  uint64_t remote_buf_offset, nova::NovaLogType log_type) {
+                                                  uint64_t remote_buf_offset, leveldb::StoCLogType log_type) {
         uint32_t db_index;
         ParseDBIndexFromLogFileName(log_file, &db_index);
         DBLogFiles *db = db_log_files_[db_index];
@@ -160,13 +160,13 @@ namespace nova {
                     mem_manager_->FreeItem(0, buf, scid);
                     NOVA_LOG(DEBUG) << fmt::format("Free log buf for file:{}", log_file[i]);
                 }else{
-                    if(it->second->log_type == nova::NovaLogType::LOG_DRAM){
+                    if(it->second->log_type == leveldb::StoCLogType::STOC_LOG_DRAM){
                         uint32_t scid = mem_manager_->slabclassid(0, NovaConfig::config->max_stoc_file_size);
                         mem_manager_->FreeItem(0, buf, scid);
                         NOVA_LOG(DEBUG) << fmt::format("Free log buf for file:{}", log_file[i]);
-                    }else if(it->second->log_type == nova::NovaLogType::LOG_PM){
+                    }else if(it->second->log_type == leveldb::StoCLogType::STOC_LOG_PM){
                         pm_manager_->FreeItem(db_index, log_file[i], buf);
-                    }else if(it->second->log_type == nova::NovaLogType::LOG_DISK){
+                    }else if(it->second->log_type == leveldb::StoCLogType::STOC_LOG_DISK){
                         // 之后再写
                     }
                 }

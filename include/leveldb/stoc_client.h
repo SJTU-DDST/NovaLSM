@@ -85,7 +85,7 @@ namespace leveldb {
         STOC_REPLICATE_SSTABLES_RESPONSE = 'H',
     };
 
-    enum StoCLogType : char{
+    enum StoCLogType : char {
         STOC_LOG_DRAM = 'd',
         STOC_LOG_PM = 'p',
         STOC_LOG_DISK = 's'
