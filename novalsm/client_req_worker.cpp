@@ -609,7 +609,7 @@ namespace nova {
         worker->replicate_log_record_states[0].cfgid = server_cfg_id;
         leveldb::WriteOptions option;
         option.stoc_client = worker->stoc_client_;
-        option.local_write = false;
+        option.local_write = false; // local write都是不开的
         option.thread_id = worker->thread_id_;
         option.rand_seed = &worker->rand_seed;
         option.hash = key;

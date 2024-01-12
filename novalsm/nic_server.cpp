@@ -318,7 +318,7 @@ namespace nova {
         NovaConfig::config->pm_nnovabuf = NovaConfig::config->pm_pool_size_gb * 1024 * 1024 * 1024;
 
 //用于管理
-        log_manager = new StoCInMemoryLogFileManager(mem_manager);
+        log_manager = new StoCInMemoryLogFileManager(mem_manager, pm_manager);
         NovaConfig::config->add_tid_mapping();
         int bg_thread_id = 0;
 //创建后台的flush线程和compaction线程 flush和compaction由不同的线程负责??

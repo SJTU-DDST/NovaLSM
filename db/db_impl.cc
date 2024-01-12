@@ -1174,7 +1174,7 @@ namespace leveldb {
             wo.rdma_backing_mem = backing_mem;
             wo.rdma_backing_mem_size = nova::NovaConfig::config->max_stoc_file_size;
             wo.is_loading_db = false;
-            GenerateLogRecord(wo, log_records, output_memtable->memtableid()); // 新的memtable中的写入日志 以及新生成的memtable的id
+            GenerateLogRecord(wo, log_records, output_memtable->memtableid(), nova::NovaConfig->log_type); // 新的memtable中的写入日志 以及新生成的memtable的id
             bg_thread->mem_manager()->FreeItem(0, backing_mem, scid);
         }
         iterators.clear();
@@ -1553,7 +1553,7 @@ namespace leveldb {
             for (const auto &file : closed_memtable_log_files) { // log先这样放着 有必要之后会改到放入pm中
                 logs.push_back(nova::LogFileName(dbid_, file));
             }
-            log_manager_->DeleteLogBuf(logs);
+            log_manager_->DeleteLogBuf(logs, true);
             bg_thread->stoc_client()->InitiateCloseLogFiles(logs, dbid_);
         }
         for (const auto &task : sstable_tasks) { // major compaction
@@ -2753,7 +2753,7 @@ namespace leveldb {
         if (nova::NovaConfig::config->log_record_mode ==
             nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) { // 写log的时候可以让出
             partition->mutex.Unlock(); // 生成日志的时候可以让别人上锁
-            GenerateLogRecord(options, last_sequence, key, value, memtable_id); // 这里生成日志！
+            GenerateLogRecord(options, last_sequence, key, value, memtable_id, nova::NovaConfig::config->log_type); // 这里生成日志！
             partition->mutex.Lock();
         }
         table->Add(last_sequence, ValueType::kTypeValue, key, value);
@@ -3155,7 +3155,7 @@ namespace leveldb {
             atomic_memtable->number_of_pending_writes_ += 1;
             atomic_memtable->mutex_.unlock();
             GenerateLogRecord(options, last_sequence, key, val,
-                              atomic_memtable->memtable_->memtableid());
+                              atomic_memtable->memtable_->memtableid(), nova::NovaConfig::config->log_type);
             atomic_memtable->mutex_.lock();
             atomic_memtable->number_of_pending_writes_ -= 1;
         }
@@ -3211,7 +3211,7 @@ namespace leveldb {
 // 生成写前日志!!! to be done 
     void DBImpl::GenerateLogRecord(const leveldb::WriteOptions &options,
                                    const std::vector<leveldb::LevelDBLogRecord> &log_records,
-                                   uint32_t memtable_id) {
+                                   uint32_t memtable_id, nova::NovaLogType log_type) {
         if (nova::NovaConfig::config->log_record_mode ==
             nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) {
             auto stoc = reinterpret_cast<leveldb::StoCBlockClient *>(options.stoc_client);
@@ -3220,7 +3220,8 @@ namespace leveldb {
                     nova::LogFileName(dbid_, memtable_id),
                     options.thread_id, dbid_, memtable_id,
                     options.rdma_backing_mem, log_records,
-                    options.replicate_log_record_states);
+                    options.replicate_log_record_states,
+                    log_type);
             stoc->Wait();
         }
     }
@@ -3229,7 +3230,7 @@ namespace leveldb {
     void DBImpl::GenerateLogRecord(const WriteOptions &options,
                                    SequenceNumber last_sequence,
                                    const Slice &key, const Slice &val,
-                                   uint32_t memtable_id) {
+                                   uint32_t memtable_id, nova::NovaLogType log_type) {
     // 只有这个情况才会生成record
         if (nova::NovaConfig::config->log_record_mode ==
             nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) { 
@@ -3239,13 +3240,14 @@ namespace leveldb {
             log_record.sequence_number = last_sequence;
             log_record.key = key;
             log_record.value = val;
-            NOVA_ASSERT(8 + key.size() + val.size() + 4 + 4 + 1 <= // 4 + 4 + 1 是附加信息?
+            NOVA_ASSERT(8 + key.size() + val.size() + 4 + 4 + 1 <= // 4 + 4 + 1 是附加信息? 这个数值应该是变了 不过不太有所谓
                         options.rdma_backing_mem_size);
             options.stoc_client->InitiateReplicateLogRecords(
                     nova::LogFileName(dbid_, memtable_id),
                     options.thread_id, dbid_, memtable_id,
                     options.rdma_backing_mem, {log_record},
-                    options.replicate_log_record_states);
+                    options.replicate_log_record_states,
+                    log_type);
             stoc->Wait();
         }
     }

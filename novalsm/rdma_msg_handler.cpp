@@ -66,7 +66,7 @@ namespace nova {
         // 处理当前拿到的任务
         while (it != private_queue_.end()) {
             const auto &task = *it;
-            serverids.clear();
+            serverids.clear(); // 用作log的服务器编号
             if (task.type == leveldb::RDMA_CLIENT_REQ_CLOSE_LOG ||
                 task.type == leveldb::RDMA_CLIENT_REQ_LOG_RECORD) {
                 NOVA_ASSERT(task.server_id == -1);
@@ -92,7 +92,7 @@ namespace nova {
             ctx.response = task.response;
             bool failed = false;
             switch (task.type) {
-                case leveldb::RDMA_CLIENT_ALLOCATE_LOG_BUFFER_SUCC:
+                case leveldb::RDMA_CLIENT_ALLOCATE_LOG_BUFFER_SUCC: // 第一个rtt结束后 
                     rdma_log_writer_->AckAllocLogBuf(task.log_file_name,
                                                      task.server_id,
                                                      task.offset,
@@ -100,7 +100,8 @@ namespace nova {
                                                      task.rdma_log_record_backing_mem,
                                                      task.write_size,
                                                      task.thread_id,
-                                                     task.replicate_log_record_states);
+                                                     task.replicate_log_record_states,
+                                                     task.log_type);
                     ctx.req_id = task.thread_id;
                     break;
                 case leveldb::RDMA_CLIENT_RDMA_WRITE_REQUEST:
@@ -185,7 +186,8 @@ namespace nova {
                             task.memtable_id,
                             task.write_buf,
                             task.log_records,
-                            task.replicate_log_record_states);
+                            task.replicate_log_record_states,
+                            task.log_type);
                     if (ctx.req_id == 0) {
                         // Failed and must retry.
                         failed = true;

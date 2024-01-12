@@ -13,6 +13,7 @@
 #include "rdma_server.h"
 #include "ltc/stoc_client_impl.h"
 #include "common/nova_config.h"
+#include "common/nova_common.h"
 
 namespace nova {
     namespace {
@@ -118,14 +119,15 @@ namespace nova {
                 send_buf[0] = leveldb::StoCRequestType::STOC_FILENAME_STOCFILEID_RESPONSE;
                 rdma_broker_->PostSend(send_buf, 1, task.remote_server_id,
                                        task.stoc_req_id);
-            } else if (task.request_type == leveldb::STOC_ALLOCATE_LOG_BUFFER) {
-                char *send_buf = rdma_broker_->GetSendBuf(
+            } else if (task.request_type == leveldb::STOC_ALLOCATE_LOG_BUFFER) { // ltc第一次发log的申请 stoc端完成了log文件的创建 
+                char *send_buf = rdma_broker_->GetSendBuf( // 地址和大小
                         task.remote_server_id);
                 send_buf[0] = leveldb::StoCRequestType::STOC_ALLOCATE_LOG_BUFFER_SUCC;
-                leveldb::EncodeFixed64(send_buf + 1, (uint64_t) task.rdma_buf);
-                leveldb::EncodeFixed64(send_buf + 9,
+                send_buf[1] = task.log_type;
+                leveldb::EncodeFixed64(send_buf + 2, (uint64_t) task.rdma_buf);
+                leveldb::EncodeFixed64(send_buf + 10,
                                        NovaConfig::config->max_stoc_file_size);
-                rdma_broker_->PostSend(send_buf, 1 + 8 + 8,
+                rdma_broker_->PostSend(send_buf, 1 + 1 + 8 + 8,
                                        task.remote_server_id,
                                        task.stoc_req_id);
             } else if (task.request_type == leveldb::RDMA_WRITE_REQUEST) {
@@ -518,17 +520,30 @@ namespace nova {
                     processed = true;
                     // dbname 这里上面是initiateappendblock的部分
                 } else if (buf[0] ==
-                           leveldb::StoCRequestType::STOC_ALLOCATE_LOG_BUFFER) {
-                    uint32_t size = leveldb::DecodeFixed32(buf + 1);
-                    std::string log_file(buf + 5, size);
-                    uint32_t slabclassid = mem_manager_->slabclassid(thread_id_,
-                                                                     nova::NovaConfig::config->max_stoc_file_size);
-                    char *rdma_buf = mem_manager_->ItemAlloc(thread_id_, slabclassid);
-                    NOVA_ASSERT(rdma_buf) << "Running out of memory";
-                    log_manager_->AddLocalBuf(log_file, rdma_buf);
+                           leveldb::StoCRequestType::STOC_ALLOCATE_LOG_BUFFER) { // stoc端第一次收到ltc的log的申请
+                    nova::NovaLogType log_type = buf[1]; // 依次顺延
+                    uint32_t size = leveldb::DecodeFixed32(buf + 2);
+                    std::string log_file(buf + 6, size);
+                    uint32_t db_index;
+                    nova::ParseDBIndexFromLogFileName(log_file, &db_index);
+                    char *rdma_buf = nullptr; // 几种情况的都包括了
+                    if(log_type == nova::NovaLogType::LOG_DRAM){
+                        uint32_t slabclassid = mem_manager_->slabclassid(thread_id_,
+                                                                        nova::NovaConfig::config->max_stoc_file_size);
+                        rdma_buf = mem_manager_->ItemAlloc(thread_id_, slabclassid);  
+                        NOVA_ASSERT(rdma_buf) << "Running out of memory";                      
+                    }else if(log_type == nova::NovaLogType::LOG_PM){
+                        rdma_buf = pm_manager_->ItemAlloc(db_index, log_file);
+                        NOVA_ASSERT(rdma_buf) << "Running out of memory";
+                    }else if(log_type == nova::NovaLogType::LOG_DISK){
+                        //这个之后再说
+                        //tbd
+                    }
+                    log_manager_->AddLocalBuf(log_file, rdma_buf, log_type);
                     ServerCompleteTask task = {};
                     task.request_type = leveldb::STOC_ALLOCATE_LOG_BUFFER;
                     task.rdma_buf = rdma_buf;
+                    task.log_type = log_type;
                     task.remote_server_id = remote_server_id;
                     task.stoc_req_id = stoc_req_id;
                     private_cq_.push_back(task);
@@ -593,7 +608,7 @@ namespace nova {
                         size += leveldb::DecodeStr(buf + size, &log);
                         logfiles.push_back(log);
                     }
-                    log_manager_->DeleteLogBuf(logfiles);
+                    log_manager_->DeleteLogBuf(logfiles, false);
                     NOVA_LOG(DEBUG) << fmt::format(
                                 "rdma-server{}]: Delete log buffer for file {}.",
                                 thread_id_, logfiles.size());

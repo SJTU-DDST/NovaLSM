@@ -15,6 +15,7 @@
 #include "rdma/nova_rdma_broker.h"
 #include "log/stoc_log_manager.h"
 #include "novalsm/rdma_admission_ctrl.h"
+#include "common/nova_common.h"
 
 namespace leveldb {
 
@@ -35,13 +36,15 @@ namespace leveldb {
                   char *rdma_backing_buf,
                   const std::vector<LevelDBLogRecord> &log_records,
                   uint32_t client_req_id,
-                  StoCReplicateLogRecordState *replicate_log_record_states);
+                  StoCReplicateLogRecordState *replicate_log_record_states,
+                  nova::NovaLogType log_type);
 
         void AckAllocLogBuf(const std::string &log_file_name, int remote_sid,
                             uint64_t offset, uint64_t size,
                             char *backing_mem, uint32_t log_record_size,
                             uint32_t client_req_id,
-                            StoCReplicateLogRecordState *replicate_log_record_states);
+                            StoCReplicateLogRecordState *replicate_log_record_states,
+                            nova::NovaLogType log_type);
 
         bool AckWriteSuccess(const std::string &log_file_name, int remote_sid,
                              uint64_t rdma_wr_id,
@@ -49,7 +52,7 @@ namespace leveldb {
 
         Status
         CloseLogFiles(const std::vector<std::string> &log_file_name, uint32_t dbid,
-                     uint32_t client_req_id);
+                     uint32_t client_req_id, bool is_ltc);
 
         bool CheckCompletion(const std::string &log_file_name, uint32_t dbid,
                              StoCReplicateLogRecordState *replicate_log_record_states);
@@ -80,12 +83,14 @@ namespace leveldb {
 
         struct LogFileMetadata {
             LogFileBuf *stoc_bufs = nullptr;
+            nova::NovaLogType log_type = nova::NovaLogType::LOG_DRAM;
         };
 
         void Init(const std::string &log_file_name,
                   uint64_t thread_id,
                   const std::vector<LevelDBLogRecord> &log_records,
-                  char *backing_buf);
+                  char *backing_buf,
+                  nova::NovaLogType log_type);
 
         nova::NovaRDMABroker *rdma_broker_ = nullptr;
         std::unordered_map<std::string, LogFileMetadata> logfile_last_buf_;

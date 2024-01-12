@@ -56,17 +56,19 @@ namespace nova {
 
 //初始化，这个类应该是用于管理stoc的内存中的log文件的??
     StoCInMemoryLogFileManager::StoCInMemoryLogFileManager(
-            nova::NovaMemManager *mem_manager) : mem_manager_(mem_manager) {
+            nova::NovaMemManager *mem_manager, nova::NovaPMManager *pm_manager) : 
+            mem_manager_(mem_manager), pm_manager_(pm_manager) {
         uint32_t nranges = NovaConfig::config->cfgs[0]->fragments.size();
         db_log_files_ = new DBLogFiles *[nranges]; // 每个数据库1个
         NOVA_LOG(rdmaio::DEBUG)
             << fmt::format("{} {}", NovaConfig::config->servers.size(),
                            nranges);
         for (int i = 0; i < nranges; i++) {
-            db_log_files_[i] = new DBLogFiles;
+            db_log_files_[i] = new DBLogFiles; // 每个db对应的log file的信息
         }
     }
 
+// 换config才会调用
     void
     StoCInMemoryLogFileManager::QueryLogFiles(uint32_t range_id,
                                               std::unordered_map<std::string, uint64_t> *logfile_offset) {
@@ -82,18 +84,21 @@ namespace nova {
         db->mutex_.Unlock();
     }
 
+// 只有stoc有local backing? ltc只有remote backing?
+
+// stoc端建立本地的log文件
     void
     StoCInMemoryLogFileManager::AddLocalBuf(const std::string &log_file,
-                                            char *local_buf) {
+                                            char *local_buf, nova::NovaLogType log_type) {
         uint32_t db_index;
         ParseDBIndexFromLogFileName(log_file, &db_index);
         NOVA_LOG(rdmaio::DEBUG)
             << fmt::format("{} {}", log_file, db_index);
-        DBLogFiles *db = db_log_files_[db_index];
+        DBLogFiles *db = db_log_files_[db_index]; // 对应的数据库的log files集合
         db->mutex_.Lock();
         auto it = db->logfiles_.find(log_file);
         LogRecords *records;
-        if (it == db->logfiles_.end()) {
+        if (it == db->logfiles_.end()) { // 如果没有就新建
             records = new LogRecords;
             db->logfiles_[log_file] = records;
         } else {
@@ -101,15 +106,17 @@ namespace nova {
         }
         db->mutex_.Unlock();
 
-        records->mu.lock();
+        records->mu.lock(); // 本地buf 填入类型和具体地址
+        records->log_type = log_type;
         records->local_backing_mems.push_back(local_buf);
         records->mu.unlock();
         NOVA_LOG(DEBUG)
             << fmt::format("Allocate log buf for file:{}", log_file);
     }
 
+// ltc端建立远程的log文件
     void StoCInMemoryLogFileManager::AddRemoteBuf(const std::string &log_file, uint32_t remote_server_id,
-                                                  uint64_t remote_buf_offset) {
+                                                  uint64_t remote_buf_offset, nova::NovaLogType log_type) {
         uint32_t db_index;
         ParseDBIndexFromLogFileName(log_file, &db_index);
         DBLogFiles *db = db_log_files_[db_index];
@@ -125,13 +132,15 @@ namespace nova {
         db->mutex_.Unlock();
 
         records->mu.lock();
+        records->log_type = log_type;
         records->remote_backing_mems[remote_server_id] = remote_buf_offset;
         records->mu.unlock();
         NOVA_LOG(DEBUG) << fmt::format("Allocate log buf for file:{}", log_file);
     }
 
+// ltc删除本地的log buf
     void StoCInMemoryLogFileManager::DeleteLogBuf(
-            const std::vector<std::string> &log_file) {
+            const std::vector<std::string> &log_file, bool is_ltc) {
         uint32_t db_index;
         ParseDBIndexFromLogFileName(log_file[0], &db_index);
         DBLogFiles *db = db_log_files_[db_index];
@@ -146,9 +155,21 @@ namespace nova {
                 if (!buf) {
                     continue;
                 }
-                uint32_t scid = mem_manager_->slabclassid(0, NovaConfig::config->max_stoc_file_size);
-                mem_manager_->FreeItem(0, buf, scid);
-                NOVA_LOG(DEBUG) << fmt::format("Free log buf for file:{}", log_file[i]);
+                if(is_ltc){
+                    uint32_t scid = mem_manager_->slabclassid(0, NovaConfig::config->max_stoc_file_size);
+                    mem_manager_->FreeItem(0, buf, scid);
+                    NOVA_LOG(DEBUG) << fmt::format("Free log buf for file:{}", log_file[i]);
+                }else{
+                    if(it->second->log_type == nova::NovaLogType::LOG_DRAM){
+                        uint32_t scid = mem_manager_->slabclassid(0, NovaConfig::config->max_stoc_file_size);
+                        mem_manager_->FreeItem(0, buf, scid);
+                        NOVA_LOG(DEBUG) << fmt::format("Free log buf for file:{}", log_file[i]);
+                    }else if(it->second->log_type == nova::NovaLogType::LOG_PM){
+                        pm_manager_->FreeItem(db_index, log_file[i], buf);
+                    }else if(it->second->log_type == nova::NovaLogType::LOG_DISK){
+                        // 之后再写
+                    }
+                }
             }
             db->logfiles_.erase(log_file[i]);
         }

@@ -23,13 +23,16 @@ namespace leveldb {
               log_manager_(log_manager) {
     }
 
+// 第一次generate logrecord的时候会调用
     void LogCLogWriter::Init(const std::string &log_file_name,
                              uint64_t thread_id,
                              const std::vector<LevelDBLogRecord> &log_records,
-                             char *backing_buf) {
+                             char *backing_buf,
+                             nova::NovaLogType log_type) {
         auto it = logfile_last_buf_.find(log_file_name);
-        if (it == logfile_last_buf_.end()) {
+        if (it == logfile_last_buf_.end()) { // 第一次调用 还没有建立文件
             LogFileMetadata meta = {};
+            meta.log_type = log_type;
             meta.stoc_bufs = new LogFileBuf[nova::NovaConfig::config->servers.size()];
             for (int i = 0;
                  i <
@@ -41,19 +44,21 @@ namespace leveldb {
             logfile_last_buf_[log_file_name] = meta;
         }
         uint32_t size = 0;
-        for (const auto &record : log_records) {
+        for (const auto &record : log_records) { // 把log装进rdma buf里面
             size += nova::EncodeLogRecord(backing_buf + size, record);
         }
     }
 
+// 申请log文件之后调用
     void LogCLogWriter::AckAllocLogBuf(const std::string &log_file_name,
                                        int stoc_server_id, uint64_t offset,
                                        uint64_t size,
                                        char *backing_mem,
                                        uint32_t log_record_size,
                                        uint32_t client_req_id,
-                                       StoCReplicateLogRecordState *replicate_log_record_states) {
-        log_manager_->AddRemoteBuf(log_file_name, stoc_server_id, offset);
+                                       StoCReplicateLogRecordState *replicate_log_record_states,
+                                       nova::NovaLogType log_type) {
+        log_manager_->AddRemoteBuf(log_file_name, stoc_server_id, offset, log_type);
         replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::ALLOC_SUCCESS;
         auto meta = &logfile_last_buf_[log_file_name];
         meta->stoc_bufs[stoc_server_id].base = offset;
@@ -63,17 +68,18 @@ namespace leveldb {
         char *sendbuf = rdma_broker_->GetSendBuf(stoc_server_id);
         sendbuf[0] = leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS;
         leveldb::EncodeFixed32(sendbuf + 1, client_req_id);
-        replicate_log_record_states[stoc_server_id].rdma_wr_id = rdma_broker_->PostWrite( // 本地dram到远程dram 目前
+        replicate_log_record_states[stoc_server_id].rdma_wr_id = rdma_broker_->PostWrite( // 本地dram到远程 目前 发送过去
                 backing_mem, log_record_size,
                 stoc_server_id,
                 meta->stoc_bufs[stoc_server_id].base +
                 meta->stoc_bufs[stoc_server_id].offset, /*is_remote_offset=*/
-                false, 0, 0, 0);
+                false, 0, 0, (meta->log_type == nova::NovaLogType::LOG_DRAM ? 0 : 1)); // dram是0 pm是1
         meta->stoc_bufs[stoc_server_id].offset += log_record_size;
         replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
     }
 
 //本地server read write replicate log record后，更改本地任务的状态
+// ltc第二次给stoc发送了消息之后调用 表明发送完成
     bool LogCLogWriter::AckWriteSuccess(const std::string &log_file_name,
                                         int remote_sid, uint64_t wr_id,
                                         StoCReplicateLogRecordState *replicate_log_record_states) {
@@ -94,7 +100,8 @@ namespace leveldb {
                              char *rdma_backing_buf,
                              const std::vector<LevelDBLogRecord> &log_records,
                              uint32_t client_req_id,
-                             StoCReplicateLogRecordState *replicate_log_record_states) {
+                             StoCReplicateLogRecordState *replicate_log_record_states,
+                             nova::NovaLogType log_type) {
         uint32_t cfgid = replicate_log_record_states[0].cfgid;
         auto cfg = nova::NovaConfig::config->cfgs[cfgid];
         nova::LTCFragment *frag = cfg->fragments[dbid];
@@ -102,11 +109,11 @@ namespace leveldb {
             return true;
         }
         // If one of the log buf is intializing, return false.
-        Init(log_file_name, thread_id, log_records, rdma_backing_buf);
+        Init(log_file_name, thread_id, log_records, rdma_backing_buf, log_type);
         for (int i = 0; i < frag->log_replica_stoc_ids.size(); i++) {
             uint32_t stoc_server_id = cfg->stoc_servers[frag->log_replica_stoc_ids[i]];
             auto &it = logfile_last_buf_[log_file_name];
-            if (it.stoc_bufs[stoc_server_id].is_initializing) {
+            if (it.stoc_bufs[stoc_server_id].is_initializing) { // 第一次进来的时候不是正在initializing
                 return false;
             }
         }
@@ -114,19 +121,21 @@ namespace leveldb {
         for (int i = 0; i < frag->log_replica_stoc_ids.size(); i++) {
             uint32_t stoc_server_id = cfg->stoc_servers[frag->log_replica_stoc_ids[i]];
             auto &it = logfile_last_buf_[log_file_name];
-            if (it.stoc_bufs[stoc_server_id].base == 0) {
+            if (it.stoc_bufs[stoc_server_id].base == 0) { // 如果是第一次的话 开始initialize
                 it.stoc_bufs[stoc_server_id].is_initializing = true;
                 // Allocate a new buf.
                 char *send_buf = rdma_broker_->GetSendBuf(stoc_server_id);
                 char *buf = send_buf;
-                buf[0] = StoCRequestType::STOC_ALLOCATE_LOG_BUFFER;
+                buf[0] = StoCRequestType::STOC_ALLOCATE_LOG_BUFFER; // 先申请
+                buf++;
+                buf[0] = log_type;
                 buf++;
                 leveldb::EncodeFixed32(buf, log_file_name.size());
                 buf += 4;
                 memcpy(buf, log_file_name.data(), log_file_name.size());
                 replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_ALLOC;
                 rdma_broker_->PostSend(
-                        send_buf, 1 + 4 + log_file_name.size(),
+                        send_buf, 1 + 1 + 4 + log_file_name.size(), // 长度变了
                         stoc_server_id, client_req_id);
             } else {
                 NOVA_ASSERT(!it.stoc_bufs[stoc_server_id].is_initializing);
@@ -141,7 +150,7 @@ namespace leveldb {
                         rdma_backing_buf, log_record_size, stoc_server_id,
                         it.stoc_bufs[stoc_server_id].base +
                         it.stoc_bufs[stoc_server_id].offset,
-                        false, 0, 0, 0);
+                        false, 0, 0, (it.log_type == nova::NovaLogType::LOG_DRAM ? 0 : 1)); // 
                 it.stoc_bufs[stoc_server_id].offset += log_record_size;
                 replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
             }
@@ -150,6 +159,7 @@ namespace leveldb {
     }
 
 //检查本地server的replicate log是否都已经成功完成
+// 发送完成之后检查
     bool LogCLogWriter::CheckCompletion(const std::string &log_file_name,
                                         uint32_t dbid,
                                         StoCReplicateLogRecordState *replicate_log_record_states) {
@@ -183,9 +193,10 @@ namespace leveldb {
         return acks == frag->log_replica_stoc_ids.size();
     }
 
+// 删除log文件
     Status
     LogCLogWriter::CloseLogFiles(const std::vector<std::string> &log_file_name,
-                                 uint32_t dbid, uint32_t client_req_id) {
+                                 uint32_t dbid, uint32_t client_req_id, bool is_ltc) {
         auto cfgid = nova::NovaConfig::config->current_cfg_id.load();
         auto cfg = nova::NovaConfig::config->cfgs[cfgid];
         nova::LTCFragment *frag = nova::NovaConfig::config->cfgs[cfgid]->fragments[dbid];
@@ -194,10 +205,10 @@ namespace leveldb {
             delete meta->stoc_bufs;
             logfile_last_buf_.erase(logfile);
         }
-        log_manager_->DeleteLogBuf(log_file_name);
+        log_manager_->DeleteLogBuf(log_file_name, is_ltc); // 删除本地的log buf
         for (int i = 0; i < frag->log_replica_stoc_ids.size(); i++) {
             uint32_t stoc_server_id = cfg->stoc_servers[frag->log_replica_stoc_ids[i]];
-            char *send_buf = rdma_broker_->GetSendBuf(stoc_server_id);
+            char *send_buf = rdma_broker_->GetSendBuf(stoc_server_id); // 删除各个远程的log buf
             int size = 0;
             send_buf[size] = StoCRequestType::STOC_DELETE_LOG_FILE;
             size++;

@@ -85,6 +85,13 @@ namespace leveldb {
         STOC_REPLICATE_SSTABLES_RESPONSE = 'H',
     };
 
+    enum StoCLogType : char{
+        STOC_LOG_DRAM = 'd',
+        STOC_LOG_PM = 'p',
+        STOC_LOG_DISK = 's'
+    };
+
+
 // 存放于RDMAClient中， 用于记录一个rdma 请求的上下文 以及是否完成等信息
     struct StoCRequestContext {
         StoCRequestType req_type;
@@ -116,6 +123,8 @@ namespace leveldb {
         uint32_t memtable_id = 0;
         StoCReplicateLogRecordState *replicate_log_record_states = nullptr;
         std::unordered_map<std::string, uint64_t> *logfile_offset = nullptr;
+        StoCLogType log_type = StoCLogType::STOC_LOG_DRAM;
+
         // compaction request.
         CompactionRequest *compaction = nullptr;
         bool is_ready_for_requests = false;
@@ -188,6 +197,7 @@ namespace leveldb {
         uint32_t memtable_id = 0;
         std::string log_file_name;
         std::vector<LevelDBLogRecord> log_records;
+        StoCLogType log_type;
 
         int server_id = -1;
         std::vector<SSTableStoCFilePair> stoc_file_ids;
@@ -281,7 +291,8 @@ namespace leveldb {
                                     uint32_t memtable_id,
                                     char *rdma_backing_mem,
                                     const std::vector<LevelDBLogRecord> &log_records,
-                                    StoCReplicateLogRecordState *replicate_log_record_states) = 0;
+                                    StoCReplicateLogRecordState *replicate_log_record_states, 
+                                    StoCLogType log_type) = 0;
 
 
         virtual uint32_t

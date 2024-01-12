@@ -14,21 +14,22 @@
 #include "common/nova_pm_manager.h"
 #include "db/dbformat.h"
 #include "leveldb/log_writer.h"
+#include "common/nova_common.h"
 
 namespace nova {
     // Manage in-memory log files to provide high availability.
     class StoCInMemoryLogFileManager {
     public:
-        StoCInMemoryLogFileManager(NovaMemManager *mem_manager);
+        StoCInMemoryLogFileManager(NovaMemManager *mem_manager, NovaPMManager *pm_manager);
 
-        void AddLocalBuf(const std::string &log_file, char *buf);
+        void AddLocalBuf(const std::string &log_file, char *buf, nova::NovaLogType log_type);
 
-        void AddRemoteBuf(const std::string &log_file, uint32_t remote_server_id, uint64_t remote_buf_offset);
+        void AddRemoteBuf(const std::string &log_file, uint32_t remote_server_id, uint64_t remote_buf_offset, nova::NovaLogType log_type);
 
-        void DeleteLogBuf(const std::vector<std::string> &log_files);
+        void DeleteLogBuf(const std::vector<std::string> &log_files, bool is_ltc);
 
         void QueryLogFiles(uint32_t range_id,
-                           std::unordered_map<std::string, uint64_t> *logfile_offset);
+                           std::unordered_map<std::string, uint64_t> *logfile_offset); // 换config才会调用
 
         uint32_t EncodeLogFiles(char *buf, uint32_t dbid);
 
@@ -37,6 +38,7 @@ namespace nova {
 
     private:
         struct LogRecords {
+            nova::NovaLogType log_type;
             std::vector<char *> local_backing_mems;
             std::unordered_map<uint32_t, uint64_t> remote_backing_mems;
             std::mutex mu;
@@ -48,6 +50,7 @@ namespace nova {
             leveldb::port::Mutex mutex_;
         };
         NovaMemManager *mem_manager_;
+        NovaPMManager *pm_manager_;
         DBLogFiles **db_log_files_;
     };
 }

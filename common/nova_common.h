@@ -79,6 +79,12 @@ namespace nova {
         LOG_NONE = 3,
     };
 
+    enum NovaLogType : char{
+        LOG_DRAM = 'd',
+        LOG_PM = 'p',
+        LOG_DISK = 's'
+    };
+
 //~
     struct RangePartition {
         uint64_t key_start;
@@ -319,7 +325,7 @@ namespace nova {
 
     inline std::string
     LogFileName(uint32_t db_id, uint32_t memtableid) {
-        return fmt::format("{}-{}", db_id, memtableid);
+        return fmt::format("{}-{}.wal", db_id, memtableid);
     }
 
     inline void

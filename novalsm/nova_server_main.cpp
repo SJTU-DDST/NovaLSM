@@ -87,6 +87,8 @@ DEFINE_string(scatter_policy, "random",
               "Policy to scatter an SSTable, i.e., random/power_of_two");//打散一个sstable的策略
 DEFINE_string(log_record_mode, "none",
               "Policy for LogC to replicate log records, i.e., none/rdma");//log的记录策略
+DEFINE_string(log_type, "dram",
+              "Where to put log file, dram or pm or ssd");//log的记录策略
 DEFINE_uint32(num_log_replicas, 0, "Number of replicas for a log record.");//一条log记录的replica个数
 DEFINE_string(memtable_type, "", "Memtable type, i.e., pool/static_partition");//memtable的种类
 
@@ -281,6 +283,14 @@ int main(int argc, char *argv[]) {
         NovaConfig::config->log_record_mode = NovaLogRecordMode::LOG_NONE;
     } else if (FLAGS_log_record_mode == "rdma") {
         NovaConfig::config->log_record_mode = NovaLogRecordMode::LOG_RDMA;
+    }
+
+    if(FLAGS_log_type == "dram"){
+        NovaConfig::config->log_type = NovaLogType::LOG_DRAM;
+    }else if(FLAGS_log_type == "pm"){
+        NovaConfig::config->log_type = NovaLogType::LOG_PM;
+    }else if(FLAGS_log_type == "disk"){
+        NovaConfig::config->log_type == NovaLogType::LOG_DISK;
     }
 
     NovaConfig::config->enable_lookup_index = FLAGS_enable_lookup_index;

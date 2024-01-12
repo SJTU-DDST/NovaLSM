@@ -489,13 +489,15 @@ namespace leveldb {
         return reqid;
     }
 
+// 写日志
 // 写日志会落到这里
     uint32_t StoCBlockClient::InitiateReplicateLogRecords(
             const std::string &log_file_name, uint64_t thread_id,
             uint32_t db_id, uint32_t memtable_id,
             char *rdma_backing_mem,
             const std::vector<LevelDBLogRecord> &log_records,
-            StoCReplicateLogRecordState *replicate_log_record_states) {
+            StoCReplicateLogRecordState *replicate_log_record_states,
+            nova::NovaLogType log_type) {
         RDMARequestTask task = {};
         task.type = RDMAClientRequestType::RDMA_CLIENT_REQ_LOG_RECORD;
         task.log_file_name = log_file_name;
@@ -506,10 +508,12 @@ namespace leveldb {
         task.write_buf = rdma_backing_mem;
         task.replicate_log_record_states = replicate_log_record_states;
         task.sem = &sem_;
+        task.log_type = log_type;
         AddAsyncTask(task);
         return 0;
     }
 
+// 关闭log相关文件
     uint32_t StoCBlockClient::InitiateCloseLogFiles(
             const std::vector<std::string> &log_file_name, uint32_t dbid) {
         RDMARequestTask task = {};
@@ -775,7 +779,8 @@ namespace leveldb {
             uint32_t db_id, uint32_t memtable_id,
             char *rdma_backing_mem,
             const std::vector<LevelDBLogRecord> &log_records,
-            StoCReplicateLogRecordState *replicate_log_record_states) {
+            StoCReplicateLogRecordState *replicate_log_record_states,
+            nova::NovaLogType log_type) {
         uint32_t req_id = current_req_id_;
         StoCRequestContext context = {};
         context.done = false;
@@ -787,6 +792,7 @@ namespace leveldb {
         context.replicate_log_record_states = replicate_log_record_states;
         context.log_record_mem = rdma_backing_mem;
         context.log_record_size = nova::LogRecordsSize(log_records);
+        context.log_type = log_type;
         request_context_[req_id] = context;
         bool success = rdma_log_writer_->AddRecord(log_file_name,
                                                    thread_id, db_id,
@@ -794,7 +800,8 @@ namespace leveldb {
                                                    rdma_backing_mem,
                                                    log_records,
                                                    req_id,
-                                                   replicate_log_record_states);
+                                                   replicate_log_record_states,
+                                                   log_type);
         IncrementReqId();
         if (!success) {
             request_context_.erase(req_id);
@@ -812,7 +819,7 @@ namespace leveldb {
             const std::vector<std::string> &log_file_name,
             uint32_t dbid) {
         uint32_t req_id = current_req_id_;
-        rdma_log_writer_->CloseLogFiles(log_file_name, dbid, req_id);
+        rdma_log_writer_->CloseLogFiles(log_file_name, dbid, req_id, true);
         IncrementReqId();
         return 0;
     }
@@ -891,7 +898,7 @@ namespace leveldb {
 //是rdma write类型的
             case IBV_WC_RDMA_WRITE: {
 //如果是replicate log record
-                if (buf[0] == leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS) {
+                if (buf[0] == leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS) { // ltc第二次给stoc发了消息 发送了之后
                     req_id = leveldb::DecodeFixed32(buf + 1);
                     auto context_it = request_context_.find(req_id);
                     NOVA_ASSERT(context_it != request_context_.end())
@@ -910,7 +917,7 @@ namespace leveldb {
                     NOVA_LOG(DEBUG) << fmt::format(
                                 "stocclient[{}]: Log record replicated req:{} wr_id:{} first:{}",
                                 stoc_client_id_, req_id, wr_id, buf[0]);
-                    bool complete = rdma_log_writer_->CheckCompletion(
+                    bool complete = rdma_log_writer_->CheckCompletion( // 每次回来的时候都检查一下是否完成
                             context.log_file_name, context.db_id,
                             context.replicate_log_record_states);
                     if (complete) {
@@ -1024,13 +1031,15 @@ namespace leveldb {
                         processed = true;
 //如果对面发送的是stoc alloc log buffer success类型的
                     } else if (buf[0] ==
-                               StoCRequestType::STOC_ALLOCATE_LOG_BUFFER_SUCC) {
-                        uint64_t base = leveldb::DecodeFixed64(buf + 1);
-                        uint64_t size = leveldb::DecodeFixed64(buf + 9);
+                               StoCRequestType::STOC_ALLOCATE_LOG_BUFFER_SUCC) { // ltc第一次发送log给stoc 第一个rtt结束 stoc发送地址和大小
+                        nova::NovaLogType log_type = buf[1];
+                        uint64_t base = leveldb::DecodeFixed64(buf + 2);
+                        uint64_t size = leveldb::DecodeFixed64(buf + 10);
 
                         RDMARequestTask task = {};
                         task.type = RDMA_CLIENT_ALLOCATE_LOG_BUFFER_SUCC;
                         task.server_id = remote_server_id;
+                        task.log_type = log_type;
                         task.log_file_name = context.log_file_name;
                         task.offset = base;
                         task.size = size;

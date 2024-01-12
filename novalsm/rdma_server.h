@@ -16,6 +16,7 @@
 #include "rdma/nova_rdma_rc_broker.h"
 #include "common/nova_mem_manager.h"
 #include "common/nova_pm_manager.h"
+#include "common/nova_common.h"
 #include "log/stoc_log_manager.h"
 #include "stoc/persistent_stoc_file.h"
 #include "stoc/storage_worker.h"
@@ -68,6 +69,7 @@ namespace nova {
         uint32_t stoc_file_id = 0;
         uint64_t stoc_file_buf_offset = 0;
 
+        nova::NovaLogType log_type = nova::NovaLogType::LOG_DRAM;
         // Read result.
         char *rdma_buf = nullptr;
         bool ispmfile;
