@@ -16,6 +16,7 @@ namespace nova {
 
 #define PMUNITSIZE 100
 #define MANIFESTMAXSIZE 64 * 1024 * 1024
+#define WALLOGMAXSIZE 18 * 1024 * 1024
 #define SSTABLEMAXSIZE 18 * 1024 * 1024
 #define SSTABLEMETAMAXSIZE 210 * 1024
 
@@ -83,6 +84,7 @@ namespace nova {
         PMUnit sstable_units_[PMUNITSIZE]; // 用于分配sstable 哈希减少冲突
         PMUnit sstable_meta_units_[PMUNITSIZE]; // 用于分配sstable meta 哈希减少冲突
         PMUnit manifest_units_; // 用于分配manifest
+        PMUnit wallog_units_; // 用于分配wal log
 
         // std::unordered_map<std::string, PMUnit*> filename2unit_; // 文件名到相应的区
         // std::unordered_map<char*, std::string> buf2filename_; // 申请的区域到相应的文件名

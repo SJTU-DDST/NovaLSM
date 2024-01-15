@@ -160,7 +160,9 @@ namespace leveldb {
             *type = kInfoLogFile;
         } else if (filename.rfind("MANIFEST") != std::string::npos) {
             *type = kDescriptorFile;
-        } else {
+        } else if (filename.rfind("wal") != std::string::npos){
+            *type = KWALLogFile;
+        }else {
             if (filename.rfind("log") != std::string::npos) {
                 *type = kLogFile;
             } else if (filename.rfind("ldb") != std::string::npos) {

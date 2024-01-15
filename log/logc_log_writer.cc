@@ -92,6 +92,7 @@ namespace leveldb {
         return false;
     }
 
+// 写log的第一次调用
     bool
     LogCLogWriter::AddRecord(const std::string &log_file_name,
                              uint64_t thread_id,
@@ -128,7 +129,7 @@ namespace leveldb {
                 char *buf = send_buf;
                 buf[0] = StoCRequestType::STOC_ALLOCATE_LOG_BUFFER; // 先申请
                 buf++;
-                buf[0] = log_type;
+                buf[0] = log_type; // 多了一个log type
                 buf++;
                 leveldb::EncodeFixed32(buf, log_file_name.size());
                 buf += 4;

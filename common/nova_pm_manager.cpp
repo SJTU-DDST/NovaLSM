@@ -24,7 +24,12 @@ namespace nova{
             buf += MANIFESTMAXSIZE;
         }
 
-        uint64_t space_left = partition_size - 2 * MANIFESTMAXSIZE; // 除去manifest区之后的剩余空间
+        for(int i = 0; i < 500; i++){ // log先分配500个
+            wallog_units_.addunitinit(buf);
+            buf += WALLOGMAXSIZE;
+        }
+
+        uint64_t space_left = partition_size - 2 * MANIFESTMAXSIZE - 500 * WALLOGMAXSIZE; // 除去manifest区和wallog区之后的剩余空间
         int count = space_left / (SSTABLEMAXSIZE + SSTABLEMETAMAXSIZE); // 让sstable和sstable meta个数相同 总个数
         int count_per_slot = count / PMUNITSIZE; // 每个分区的数量
 
@@ -49,14 +54,23 @@ namespace nova{
 
     char* NovaPartitionedPMManager::ItemAlloc(int db_index, std::string key){
         leveldb::FileType type;
+        char* buf = nullptr;        
         ParseFileName(key, &type);
-        char* buf = nullptr;
+
         // manifest
         if(type == leveldb::FileType::kDescriptorFile){
             buf = manifest_units_.getunit(key);
             NOVA_ASSERT(buf != nullptr) << "pm allocator oom for manifest";
             return buf;
         }
+
+        // wal log
+        if(type == leveldb::FileType::KWALLogFile){
+            buf = wallog_units_.getunit(key);
+            NOVA_ASSERT(buf != nullptr) << "pm allocator oom for wal log";
+            return buf;
+        }
+
         // meta
         if(key.find("meta") != std::string::npos){
             uint64_t index = CityHash64(key.c_str(), key.size()) % PMUNITSIZE;
@@ -80,6 +94,13 @@ namespace nova{
             manifest_units_.addunit(key, buf);
             return ;
         }
+
+        // wal log
+        if(type == leveldb::FileType::KWALLogFile){
+            wallog_units_.addunit(key, buf);
+            return ;
+        }
+
         // meta
         if(key.find("meta") != std::string::npos){
             uint64_t index = CityHash64(key.c_str(), key.size()) % PMUNITSIZE;
