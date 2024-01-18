@@ -29,8 +29,8 @@ namespace nova{
             buf += WALLOGMAXSIZE;
         }
 
-        uint64_t space_left = partition_size - 2 * MANIFESTMAXSIZE - 500 * WALLOGMAXSIZE; // 除去manifest区和wallog区之后的剩余空间
-        int count = space_left / (SSTABLEMAXSIZE + SSTABLEMETAMAXSIZE); // 让sstable和sstable meta个数相同 总个数
+        uint64_t space_left = partition_size - 2 * MANIFESTMAXSIZE - (uint64_t)500 * WALLOGMAXSIZE; // 除去manifest区和wallog区之后的剩余空间
+        int count = space_left / ((uint64_t)SSTABLEMAXSIZE + SSTABLEMETAMAXSIZE); // 让sstable和sstable meta个数相同 总个数
         int count_per_slot = count / PMUNITSIZE; // 每个分区的数量
 
 
