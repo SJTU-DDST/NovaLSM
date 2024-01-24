@@ -453,7 +453,7 @@ namespace nova {
                     admission_ctrl);
 //用于向stoc写入?
             auto log_writer = new leveldb::LogCLogWriter(broker, mem_manager, pm_manager,
-                                                         log_manager);
+                                                         log_manager, NovaConfig::config->batch_size);
 //
             leveldb::StoCRDMAClient *stoc_client = new leveldb::StoCRDMAClient(
                     worker_id,
@@ -524,7 +524,7 @@ namespace nova {
                     true,
                     admission_ctrl);
             auto log_writer = new leveldb::LogCLogWriter(broker, mem_manager, pm_manager,
-                                                         log_manager);
+                                                         log_manager, NovaConfig::config->batch_size);
             leveldb::StoCRDMAClient *stoc_client = new leveldb::StoCRDMAClient(
                     worker_id,
                     broker,

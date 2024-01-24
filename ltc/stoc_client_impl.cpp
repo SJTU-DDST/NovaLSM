@@ -497,7 +497,9 @@ namespace leveldb {
             char *rdma_backing_mem,
             const std::vector<LevelDBLogRecord> &log_records,
             StoCReplicateLogRecordState *replicate_log_record_states,
-            StoCLogType log_type) {
+            StoCLogType log_type,
+            bool *batched,
+            bool *success) { // 这里不用 如果察觉到batched 直接sem post了
         RDMARequestTask task = {};
         task.type = RDMAClientRequestType::RDMA_CLIENT_REQ_LOG_RECORD;
         task.log_file_name = log_file_name;
@@ -776,13 +778,16 @@ namespace leveldb {
 
 // rdmaclient是每个rdma线程1个
 // 保证这里处理1个memtable内所有的log
+// 每次都会重新算 所以是对的
     uint32_t StoCRDMAClient::InitiateReplicateLogRecords(
             const std::string &log_file_name, uint64_t thread_id,
             uint32_t db_id, uint32_t memtable_id,
             char *rdma_backing_mem,
             const std::vector<LevelDBLogRecord> &log_records,
             StoCReplicateLogRecordState *replicate_log_record_states,
-            StoCLogType log_type) {
+            StoCLogType log_type,
+            bool *batched,
+            bool *success) { // 这里需要 rdma handler需要batch提示是否直接sem post 这里一定是串行的
         uint32_t req_id = current_req_id_;
         StoCRequestContext context = {};
         context.done = false;
@@ -793,19 +798,33 @@ namespace leveldb {
         context.memtable_id = memtable_id;
         context.replicate_log_record_states = replicate_log_record_states;
         context.log_record_mem = rdma_backing_mem;
-        context.log_record_size = nova::LogRecordsSize(log_records);
+        context.log_record_size = nova::LogRecordsSize(log_records) + rdma_log_writer_->GetBatchedSize(log_file_name); // 如果要发送的话 目前所有的record的大小
         context.log_type = log_type;
         request_context_[req_id] = context;
-        bool success = rdma_log_writer_->AddRecord(log_file_name, // 每个rdma handler1个的log writer 不过里面的log manager是共享的
+        *success = rdma_log_writer_->AddRecord(log_file_name, // 每个rdma handler1个的log writer 不过里面的log manager是共享的
                                                    thread_id, db_id, // 1个memtable内所有log record会到同一个log writer
                                                    memtable_id,
                                                    rdma_backing_mem,
                                                    log_records,
                                                    req_id,
                                                    replicate_log_record_states,
-                                                   log_type);
+                                                   log_type,
+                                                   batched);
         IncrementReqId();
-        if (!success) {
+
+        // batch + success = 直接删掉
+        // !batch + success = 正常发送
+        // batch + !success = 直接删掉 保证batch的size是正确的 应该是 因为每次都有重新算
+        // !batch + !success = 
+
+        // 如果batch了, 效仿!success
+        if(*batched){
+            request_context_.erase(req_id); 
+            return 0;
+        }
+
+        // 在initializing则需要重试
+        if (!(*success)) {
             request_context_.erase(req_id);
             return 0;
         }
@@ -829,7 +848,7 @@ namespace leveldb {
 // RDMA handler中查看isdone
     bool StoCRDMAClient::IsDone(uint32_t req_id, StoCResponse *response,
                                 uint64_t *timeout) {
-        if (req_id == 0) { // req_id 什么时候会等于0??
+        if (req_id == 0) { // req_id 什么时候会等于0?? // reqid 为0直接成功 batch之后走这里
             // local bypass.
             if (response) {
                 response->is_complete = true;
@@ -839,7 +858,7 @@ namespace leveldb {
 
 // 如果没有context了(当初根本没有加入?)或者有context 而且done了 那就说明这个req已经做好了
 
-        auto context_it = request_context_.find(req_id);
+        auto context_it = request_context_.find(req_id); //request 清除和done都是成功
         if (context_it == request_context_.end()) {
             return true;
         }
@@ -1054,7 +1073,7 @@ namespace leveldb {
                         task.offset = base;
                         task.size = size;
                         task.rdma_log_record_backing_mem = context.log_record_mem;
-                        task.write_size = context.log_record_size;
+                        task.write_size = context.log_record_size; // 这里是当时发送的时候batch的所有log
                         task.thread_id = req_id;
                         task.replicate_log_record_states = context.replicate_log_record_states;
                         rdma_msg_handler_->private_queue_.push_back(task);

@@ -3230,7 +3230,9 @@ namespace leveldb {
                     options.thread_id, dbid_, memtable_id,
                     options.rdma_backing_mem, log_records,
                     options.replicate_log_record_states,
-                    stoc_log_type);
+                    stoc_log_type,
+                    nullptr,
+                    nullptr); // 这里不需要
             stoc->Wait();
         }
     }
@@ -3264,7 +3266,9 @@ namespace leveldb {
                     options.thread_id, dbid_, memtable_id,
                     options.rdma_backing_mem, {log_record},
                     options.replicate_log_record_states,
-                    stoc_log_type);
+                    stoc_log_type,
+                    nullptr,
+                    nullptr); // 这里不需要
             stoc->Wait();
         }
     }

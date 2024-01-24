@@ -292,7 +292,9 @@ namespace leveldb {
                                     char *rdma_backing_mem,
                                     const std::vector<LevelDBLogRecord> &log_records,
                                     StoCReplicateLogRecordState *replicate_log_record_states, 
-                                    StoCLogType log_type) = 0;
+                                    StoCLogType log_type,
+                                    bool *batched, // true为batch存下来了 false为真实发送了
+                                    bool *success) = 0; // 指示add record调用的状态
 
 
         virtual uint32_t

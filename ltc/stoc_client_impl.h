@@ -101,7 +101,9 @@ namespace leveldb {
                                     char *rdma_backing_mem,
                                     const std::vector<LevelDBLogRecord> &log_records,
                                     StoCReplicateLogRecordState *replicate_log_record_states,
-                                    StoCLogType log_type) override;
+                                    StoCLogType log_type,
+                                    bool *batched,
+                                    bool *success) override;
 
 
         uint32_t
@@ -224,7 +226,9 @@ namespace leveldb {
                                     char *rdma_backing_mem,
                                     const std::vector<LevelDBLogRecord> &log_records,
                                     StoCReplicateLogRecordState *replicate_log_record_states,
-                                    StoCLogType log_type) override;
+                                    StoCLogType log_type,
+                                    bool *batched,
+                                    bool *success) override;
 
         uint32_t InitiateReadStoCStats(uint32_t server_id) override;
 

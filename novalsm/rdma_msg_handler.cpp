@@ -91,6 +91,8 @@ namespace nova {
             ctx.sem = task.sem; // 一般这里的sem是client的sem client需要串行工作 通过sem结束等待
             ctx.response = task.response;
             bool failed = false;
+            bool batched = false;
+            bool success = false; // 用于指示是否是由于initializing造成的
             switch (task.type) {
                 case leveldb::RDMA_CLIENT_ALLOCATE_LOG_BUFFER_SUCC: // 第一个rtt结束后 
                     rdma_log_writer_->AckAllocLogBuf(task.log_file_name,
@@ -98,7 +100,7 @@ namespace nova {
                                                      task.offset,
                                                      task.size,
                                                      task.rdma_log_record_backing_mem,
-                                                     task.write_size,
+                                                     task.write_size, // 改为当时batch后所有log的大小
                                                      task.thread_id,
                                                      task.replicate_log_record_states,
                                                      task.log_type);
@@ -188,11 +190,29 @@ namespace nova {
                             task.write_buf,
                             task.log_records,
                             task.replicate_log_record_states,
-                            task.log_type);
-                    if (ctx.req_id == 0) {
-                        // Failed and must retry.
-                        failed = true;
+                            task.log_type,
+                            &batched,
+                            &success);
+                    // 先看batch 然后看req id
+                    // 如果batch了 那就正常
+                    // 如果没有batch 且 reqid为0 说明失败
+                    // 先判断是否重新来 再判断是否batch
+                    
+                    if(batched){ 
+                        for (auto sid : serverids) { // 还份额直接结束
+                            admission_control_->RemoveRequests(sid, 1);
+                        }
+                        ; // 已经从request context剔除了 无需处理
                     }
+
+                    if(!success){ // 没有batch而且在initializing
+                        failed = true; //既还份额 又重新搞
+                    }
+
+                    // if (ctx.req_id == 0) {
+                    //     // Failed and must retry.
+                    //     failed = true;
+                    // }
                     break;
                 case leveldb::RDMA_CLIENT_RECONSTRUCT_MISSING_REPLICA:
                     ctx.req_id = stoc_client_->InitiateReplicateSSTables(

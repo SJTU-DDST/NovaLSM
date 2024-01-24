@@ -26,7 +26,10 @@ namespace leveldb {
         LogCLogWriter(nova::NovaRDMABroker *rdma_broker,
                       MemManager *mem_manager,
                       MemManager *pm_manager,
-                      nova::StoCInMemoryLogFileManager *log_manager);
+                      nova::StoCInMemoryLogFileManager *log_manager,
+                      int64_t batch_size);
+
+        uint64_t GetBatchedSize(const std::string &log_file_name); //获取当前某个log batch的记录的序列化后的大小
 
         bool
         AddRecord(const std::string &log_file_name,
@@ -37,7 +40,8 @@ namespace leveldb {
                   const std::vector<LevelDBLogRecord> &log_records,
                   uint32_t client_req_id,
                   StoCReplicateLogRecordState *replicate_log_record_states,
-                  StoCLogType log_type);
+                  StoCLogType log_type,
+                  bool *batched);
 
         void AckAllocLogBuf(const std::string &log_file_name, int remote_sid,
                             uint64_t offset, uint64_t size,
@@ -83,6 +87,7 @@ namespace leveldb {
 
         struct LogFileMetadata {
             LogFileBuf *stoc_bufs = nullptr;
+            std::vector<LevelDBLogRecord> log_records; // 这里的log records传入的时候可以用右值
             StoCLogType log_type = leveldb::StoCLogType::STOC_LOG_DRAM;
         };
 
@@ -90,13 +95,15 @@ namespace leveldb {
                   uint64_t thread_id,
                   const std::vector<LevelDBLogRecord> &log_records,
                   char *backing_buf,
-                  StoCLogType log_type);
+                  StoCLogType log_type,
+                  bool *batched);
 
         nova::NovaRDMABroker *rdma_broker_ = nullptr;
         std::unordered_map<std::string, LogFileMetadata> logfile_last_buf_;
         MemManager *mem_manager_ = nullptr;
         MemManager *pm_manager_ = nullptr;
         nova::StoCInMemoryLogFileManager *log_manager_ = nullptr;
+        int64_t batch_size_ = 0;
     };
 
 }  // namespace leveldb

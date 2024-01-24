@@ -18,20 +18,35 @@ namespace leveldb {
     LogCLogWriter::LogCLogWriter(nova::NovaRDMABroker *rdma_broker,
                                  MemManager *mem_manager,
                                  MemManager *pm_manager,
-                                 nova::StoCInMemoryLogFileManager *log_manager)
+                                 nova::StoCInMemoryLogFileManager *log_manager,
+                                 int64_t batch_size)
             : rdma_broker_(rdma_broker), mem_manager_(mem_manager), pm_manager_(pm_manager),
-              log_manager_(log_manager) {
+              log_manager_(log_manager), batch_size_(batch_size) {
     }
+
+    uint64_t LogCLogWriter::GetBatchedSize(const std::string &log_file_name){
+        auto it = logfile_last_buf_.find(log_file_name);
+        if(it == logfile_last_buf_.end()){
+            return 0; // 第一次调用的话为0
+        }else{
+            return nova::LogRecordsSize(it->second.log_records);
+        }
+        NOVA_ASSERT(false) << "won't reach here";
+    }
+
 
 // 第一次generate logrecord的时候会调用
 // 对于同一个log file来说是串行的 也可以加锁
+// 第一次建立的时候不batch, 之后每次都要batch
     void LogCLogWriter::Init(const std::string &log_file_name,
                              uint64_t thread_id,
                              const std::vector<LevelDBLogRecord> &log_records,
                              char *backing_buf,
-                             StoCLogType log_type) {
+                             StoCLogType log_type,
+                             bool *batched) { // 是否batched
         auto it = logfile_last_buf_.find(log_file_name);
         if (it == logfile_last_buf_.end()) { // 第一次调用 还没有建立文件
+            *batched = false; // 第一次调用不batch 去建立
             LogFileMetadata meta = {};
             meta.log_type = log_type;
             meta.stoc_bufs = new LogFileBuf[nova::NovaConfig::config->servers.size()];
@@ -43,19 +58,43 @@ namespace leveldb {
                 meta.stoc_bufs[i].size = 0;
             }
             logfile_last_buf_[log_file_name] = meta;
-        }
-        uint32_t size = 0;
-        for (const auto &record : log_records) { // 把log装进rdma buf里面
-            size += nova::EncodeLogRecord(backing_buf + size, record);
+
+            uint32_t size = 0;
+            // for (const auto &record : it->second.log_records) { // 把已经有的log装进rdma buf里面
+            //     size += nova::EncodeLogRecord(backing_buf + size, record);
+            // }
+            for (const auto &record : log_records) { // 把新来的的log装进rdma buf里面
+                size += nova::EncodeLogRecord(backing_buf + size, record);
+            }
+            // it->second.log_records.clear(); // 清除所有已有的log        
+
+        }else{ // 已经建立的情况
+            if(it->second.log_records.size() + log_records.size() >= batch_size_){// 到了batch的大小 进行发送了
+                *batched = false;
+                uint32_t size = 0;
+                for (const auto &record : it->second.log_records) { // 把已经有的log装进rdma buf里面
+                    size += nova::EncodeLogRecord(backing_buf + size, record);
+                }
+                for (const auto &record : log_records) { // 把新来的的log装进rdma buf里面
+                    size += nova::EncodeLogRecord(backing_buf + size, record);
+                }
+                it->second.log_records.clear(); // 清除所有已有的log!!!!
+            }else{ // 暂存下来就好
+                *batched = true;
+                for(int i = 0; i < log_records.size(); i++){
+                    it->second.log_records.push_back(std::move(log_records[i])); 
+                }
+            }
         }
     }
 
+// 只有第一次的时候
 // 申请log文件之后调用
     void LogCLogWriter::AckAllocLogBuf(const std::string &log_file_name,
                                        int stoc_server_id, uint64_t offset,
                                        uint64_t size,
                                        char *backing_mem,
-                                       uint32_t log_record_size,
+                                       uint32_t log_record_size, // 每次都更新 所以应该对
                                        uint32_t client_req_id,
                                        StoCReplicateLogRecordState *replicate_log_record_states,
                                        StoCLogType log_type) {
@@ -96,6 +135,10 @@ namespace leveldb {
 // 每个rdma线程1个
 // 写log的第一次调用
 // 1个memtable内所有log都会到同一个logwriter
+// 先看是否是success 再看是否batch
+// batch success
+// !batch !success
+// !batch success
     bool
     LogCLogWriter::AddRecord(const std::string &log_file_name,
                              uint64_t thread_id,
@@ -105,7 +148,8 @@ namespace leveldb {
                              const std::vector<LevelDBLogRecord> &log_records,
                              uint32_t client_req_id,
                              StoCReplicateLogRecordState *replicate_log_record_states,
-                             StoCLogType log_type) {
+                             StoCLogType log_type,
+                             bool *batched) { // 提示是否batch了 还是真的发送了
         uint32_t cfgid = replicate_log_record_states[0].cfgid;
         auto cfg = nova::NovaConfig::config->cfgs[cfgid];
         nova::LTCFragment *frag = cfg->fragments[dbid];
@@ -113,12 +157,16 @@ namespace leveldb {
             return true;
         }
         // If one of the log buf is intializing, return false.
-        Init(log_file_name, thread_id, log_records, rdma_backing_buf, log_type);
+        Init(log_file_name, thread_id, log_records, rdma_backing_buf, log_type, batched);
+        if(*batched){ // 如果batch了
+            return true; // 没碰到initializing 而且batch了
+        }
+
         for (int i = 0; i < frag->log_replica_stoc_ids.size(); i++) {
             uint32_t stoc_server_id = cfg->stoc_servers[frag->log_replica_stoc_ids[i]];
             auto &it = logfile_last_buf_[log_file_name];
             if (it.stoc_bufs[stoc_server_id].is_initializing) { // 第一次进来的时候不是正在initializing
-                return false;
+                return false; // 不batch 而且 正在initializing 
             }
         }
         uint32_t log_record_size = nova::LogRecordsSize(log_records);
@@ -207,6 +255,7 @@ namespace leveldb {
         for (const auto &logfile : log_file_name) {
             LogFileMetadata *meta = &logfile_last_buf_[logfile];
             delete meta->stoc_bufs;
+            meta->log_records.clear(); // 剩余的也不必写了
             logfile_last_buf_.erase(logfile);
         }
         log_manager_->DeleteLogBuf(log_file_name, is_ltc); // 删除本地的log buf
