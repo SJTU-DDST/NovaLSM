@@ -427,7 +427,7 @@ namespace leveldb {
 // 将填好的任务下发到rdma线程中 这里都是加入到后台rdma msg handler了
     void StoCBlockClient::AddAsyncTask(
             const leveldb::RDMARequestTask &task) {
-        if (task.type == RDMAClientRequestType::RDMA_CLIENT_REQ_LOG_RECORD) {
+        if (task.type == RDMAClientRequestType::RDMA_CLIENT_REQ_LOG_RECORD) { // 这里保证了相同的memtable的任务会传到相同的rdmahandler!!!!
             uint64_t id = task.memtable_id;
             rdma_msg_handlers_[id % rdma_msg_handlers_.size()]->AddTask(task);
             return;
@@ -774,6 +774,8 @@ namespace leveldb {
         return req_id;
     }
 
+// rdmaclient是每个rdma线程1个
+// 保证这里处理1个memtable内所有的log
     uint32_t StoCRDMAClient::InitiateReplicateLogRecords(
             const std::string &log_file_name, uint64_t thread_id,
             uint32_t db_id, uint32_t memtable_id,
@@ -794,8 +796,8 @@ namespace leveldb {
         context.log_record_size = nova::LogRecordsSize(log_records);
         context.log_type = log_type;
         request_context_[req_id] = context;
-        bool success = rdma_log_writer_->AddRecord(log_file_name,
-                                                   thread_id, db_id,
+        bool success = rdma_log_writer_->AddRecord(log_file_name, // 每个rdma handler1个的log writer 不过里面的log manager是共享的
+                                                   thread_id, db_id, // 1个memtable内所有log record会到同一个log writer
                                                    memtable_id,
                                                    rdma_backing_mem,
                                                    log_records,

@@ -951,7 +951,7 @@ namespace nova {
 
         /* Listen for notifications from other threads */
         memset(&event, 0, sizeof(struct event));
-        NOVA_ASSERT(event_assign(&event, base, listen_fd_, EV_READ | EV_PERSIST, on_accept, (void *) this) == 0);
+        NOVA_ASSERT(event_assign(&event, base, listen_fd_, EV_READ | EV_PERSIST, on_accept, (void *) this) == 0); // 客户端连接请求
         NOVA_ASSERT(event_add(&event, 0) == 0) << listen_fd_;
         NOVA_ASSERT(event_base_loop(base, 0) == 0) << listen_fd_;
         NOVA_LOG(INFO) << "started";

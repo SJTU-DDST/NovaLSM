@@ -89,6 +89,8 @@ DEFINE_string(log_record_mode, "none",
               "Policy for LogC to replicate log records, i.e., none/rdma");//log的记录策略
 DEFINE_string(log_type, "dram",
               "Where to put log file, dram or pm or ssd");//log的记录策略
+DEFINE_int64(batch_size, 1,
+              "number of log records to process at a time");//每次发送的记录数量 预设为1
 DEFINE_uint32(num_log_replicas, 0, "Number of replicas for a log record.");//一条log记录的replica个数
 DEFINE_string(memtable_type, "", "Memtable type, i.e., pool/static_partition");//memtable的种类
 
@@ -292,6 +294,8 @@ int main(int argc, char *argv[]) {
     }else if(FLAGS_log_type == "disk"){
         NovaConfig::config->log_type == NovaLogType::LOG_DISK;
     }
+
+    NovaConfig::config->batch_size = FLAGS_batch_size;
 
     NovaConfig::config->enable_lookup_index = FLAGS_enable_lookup_index;
     NovaConfig::config->enable_range_index = FLAGS_enable_range_index;

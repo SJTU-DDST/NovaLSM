@@ -586,7 +586,8 @@ namespace nova {
 
     std::atomic_int_fast32_t total_writes;
 
-//处理客户端的put请求
+// 处理客户端的put请求
+// 就假定1个worker 一个conn!!!!!! ~
     bool process_socket_put(int fd, Connection *conn, char *request_buf, uint32_t server_cfg_id) {
         // Stats.
         NICClientReqWorker *worker = (NICClientReqWorker *) conn->worker;
@@ -608,13 +609,13 @@ namespace nova {
         worker->ResetReplicateState();
         worker->replicate_log_record_states[0].cfgid = server_cfg_id;
         leveldb::WriteOptions option;
-        option.stoc_client = worker->stoc_client_;
+        option.stoc_client = worker->stoc_client_; // 每个worker1个的client
         option.local_write = false; // local write都是不开的
         option.thread_id = worker->thread_id_;
         option.rand_seed = &worker->rand_seed;
         option.hash = key;
         option.total_writes = total_writes.fetch_add(1, std::memory_order_relaxed) + 1;
-        option.replicate_log_record_states = worker->replicate_log_record_states;
+        option.replicate_log_record_states = worker->replicate_log_record_states; // 每个worker自己的
         option.rdma_backing_mem = worker->rdma_backing_mem;
         option.rdma_backing_mem_size = worker->rdma_backing_mem_size;
         option.is_loading_db = false;
@@ -816,8 +817,8 @@ namespace nova {
         for (int i = 0; i < store->conn_queue.size(); i++) {
             int client_fd = store->conn_queue[i];
             Connection *conn = new Connection();
-            conn->Init(client_fd, store);
-            store->conns.push_back(conn);
+            conn->Init(client_fd, store); // 也就是说 每个worker可能有很多conn 但是每个的rdma backing mem只有一个 这里数量是512 可以严格保证1个worker只有一个connection
+            store->conns.push_back(conn); // 但是也有可能是一个worker有几个conn 这里的worker就是自己这个线程
             NOVA_ASSERT(client_fd < NOVA_MAX_CONN) << "memstore["
                                                    << store->thread_id_
                                                    << "]: too large "
@@ -886,7 +887,7 @@ namespace nova {
             memset(&new_conn_timer_event, 0, sizeof(struct event));
             NOVA_ASSERT(
                     event_assign(&new_conn_timer_event, base, -1, EV_PERSIST,
-                                 new_conn_handler, (void *) this) == 0);
+                                 new_conn_handler, (void *) this) == 0); // 这里没有监听任何fd，只是定时调用 其实就是每个worker
             NOVA_ASSERT(event_add(&new_conn_timer_event, &tv) == 0);
         }
         /* Timer event for stats */

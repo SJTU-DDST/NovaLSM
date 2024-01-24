@@ -3208,7 +3208,7 @@ namespace leveldb {
         return Status::OK();
     }
 
-// 生成写前日志!!! to be done 
+// 生成写前日志!!! to be done  这里的options来自 multiple的wo
     void DBImpl::GenerateLogRecord(const leveldb::WriteOptions &options,
                                    const std::vector<leveldb::LevelDBLogRecord> &log_records,
                                    uint32_t memtable_id, nova::NovaLogType log_type) {
@@ -3235,7 +3235,7 @@ namespace leveldb {
         }
     }
 
-// 生成日志record
+// 生成日志record 基本都是这列 options来自nic client req worker
     void DBImpl::GenerateLogRecord(const WriteOptions &options,
                                    SequenceNumber last_sequence,
                                    const Slice &key, const Slice &val,
@@ -3251,7 +3251,7 @@ namespace leveldb {
     // 只有这个情况才会生成record
         if (nova::NovaConfig::config->log_record_mode ==
             nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) { 
-            auto stoc = reinterpret_cast<leveldb::StoCBlockClient *>(options.stoc_client);
+            auto stoc = reinterpret_cast<leveldb::StoCBlockClient *>(options.stoc_client); // 这个worker/线程独有的
             NOVA_ASSERT(stoc);
             LevelDBLogRecord log_record = {};
             log_record.sequence_number = last_sequence;

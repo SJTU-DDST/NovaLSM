@@ -225,6 +225,7 @@ namespace nova {
         ScatterPolicy scatter_policy = ScatterPolicy::POWER_OF_TWO;
         NovaLogRecordMode log_record_mode = NovaLogRecordMode::LOG_NONE;
         NovaLogType log_type = NovaLogType::LOG_DRAM;
+        int64_t batch_size = 0;
         bool recover_dbs = false;
         uint32_t number_of_recovery_threads = 0;
         uint32_t number_of_sstable_metadata_replicas = 0;

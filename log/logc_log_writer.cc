@@ -24,6 +24,7 @@ namespace leveldb {
     }
 
 // 第一次generate logrecord的时候会调用
+// 对于同一个log file来说是串行的 也可以加锁
     void LogCLogWriter::Init(const std::string &log_file_name,
                              uint64_t thread_id,
                              const std::vector<LevelDBLogRecord> &log_records,
@@ -92,7 +93,9 @@ namespace leveldb {
         return false;
     }
 
+// 每个rdma线程1个
 // 写log的第一次调用
+// 1个memtable内所有log都会到同一个logwriter
     bool
     LogCLogWriter::AddRecord(const std::string &log_file_name,
                              uint64_t thread_id,

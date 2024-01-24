@@ -178,7 +178,8 @@ namespace nova {
                     ctx.req_id = stoc_client_->InitiateIsReadyForProcessingRequests(
                             task.server_id);
                     break;
-                case leveldb::RDMA_CLIENT_REQ_LOG_RECORD:
+                case leveldb::RDMA_CLIENT_REQ_LOG_RECORD: // 相同的memtable id会传入到相同的这里 也就是保证1个memtable的所有log都到一个rdma handler和1个stocrdmaclient 也就是说对于同一个memtable 这里的工作是串行的!!!!!! 
+                // 因为只会到这里而且是串行
                     ctx.req_id = stoc_client_->InitiateReplicateLogRecords(
                             task.log_file_name,
                             task.thread_id,
