@@ -105,7 +105,8 @@ namespace leveldb {
                              const std::vector<LevelDBLogRecord> &log_records,
                              uint32_t client_req_id,
                              StoCReplicateLogRecordState *replicate_log_record_states,
-                             StoCLogType log_type) {
+                             StoCLogType log_type,
+                             uint64_t log_records_size) {
         uint32_t cfgid = replicate_log_record_states[0].cfgid;
         auto cfg = nova::NovaConfig::config->cfgs[cfgid];
         nova::LTCFragment *frag = cfg->fragments[dbid];
@@ -121,7 +122,7 @@ namespace leveldb {
                 return false;
             }
         }
-        uint32_t log_record_size = nova::LogRecordsSize(log_records);
+        //uint32_t log_record_size = nova::LogRecordsSize(log_records);
         for (int i = 0; i < frag->log_replica_stoc_ids.size(); i++) {
             uint32_t stoc_server_id = cfg->stoc_servers[frag->log_replica_stoc_ids[i]];
             auto &it = logfile_last_buf_[log_file_name];
@@ -144,18 +145,18 @@ namespace leveldb {
             } else {
                 NOVA_ASSERT(!it.stoc_bufs[stoc_server_id].is_initializing);
                 NOVA_ASSERT(
-                        it.stoc_bufs[stoc_server_id].offset + log_record_size <=
+                        it.stoc_bufs[stoc_server_id].offset + log_records_size <=
                         it.stoc_bufs[stoc_server_id].size);
                 // WRITE.
                 char *sendbuf = rdma_broker_->GetSendBuf(stoc_server_id);
                 sendbuf[0] = leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS;
                 leveldb::EncodeFixed32(sendbuf + 1, client_req_id);
                 replicate_log_record_states[stoc_server_id].rdma_wr_id = rdma_broker_->PostWrite( // 本地dram发送给远程dram 目前
-                        rdma_backing_buf, log_record_size, stoc_server_id,
+                        rdma_backing_buf, log_records_size, stoc_server_id,
                         it.stoc_bufs[stoc_server_id].base +
                         it.stoc_bufs[stoc_server_id].offset,
                         false, 0, 0, (it.log_type == StoCLogType::STOC_LOG_DRAM ? 0 : 1)); // 
-                it.stoc_bufs[stoc_server_id].offset += log_record_size;
+                it.stoc_bufs[stoc_server_id].offset += log_records_size;
                 replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
             }
         }
@@ -205,9 +206,13 @@ namespace leveldb {
         auto cfg = nova::NovaConfig::config->cfgs[cfgid];
         nova::LTCFragment *frag = nova::NovaConfig::config->cfgs[cfgid]->fragments[dbid];
         for (const auto &logfile : log_file_name) {
-            LogFileMetadata *meta = &logfile_last_buf_[logfile];
-            delete meta->stoc_bufs;
-            logfile_last_buf_.erase(logfile);
+            if(logfile_last_buf_.find(logfile) == logfile_last_buf_.end()){
+                continue;
+            }else{
+                LogFileMetadata *meta = &logfile_last_buf_[logfile];
+                delete meta->stoc_bufs;
+                logfile_last_buf_.erase(logfile);
+            }
         }
         log_manager_->DeleteLogBuf(log_file_name, is_ltc); // 删除本地的log buf
         for (int i = 0; i < frag->log_replica_stoc_ids.size(); i++) {

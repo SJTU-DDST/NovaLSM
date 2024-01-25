@@ -1174,7 +1174,7 @@ namespace leveldb {
             wo.rdma_backing_mem = backing_mem;
             wo.rdma_backing_mem_size = nova::NovaConfig::config->max_stoc_file_size;
             wo.is_loading_db = false;
-            GenerateLogRecord(wo, log_records, output_memtable->memtableid(), nova::NovaConfig::config->log_type); // 新的memtable中的写入日志 以及新生成的memtable的id
+            GenerateLogRecord(wo, log_records, output_memtable->memtableid(), nova::NovaConfig::config->log_type, nullptr); // 新的memtable中的写入日志 以及新生成的memtable的id
             bg_thread->mem_manager()->FreeItem(0, backing_mem, scid);
         }
         iterators.clear();
@@ -2753,7 +2753,7 @@ namespace leveldb {
         if (nova::NovaConfig::config->log_record_mode ==
             nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) { // 写log的时候可以让出
             partition->mutex.Unlock(); // 生成日志的时候可以让别人上锁
-            GenerateLogRecord(options, last_sequence, key, value, memtable_id, nova::NovaConfig::config->log_type); // 这里生成日志！
+            GenerateLogRecord(options, last_sequence, key, value, memtable_id, nova::NovaConfig::config->log_type, table); // 这里生成日志！
             partition->mutex.Lock();
         }
         table->Add(last_sequence, ValueType::kTypeValue, key, value);
@@ -3155,7 +3155,7 @@ namespace leveldb {
             atomic_memtable->number_of_pending_writes_ += 1;
             atomic_memtable->mutex_.unlock();
             GenerateLogRecord(options, last_sequence, key, val,
-                              atomic_memtable->memtable_->memtableid(), nova::NovaConfig::config->log_type);
+                              atomic_memtable->memtable_->memtableid(), nova::NovaConfig::config->log_type, atomic_memtable->memtable_);
             atomic_memtable->mutex_.lock();
             atomic_memtable->number_of_pending_writes_ -= 1;
         }
@@ -3211,7 +3211,10 @@ namespace leveldb {
 // 生成写前日志!!! to be done  这里的options来自 multiple的wo
     void DBImpl::GenerateLogRecord(const leveldb::WriteOptions &options,
                                    const std::vector<leveldb::LevelDBLogRecord> &log_records,
-                                   uint32_t memtable_id, nova::NovaLogType log_type) {
+                                   uint32_t memtable_id, nova::NovaLogType log_type, MemTable* memtable) {
+        if(memtable != nullptr){
+            NOVA_ASSERT(false) << "won't reach here";
+        }
         leveldb::StoCLogType stoc_log_type = leveldb::StoCLogType::STOC_LOG_DRAM;
         if(log_type == nova::NovaLogType::LOG_DRAM){
             stoc_log_type = leveldb::StoCLogType::STOC_LOG_DRAM;
@@ -3230,7 +3233,7 @@ namespace leveldb {
                     options.thread_id, dbid_, memtable_id,
                     options.rdma_backing_mem, log_records,
                     options.replicate_log_record_states,
-                    stoc_log_type);
+                    stoc_log_type, nova::LogRecordsSize(log_records));
             stoc->Wait();
         }
     }
@@ -3239,7 +3242,38 @@ namespace leveldb {
     void DBImpl::GenerateLogRecord(const WriteOptions &options,
                                    SequenceNumber last_sequence,
                                    const Slice &key, const Slice &val,
-                                   uint32_t memtable_id, nova::NovaLogType log_type) {
+                                   uint32_t memtable_id, nova::NovaLogType log_type, MemTable* memtable) {
+        NOVA_ASSERT(memtable != nullptr) << "this should never be null";
+
+        LevelDBLogRecord log_record = {};
+        log_record.sequence_number = last_sequence;
+        log_record.key = key;
+        log_record.value = val;
+
+        std::vector<leveldb::LevelDBLogRecord> accumulated_log_records;
+        uint32_t accumulated_log_size = 0;
+        uint64_t accumulated_log_records_size = 0;
+
+        memtable->mu_.lock();
+        if(memtable->current_log_size_ + 1 >= nova::NovaConfig::config->batch_size){ // 够了
+            for(int i = 0; i < memtable->current_log_size_; i++){
+                accumulated_log_records.push_back(std::move(memtable->log_records_[i]));
+            }
+            accumulated_log_records.push_back(log_record);
+            accumulated_log_size = memtable->current_log_size_ + 1;
+            accumulated_log_records_size = memtable->log_records_size_ + nova::LogRecordSize(log_record);
+            memtable->log_records_.clear();
+            memtable->current_log_size_ = 0;
+            memtable->log_records_size_ = 0;
+            memtable->mu_.unlock();
+        }else{ // 没到batch size, 直接返回
+            memtable->log_records_.push_back(log_record);
+            memtable->current_log_size_ += 1;
+            memtable->log_records_size_ += nova::LogRecordSize(log_record);
+            memtable->mu_.unlock();
+            return ;
+        }
+
         leveldb::StoCLogType stoc_log_type = leveldb::StoCLogType::STOC_LOG_DRAM;
         if(log_type == nova::NovaLogType::LOG_DRAM){
             stoc_log_type = leveldb::StoCLogType::STOC_LOG_DRAM;
@@ -3253,18 +3287,18 @@ namespace leveldb {
             nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) { 
             auto stoc = reinterpret_cast<leveldb::StoCBlockClient *>(options.stoc_client); // 这个worker/线程独有的
             NOVA_ASSERT(stoc);
-            LevelDBLogRecord log_record = {};
-            log_record.sequence_number = last_sequence;
-            log_record.key = key;
-            log_record.value = val;
+            // LevelDBLogRecord log_record = {};
+            // log_record.sequence_number = last_sequence;
+            // log_record.key = key;
+            // log_record.value = val;
             NOVA_ASSERT(8 + key.size() + val.size() + 4 + 4 + 1 <= // 4 + 4 + 1 是附加信息? 这个数值应该是变了 不过不太有所谓
                         options.rdma_backing_mem_size);
             options.stoc_client->InitiateReplicateLogRecords(
                     nova::LogFileName(dbid_, memtable_id),
                     options.thread_id, dbid_, memtable_id,
-                    options.rdma_backing_mem, {log_record},
+                    options.rdma_backing_mem, accumulated_log_records,
                     options.replicate_log_record_states,
-                    stoc_log_type);
+                    stoc_log_type, accumulated_log_records_size);
             stoc->Wait();
         }
     }

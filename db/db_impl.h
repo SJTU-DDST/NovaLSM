@@ -127,11 +127,11 @@ namespace leveldb {
         void GenerateLogRecord(const WriteOptions &options,
                                SequenceNumber last_sequence,
                                const Slice &key, const Slice &val,
-                               uint32_t memtable_id, nova::NovaLogType log_type);
+                               uint32_t memtable_id, nova::NovaLogType log_type, MemTable* table);
 
         void GenerateLogRecord(const WriteOptions &options,
                                const std::vector<LevelDBLogRecord> &log_records,
-                               uint32_t memtable_id, nova::NovaLogType log_type);
+                               uint32_t memtable_id, nova::NovaLogType log_type, MemTable* table);
 
         void StartCoordinatedCompaction();
 

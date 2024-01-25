@@ -188,7 +188,8 @@ namespace nova {
                             task.write_buf,
                             task.log_records,
                             task.replicate_log_record_states,
-                            task.log_type);
+                            task.log_type,
+                            task.log_records_size);
                     if (ctx.req_id == 0) {
                         // Failed and must retry.
                         failed = true;

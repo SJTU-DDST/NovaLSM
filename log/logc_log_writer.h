@@ -37,7 +37,8 @@ namespace leveldb {
                   const std::vector<LevelDBLogRecord> &log_records,
                   uint32_t client_req_id,
                   StoCReplicateLogRecordState *replicate_log_record_states,
-                  StoCLogType log_type);
+                  StoCLogType log_type,
+                  uint64_t log_records_size);
 
         void AckAllocLogBuf(const std::string &log_file_name, int remote_sid,
                             uint64_t offset, uint64_t size,

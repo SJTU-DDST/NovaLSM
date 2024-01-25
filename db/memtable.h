@@ -13,6 +13,7 @@
 #include "db/dbformat.h"
 #include "db/skiplist.h"
 #include "leveldb/db.h"
+#include "leveldb/stoc_client.h"
 #include "util/arena.h"
 
 namespace leveldb {
@@ -84,6 +85,11 @@ namespace leveldb {
         }
 
         ~MemTable();  // Private since only Unref() should be used to delete it
+
+        std::mutex mu_;
+        std::vector<leveldb::LevelDBLogRecord> log_records_;
+        uint32_t log_records_size_ = 0;
+        uint32_t current_log_size_ = 0;
 
         bool is_pinned_ = false;
     private:

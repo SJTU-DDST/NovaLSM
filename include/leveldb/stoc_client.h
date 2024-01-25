@@ -198,6 +198,7 @@ namespace leveldb {
         std::string log_file_name;
         std::vector<LevelDBLogRecord> log_records;
         StoCLogType log_type;
+        uint64_t log_records_size;
 
         int server_id = -1;
         std::vector<SSTableStoCFilePair> stoc_file_ids;
@@ -292,7 +293,8 @@ namespace leveldb {
                                     char *rdma_backing_mem,
                                     const std::vector<LevelDBLogRecord> &log_records,
                                     StoCReplicateLogRecordState *replicate_log_record_states, 
-                                    StoCLogType log_type) = 0;
+                                    StoCLogType log_type,
+                                    uint64_t log_records_size) = 0;
 
 
         virtual uint32_t

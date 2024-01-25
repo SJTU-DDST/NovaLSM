@@ -497,7 +497,8 @@ namespace leveldb {
             char *rdma_backing_mem,
             const std::vector<LevelDBLogRecord> &log_records,
             StoCReplicateLogRecordState *replicate_log_record_states,
-            StoCLogType log_type) {
+            StoCLogType log_type,
+            uint64_t log_records_size) {
         RDMARequestTask task = {};
         task.type = RDMAClientRequestType::RDMA_CLIENT_REQ_LOG_RECORD;
         task.log_file_name = log_file_name;
@@ -509,6 +510,7 @@ namespace leveldb {
         task.replicate_log_record_states = replicate_log_record_states;
         task.sem = &sem_;
         task.log_type = log_type;
+        task.log_records_size = log_records_size;
         AddAsyncTask(task);
         return 0;
     }
@@ -782,7 +784,8 @@ namespace leveldb {
             char *rdma_backing_mem,
             const std::vector<LevelDBLogRecord> &log_records,
             StoCReplicateLogRecordState *replicate_log_record_states,
-            StoCLogType log_type) {
+            StoCLogType log_type,
+            uint64_t log_records_size) {
         uint32_t req_id = current_req_id_;
         StoCRequestContext context = {};
         context.done = false;
@@ -793,7 +796,7 @@ namespace leveldb {
         context.memtable_id = memtable_id;
         context.replicate_log_record_states = replicate_log_record_states;
         context.log_record_mem = rdma_backing_mem;
-        context.log_record_size = nova::LogRecordsSize(log_records);
+        context.log_record_size = log_records_size;
         context.log_type = log_type;
         request_context_[req_id] = context;
         bool success = rdma_log_writer_->AddRecord(log_file_name, // 每个rdma handler1个的log writer 不过里面的log manager是共享的
@@ -803,7 +806,8 @@ namespace leveldb {
                                                    log_records,
                                                    req_id,
                                                    replicate_log_record_states,
-                                                   log_type);
+                                                   log_type,
+                                                   log_records_size);
         IncrementReqId();
         if (!success) {
             request_context_.erase(req_id);
