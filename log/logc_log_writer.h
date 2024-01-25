@@ -7,6 +7,7 @@
 #ifndef LEVELDB_LOGC_LOG_WRITER_H
 #define LEVELDB_LOGC_LOG_WRITER_H
 
+#include <atomic>
 #include "common/nova_mem_manager.h"
 #include "common/nova_pm_manager.h"
 #include "leveldb/status.h"
@@ -88,10 +89,11 @@ namespace leveldb {
         struct LogFileMetadata {
             LogFileBuf *stoc_bufs = nullptr;
             std::vector<LevelDBLogRecord> log_records; // 这里的log records传入的时候可以用右值
+            uint32_t log_records_size = 0;
             StoCLogType log_type = leveldb::StoCLogType::STOC_LOG_DRAM;
         };
 
-        void Init(const std::string &log_file_name,
+        uint32_t Init(const std::string &log_file_name, // 返回序列化的log大小
                   uint64_t thread_id,
                   const std::vector<LevelDBLogRecord> &log_records,
                   char *backing_buf,
@@ -104,6 +106,7 @@ namespace leveldb {
         MemManager *pm_manager_ = nullptr;
         nova::StoCInMemoryLogFileManager *log_manager_ = nullptr;
         int64_t batch_size_ = 0;
+        int write_count_;
     };
 
 }  // namespace leveldb

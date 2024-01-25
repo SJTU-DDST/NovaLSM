@@ -21,7 +21,7 @@ namespace leveldb {
                                  nova::StoCInMemoryLogFileManager *log_manager,
                                  int64_t batch_size)
             : rdma_broker_(rdma_broker), mem_manager_(mem_manager), pm_manager_(pm_manager),
-              log_manager_(log_manager), batch_size_(batch_size) {
+              log_manager_(log_manager), batch_size_(batch_size), write_count_(0) {
     }
 
     uint64_t LogCLogWriter::GetBatchedSize(const std::string &log_file_name){
@@ -29,7 +29,7 @@ namespace leveldb {
         if(it == logfile_last_buf_.end()){
             return 0; // 第一次调用的话为0
         }else{
-            return nova::LogRecordsSize(it->second.log_records);
+            return it->second.log_records_size;
         }
         NOVA_ASSERT(false) << "won't reach here";
     }
@@ -38,7 +38,7 @@ namespace leveldb {
 // 第一次generate logrecord的时候会调用
 // 对于同一个log file来说是串行的 也可以加锁
 // 第一次建立的时候不batch, 之后每次都要batch
-    void LogCLogWriter::Init(const std::string &log_file_name,
+    uint32_t LogCLogWriter::Init(const std::string &log_file_name,
                              uint64_t thread_id,
                              const std::vector<LevelDBLogRecord> &log_records,
                              char *backing_buf,
@@ -66,9 +66,11 @@ namespace leveldb {
             for (const auto &record : log_records) { // 把新来的的log装进rdma buf里面
                 size += nova::EncodeLogRecord(backing_buf + size, record);
             }
+            return nova::LogRecordsSize(log_records);
             // it->second.log_records.clear(); // 清除所有已有的log        
 
         }else{ // 已经建立的情况
+            uint32_t log_record_size = it->second.log_records_size + nova::LogRecordsSize(log_records);
             if(it->second.log_records.size() + log_records.size() >= batch_size_){// 到了batch的大小 进行发送了
                 *batched = false;
                 uint32_t size = 0;
@@ -79,12 +81,17 @@ namespace leveldb {
                     size += nova::EncodeLogRecord(backing_buf + size, record);
                 }
                 it->second.log_records.clear(); // 清除所有已有的log!!!!
+                it->second.log_records_size = 0;
+                return log_record_size;
             }else{ // 暂存下来就好
                 *batched = true;
+                it->second.log_records_size = log_record_size;
                 for(int i = 0; i < log_records.size(); i++){
                     it->second.log_records.push_back(std::move(log_records[i])); 
                 }
+                return 0;
             }
+            NOVA_ASSERT(false) << "won't reach here";
         }
     }
 
@@ -116,6 +123,11 @@ namespace leveldb {
                 false, 0, 0, (meta->log_type == StoCLogType::STOC_LOG_DRAM ? 0 : 1)); // dram是0 pm是1
         meta->stoc_bufs[stoc_server_id].offset += log_record_size;
         replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
+        write_count_++;
+        //if(write_count_ % 10000 == 0){
+        NOVA_LOG(rdmaio::INFO) << fmt::format("write count: {}", write_count_);
+        //}
+        //NOVA_LOG(rdmaio::INFO) << "reach ack alloc log buf!";
     }
 
 //本地server read write replicate log record后，更改本地任务的状态
@@ -157,7 +169,7 @@ namespace leveldb {
             return true;
         }
         // If one of the log buf is intializing, return false.
-        Init(log_file_name, thread_id, log_records, rdma_backing_buf, log_type, batched);
+        uint32_t log_record_size = Init(log_file_name, thread_id, log_records, rdma_backing_buf, log_type, batched);
         if(*batched){ // 如果batch了
             return true; // 没碰到initializing 而且batch了
         }
@@ -169,7 +181,7 @@ namespace leveldb {
                 return false; // 不batch 而且 正在initializing 
             }
         }
-        uint32_t log_record_size = nova::LogRecordsSize(log_records);
+        // uint32_t log_record_size = nova::LogRecordsSize(log_records);
         for (int i = 0; i < frag->log_replica_stoc_ids.size(); i++) {
             uint32_t stoc_server_id = cfg->stoc_servers[frag->log_replica_stoc_ids[i]];
             auto &it = logfile_last_buf_[log_file_name];
@@ -205,6 +217,11 @@ namespace leveldb {
                         false, 0, 0, (it.log_type == StoCLogType::STOC_LOG_DRAM ? 0 : 1)); // 
                 it.stoc_bufs[stoc_server_id].offset += log_record_size;
                 replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
+                write_count_++;
+                //if(write_count_ % 10000 == 0){
+                NOVA_LOG(rdmaio::INFO) << fmt::format("write count: {}", write_count_);
+                //}
+                //NOVA_LOG(rdmaio::INFO) << "reach add record normal path";
             }
         }
         return true;
@@ -246,6 +263,7 @@ namespace leveldb {
     }
 
 // 删除log文件
+// delete 不一定分到对应的
     Status
     LogCLogWriter::CloseLogFiles(const std::vector<std::string> &log_file_name,
                                  uint32_t dbid, uint32_t client_req_id, bool is_ltc) {
