@@ -186,7 +186,7 @@ namespace leveldb {
         task.remote_which = (level <= levels_in_pm ? 1 : 0); // 如果level小 那么就是直接写入pm, 如果level大, 那就是写入dram缓冲区
 
         uint32_t reqid = req_id_;
-        StoCResponse *response = new StoCResponse;
+        StoCResponse *response = new StoCResponse; // 这里需要response?
         req_response[reqid] = response;
         task.response = response;
         AddAsyncTask(task);
@@ -491,6 +491,7 @@ namespace leveldb {
 
 // 写日志
 // 写日志会落到这里
+// 这里是可以并行调用的 所以得看一下disk中并行时候的调用
     uint32_t StoCBlockClient::InitiateReplicateLogRecords(
             const std::string &log_file_name, uint64_t thread_id,
             uint32_t db_id, uint32_t memtable_id,
@@ -508,7 +509,7 @@ namespace leveldb {
         task.write_buf = rdma_backing_mem;
         task.replicate_log_record_states = replicate_log_record_states;
         task.sem = &sem_;
-        task.log_type = log_type;
+        task.log_type = log_type; // 这里不需要response 因为不需要所谓的handle回来
         AddAsyncTask(task);
         return 0;
     }
@@ -764,7 +765,7 @@ namespace leveldb {
         rdma_broker_->PostSend(send_buf, msg_size, stoc_id, req_id);
         context.backing_mem = buf;
         context.size = size;
-        request_context_[req_id] = context;
+        request_context_[req_id] = context; // 加入了context
         IncrementReqId();
         NOVA_LOG(DEBUG)
             << fmt::format(
@@ -793,7 +794,7 @@ namespace leveldb {
         context.log_record_mem = rdma_backing_mem;
         context.log_record_size = nova::LogRecordsSize(log_records);
         context.log_type = log_type;
-        request_context_[req_id] = context;
+        request_context_[req_id] = context; // 加入了request context的
         bool success = rdma_log_writer_->AddRecord(log_file_name,
                                                    thread_id, db_id,
                                                    memtable_id,
@@ -1018,6 +1019,32 @@ namespace leveldb {
                                     stoc_client_id_, stoc_block_handles, rids,
                                     req_id);
                         processed = true;
+                    
+                    } else if(buf[0] == 
+                              StoCRequestType::STOC_LOG_PERSIST_RESPONSE){
+                        // repliate 之所以重新搞是因为 不是通过~完成的 而是write之后填进去的
+                        NOVA_ASSERT(context.req_type == StoCRequestType::STOC_REPLICATE_LOG_RECORDS) // 之前应该有context记录
+                            << fmt::format("stocclient[{}]: BUG req:{} wr_id:{} first:{}", stoc_client_id_, req_id, wr_id, buf[0]);
+
+                        NOVA_ASSERT(rdma_log_writer_->AckWriteSuccess(
+                                context.log_file_name,
+                                remote_server_id,
+                                wr_id,
+                                context.replicate_log_record_states))
+                            << fmt::format(
+                                    "stocclient[{}]: BUG req:{} wr_id:{} first:{}",
+                                    stoc_client_id_, req_id, wr_id, buf[0]);
+                        NOVA_LOG(DEBUG) << fmt::format(
+                                    "stocclient[{}]: Log record replicated req:{} wr_id:{} first:{}",
+                                    stoc_client_id_, req_id, wr_id, buf[0]);
+                        bool complete = rdma_log_writer_->CheckCompletion( // 每次回来的时候都检查一下是否完成
+                                context.log_file_name, context.db_id,
+                                context.replicate_log_record_states);
+                        if (complete) {
+                            context.done = true;
+                        }
+                        processed = true;
+
 //如果对面发送的是stoc read stats response类型的
                     } else if (buf[0] ==
                                StoCRequestType::STOC_READ_STATS_RESPONSE) {
@@ -1042,7 +1069,7 @@ namespace leveldb {
                         }
 
                         uint64_t base = leveldb::DecodeFixed64(buf + 2);
-                        uint64_t size = leveldb::DecodeFixed64(buf + 10);
+                        uint64_t size = leveldb::DecodeFixed64(buf + 10); // 这里的size就是stoc file max size
 
                         RDMARequestTask task = {};
                         task.type = RDMA_CLIENT_ALLOCATE_LOG_BUFFER_SUCC;
@@ -1061,6 +1088,34 @@ namespace leveldb {
                                     stoc_client_id_, req_id);
                         processed = true;
 //如果对面发送的是rdma write remote buf allocated类型的
+                    }else if(buf[0] ==
+                               StoCRequestType::STOC_WRITE_LOG_BUFFER_DISK_RESPONSE){
+                        uint32_t stoc_file_id = DecodeFixed32(buf + 1);
+                        uint64_t stoc_file_offset = leveldb::DecodeFixed64( // 也就是base (第一次是base) 后面的是要写到的地方
+                                buf + 5);
+                        uint64_t size = leveldb::DecodeFixed64(buf + 13); // max stocsize 只有第一次有用??
+                        
+                        RDMARequestTask task = {};
+                        task.type = RDMA_CLIENT_WRITE_LOG_BUFFER_DISK_RESPONSE;
+                        task.server_id = remote_server_id;
+                        task.log_type = leveldb::StoCLogType::STOC_LOG_DISK;
+                        task.log_file_name = context.log_file_name;
+                        task.offset = stoc_file_offset; // 第一次的话需要加入 后面就是要写入的offset
+                        task.size = size;
+                        task.rdma_log_record_backing_mem = context.log_record_mem;
+                        task.write_size = context.log_record_size;
+                        task.thread_id = req_id;
+                        task.replicate_log_record_states = context.replicate_log_record_states;
+                        rdma_msg_handler_->private_queue_.push_back(task);
+
+                        context.done = false;
+                        context.stoc_file_id = stoc_file_id;
+
+                        NOVA_LOG(DEBUG) << fmt::format(
+                                    "stocclient[{}]: Allocate log buffer success req:{}",
+                                    stoc_client_id_, req_id);
+                        processed = true;
+
                     } else if (buf[0] ==
                                StoCRequestType::RDMA_WRITE_REMOTE_BUF_ALLOCATED) {
                         uint64_t remote_buf = leveldb::DecodeFixed64(buf + 1);

@@ -104,6 +104,18 @@ namespace nova {
                                                      task.log_type);
                     ctx.req_id = task.thread_id;
                     break;
+                case leveldb::RDMA_CLIENT_WRITE_LOG_BUFFER_DISK_RESPONSE: // disk模式的
+                    rdma_log_writer_->AckAllocLogBuf(task.log_file_name,
+                                                     task.server_id,
+                                                     task.offset, // 会变化
+                                                     task.size, // 文件大小
+                                                     task.rdma_log_record_backing_mem,
+                                                     task.write_size, // 要写的记录大小
+                                                     task.thread_id,
+                                                     task.replicate_log_record_states,
+                                                     task.log_type);
+                    ctx.req_id = task.thread_id;                    
+                    break;
                 case leveldb::RDMA_CLIENT_RDMA_WRITE_REQUEST:
                     ctx.req_id = stoc_client_->InitiateRDMAWRITE(task.server_id, task.write_buf, task.size);
                     break;

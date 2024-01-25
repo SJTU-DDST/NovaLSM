@@ -29,9 +29,10 @@ namespace leveldb {
                              const std::vector<LevelDBLogRecord> &log_records,
                              char *backing_buf,
                              StoCLogType log_type) {
+        mu_.lock(); // log_file_last_buf安全
         auto it = logfile_last_buf_.find(log_file_name);
         if (it == logfile_last_buf_.end()) { // 第一次调用 还没有建立文件
-            LogFileMetadata meta = {};
+            LogFileMetadata meta = {}; // 里面没上锁
             meta.log_type = log_type;
             meta.stoc_bufs = new LogFileBuf[nova::NovaConfig::config->servers.size()];
             for (int i = 0;
@@ -43,6 +44,7 @@ namespace leveldb {
             }
             logfile_last_buf_[log_file_name] = meta;
         }
+        mu_.unlock();
         uint32_t size = 0;
         for (const auto &record : log_records) { // 把log装进rdma buf里面
             size += nova::EncodeLogRecord(backing_buf + size, record);
@@ -50,6 +52,7 @@ namespace leveldb {
     }
 
 // 申请log文件之后调用
+// disk模式的话 有些工作只需要1次
     void LogCLogWriter::AckAllocLogBuf(const std::string &log_file_name,
                                        int stoc_server_id, uint64_t offset,
                                        uint64_t size,
@@ -57,25 +60,48 @@ namespace leveldb {
                                        uint32_t log_record_size,
                                        uint32_t client_req_id,
                                        StoCReplicateLogRecordState *replicate_log_record_states,
-                                       StoCLogType log_type) {
-        log_manager_->AddRemoteBuf(log_file_name, stoc_server_id, offset, log_type);
-        replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::ALLOC_SUCCESS;
-        auto meta = &logfile_last_buf_[log_file_name];
-        meta->stoc_bufs[stoc_server_id].base = offset;
-        meta->stoc_bufs[stoc_server_id].size = size;
-        meta->stoc_bufs[stoc_server_id].offset = 0;
-        meta->stoc_bufs[stoc_server_id].is_initializing = false;
-        char *sendbuf = rdma_broker_->GetSendBuf(stoc_server_id);
-        sendbuf[0] = leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS;
-        leveldb::EncodeFixed32(sendbuf + 1, client_req_id);
-        replicate_log_record_states[stoc_server_id].rdma_wr_id = rdma_broker_->PostWrite( // 本地dram到远程 目前 发送过去
-                backing_mem, log_record_size,
-                stoc_server_id,
-                meta->stoc_bufs[stoc_server_id].base +
-                meta->stoc_bufs[stoc_server_id].offset, /*is_remote_offset=*/
-                false, 0, 0, (meta->log_type == StoCLogType::STOC_LOG_DRAM ? 0 : 1)); // dram是0 pm是1
-        meta->stoc_bufs[stoc_server_id].offset += log_record_size;
-        replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
+                                       StoCLogType log_type) { 
+        if(log_type != leveldb::StoCLogType::STOC_LOG_DISK){
+            log_manager_->AddRemoteBuf(log_file_name, stoc_server_id, offset, log_type); // disk模式先检查一下
+            replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::ALLOC_SUCCESS;
+            auto meta = &logfile_last_buf_[log_file_name];
+            meta->stoc_bufs[stoc_server_id].base = offset;
+            meta->stoc_bufs[stoc_server_id].size = size;
+            meta->stoc_bufs[stoc_server_id].offset = 0;
+            meta->stoc_bufs[stoc_server_id].is_initializing = false;
+            char *sendbuf = rdma_broker_->GetSendBuf(stoc_server_id);
+            sendbuf[0] = leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS;
+            leveldb::EncodeFixed32(sendbuf + 1, client_req_id);
+            replicate_log_record_states[stoc_server_id].rdma_wr_id = rdma_broker_->PostWrite( // 本地dram到远程 目前 发送过去
+                    backing_mem, log_record_size,
+                    stoc_server_id,
+                    meta->stoc_bufs[stoc_server_id].base +
+                    meta->stoc_bufs[stoc_server_id].offset, /*is_remote_offset=*/
+                    false, 0, 0, (meta->log_type == StoCLogType::STOC_LOG_DRAM ? 0 : 1)); // dram是0 pm是1
+            meta->stoc_bufs[stoc_server_id].offset += log_record_size;
+            replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
+        }else{
+            bool first_time = log_manager_->AddRemoteBuf(log_file_name, stoc_server_id, offset, log_type);
+            replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::ALLOC_SUCCESS;
+            auto meta = &logfile_last_buf_[log_file_name];            
+            if(first_time){ // 第一次需要修改这些
+                meta->stoc_bufs[stoc_server_id].base = offset;
+                meta->stoc_bufs[stoc_server_id].size = size;
+                meta->stoc_bufs[stoc_server_id].offset = 0;
+                meta->stoc_bufs[stoc_server_id].is_initializing = false;                
+            }
+            // 要等待对面确认才能~所以去掉
+            // char *sendbuf = rdma_broker_->GetSendBuf(stoc_server_id);
+            // sendbuf[0] = leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS;
+            // leveldb::EncodeFixed32(sendbuf + 1, client_req_id);
+            replicate_log_record_states[stoc_server_id].rdma_wr_id = rdma_broker_->PostWrite( // 本地dram到远程 目前 发送过去
+                    backing_mem, log_record_size,
+                    stoc_server_id,
+                    offset, // 对面buf的偏移 (会变化的) 加上imm用于 标识
+                    false, client_req_id, 0, 0); // dram是0 pm是1
+            meta->stoc_bufs[stoc_server_id].offset += log_record_size;
+            replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;            
+        }         
     }
 
 //本地server read write replicate log record后，更改本地任务的状态
@@ -83,7 +109,7 @@ namespace leveldb {
     bool LogCLogWriter::AckWriteSuccess(const std::string &log_file_name,
                                         int remote_sid, uint64_t wr_id,
                                         StoCReplicateLogRecordState *replicate_log_record_states) {
-        StoCReplicateLogRecordState &state = replicate_log_record_states[remote_sid];
+        StoCReplicateLogRecordState &state = replicate_log_record_states[remote_sid]; // 什么机制保证他一定是串行的?????
         if (state.rdma_wr_id == wr_id &&
             state.result == StoCReplicateLogRecordResult::WAIT_FOR_WRITE) {
             state.result = StoCReplicateLogRecordResult::WRITE_SUCCESS;
@@ -93,6 +119,7 @@ namespace leveldb {
     }
 
 // 写log的第一次调用
+// 每次都会调用
     bool
     LogCLogWriter::AddRecord(const std::string &log_file_name,
                              uint64_t thread_id,
@@ -101,7 +128,7 @@ namespace leveldb {
                              char *rdma_backing_buf,
                              const std::vector<LevelDBLogRecord> &log_records,
                              uint32_t client_req_id,
-                             StoCReplicateLogRecordState *replicate_log_record_states,
+                             StoCReplicateLogRecordState *replicate_log_record_states, // 这里的replicate log record states 应该是每个wal log对应一个
                              StoCLogType log_type) {
         uint32_t cfgid = replicate_log_record_states[0].cfgid;
         auto cfg = nova::NovaConfig::config->cfgs[cfgid];
@@ -113,48 +140,87 @@ namespace leveldb {
         Init(log_file_name, thread_id, log_records, rdma_backing_buf, log_type);
         for (int i = 0; i < frag->log_replica_stoc_ids.size(); i++) {
             uint32_t stoc_server_id = cfg->stoc_servers[frag->log_replica_stoc_ids[i]];
+            mu_.lock(); // 保证logfile_last_buf_安全
             auto &it = logfile_last_buf_[log_file_name];
             if (it.stoc_bufs[stoc_server_id].is_initializing) { // 第一次进来的时候不是正在initializing
+                mu_.unlock();
                 return false;
             }
+            mu_.unlock();
         }
         uint32_t log_record_size = nova::LogRecordsSize(log_records);
         for (int i = 0; i < frag->log_replica_stoc_ids.size(); i++) {
             uint32_t stoc_server_id = cfg->stoc_servers[frag->log_replica_stoc_ids[i]];
+            mu_.lock();
             auto &it = logfile_last_buf_[log_file_name];
             if (it.stoc_bufs[stoc_server_id].base == 0) { // 如果是第一次的话 开始initialize
-                it.stoc_bufs[stoc_server_id].is_initializing = true;
-                // Allocate a new buf.
-                char *send_buf = rdma_broker_->GetSendBuf(stoc_server_id);
-                char *buf = send_buf;
-                buf[0] = StoCRequestType::STOC_ALLOCATE_LOG_BUFFER; // 先申请
-                buf++;
-                buf[0] = log_type; // 多了一个log type
-                buf++;
-                leveldb::EncodeFixed32(buf, log_file_name.size());
-                buf += 4;
-                memcpy(buf, log_file_name.data(), log_file_name.size());
-                replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_ALLOC;
-                rdma_broker_->PostSend(
-                        send_buf, 1 + 1 + 4 + log_file_name.size(), // 长度变了
-                        stoc_server_id, client_req_id);
+                if(log_type != StoCLogType::STOC_LOG_DISK){ // 不是disk模式的话按原来的流程 不然按append block那一套
+                    it.stoc_bufs[stoc_server_id].is_initializing = true;
+                    // Allocate a new buf.
+                    char *send_buf = rdma_broker_->GetSendBuf(stoc_server_id);
+                    char *buf = send_buf;
+                    buf[0] = StoCRequestType::STOC_ALLOCATE_LOG_BUFFER; // 先申请
+                    buf++;
+                    buf[0] = log_type; // 多了一个log type
+                    buf++;
+                    leveldb::EncodeFixed32(buf, log_file_name.size());
+                    buf += 4;
+                    memcpy(buf, log_file_name.data(), log_file_name.size());
+                    replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_ALLOC;
+                    rdma_broker_->PostSend(
+                            send_buf, 1 + 1 + 4 + log_file_name.size(), // 长度变了
+                            stoc_server_id, client_req_id);
+                }else{
+                    it.stoc_bufs[stoc_server_id].is_initializing = true;
+                    char *send_buf = rdma_broker_->GetSendBuf(stoc_server_id);
+                    char *buf = send_buf;
+                    buf[0] = StoCRequestType::STOC_WRITE_LOG_BUFFER_DISK;
+                    buf++;
+                    leveldb::EncodeFixed32(buf, log_record_size);
+                    buf += 4;
+                    leveldb::EncodeFixed32(buf, log_file_name.size());
+                    buf += 4;
+                    memcpy(buf, log_file_name.data(), log_file_name.size());
+                    replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_ALLOC;
+                    rdma_broker_->PostSend(
+                            send_buf, 1 + 4 + 4 + log_file_name.size(), // disk的
+                            stoc_server_id, client_req_id);                    
+                }
             } else {
-                NOVA_ASSERT(!it.stoc_bufs[stoc_server_id].is_initializing);
-                NOVA_ASSERT(
-                        it.stoc_bufs[stoc_server_id].offset + log_record_size <=
-                        it.stoc_bufs[stoc_server_id].size);
-                // WRITE.
-                char *sendbuf = rdma_broker_->GetSendBuf(stoc_server_id);
-                sendbuf[0] = leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS;
-                leveldb::EncodeFixed32(sendbuf + 1, client_req_id);
-                replicate_log_record_states[stoc_server_id].rdma_wr_id = rdma_broker_->PostWrite( // 本地dram发送给远程dram 目前
-                        rdma_backing_buf, log_record_size, stoc_server_id,
-                        it.stoc_bufs[stoc_server_id].base +
-                        it.stoc_bufs[stoc_server_id].offset,
-                        false, 0, 0, (it.log_type == StoCLogType::STOC_LOG_DRAM ? 0 : 1)); // 
-                it.stoc_bufs[stoc_server_id].offset += log_record_size;
-                replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
+                if(log_type != StoCLogType::STOC_LOG_DISK){
+                    NOVA_ASSERT(!it.stoc_bufs[stoc_server_id].is_initializing);
+                    NOVA_ASSERT(
+                            it.stoc_bufs[stoc_server_id].offset + log_record_size <=
+                            it.stoc_bufs[stoc_server_id].size);
+                    // WRITE.
+                    char *sendbuf = rdma_broker_->GetSendBuf(stoc_server_id);
+                    sendbuf[0] = leveldb::StoCRequestType::STOC_REPLICATE_LOG_RECORDS;
+                    leveldb::EncodeFixed32(sendbuf + 1, client_req_id);
+                    replicate_log_record_states[stoc_server_id].rdma_wr_id = rdma_broker_->PostWrite( // 本地dram发送给远程dram 目前
+                            rdma_backing_buf, log_record_size, stoc_server_id,
+                            it.stoc_bufs[stoc_server_id].base +
+                            it.stoc_bufs[stoc_server_id].offset,
+                            false, 0, 0, (it.log_type == StoCLogType::STOC_LOG_DRAM ? 0 : 1)); // 
+                    it.stoc_bufs[stoc_server_id].offset += log_record_size;
+                    replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_WRITE;
+                }else{ // 这里要怎么做 emmmm 要思考和修改
+                    it.stoc_bufs[stoc_server_id].is_initializing = true;
+                    char *send_buf = rdma_broker_->GetSendBuf(stoc_server_id);
+                    char *buf = send_buf;
+                    buf[0] = StoCRequestType::STOC_WRITE_LOG_BUFFER_DISK;
+                    buf++;
+                    leveldb::EncodeFixed32(buf, log_record_size);
+                    buf += 4;
+                    leveldb::EncodeFixed32(buf, log_file_name.size());
+                    buf += 4;
+                    memcpy(buf, log_file_name.data(), log_file_name.size());
+                    replicate_log_record_states[stoc_server_id].result = StoCReplicateLogRecordResult::WAIT_FOR_ALLOC; // 这里利用一下原来的4个状态
+                    rdma_broker_->PostSend(
+                            send_buf, 1 + 4 + 4 + log_file_name.size(), // disk的
+                            stoc_server_id, client_req_id);                    
+                }
             }
+            mu_.unlock();
         }
         return true;
     }
@@ -201,11 +267,13 @@ namespace leveldb {
         auto cfgid = nova::NovaConfig::config->current_cfg_id.load();
         auto cfg = nova::NovaConfig::config->cfgs[cfgid];
         nova::LTCFragment *frag = nova::NovaConfig::config->cfgs[cfgid]->fragments[dbid];
+        mu_.lock();
         for (const auto &logfile : log_file_name) {
             LogFileMetadata *meta = &logfile_last_buf_[logfile];
             delete meta->stoc_bufs;
             logfile_last_buf_.erase(logfile);
         }
+        mu_.unlock();
         log_manager_->DeleteLogBuf(log_file_name, is_ltc); // 删除本地的log buf
         for (int i = 0; i < frag->log_replica_stoc_ids.size(); i++) {
             uint32_t stoc_server_id = cfg->stoc_servers[frag->log_replica_stoc_ids[i]];

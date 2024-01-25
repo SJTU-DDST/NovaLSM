@@ -607,15 +607,15 @@ namespace nova {
 
         worker->ResetReplicateState();
         worker->replicate_log_record_states[0].cfgid = server_cfg_id;
-        leveldb::WriteOptions option;
-        option.stoc_client = worker->stoc_client_;
+        leveldb::WriteOptions option; // 每次put都会新建一个option??
+        option.stoc_client = worker->stoc_client_; // 同一个client
         option.local_write = false; // local write都是不开的
         option.thread_id = worker->thread_id_;
         option.rand_seed = &worker->rand_seed;
         option.hash = key;
         option.total_writes = total_writes.fetch_add(1, std::memory_order_relaxed) + 1;
-        option.replicate_log_record_states = worker->replicate_log_record_states;
-        option.rdma_backing_mem = worker->rdma_backing_mem;
+        option.replicate_log_record_states = worker->replicate_log_record_states; // server的数量 那么??? 多个wal log怎么搞呢??
+        option.rdma_backing_mem = worker->rdma_backing_mem; // 同一块rdma backing mem
         option.rdma_backing_mem_size = worker->rdma_backing_mem_size;
         option.is_loading_db = false;
         LTCFragment *frag = NovaConfig::home_fragment(hv, server_cfg_id);

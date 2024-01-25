@@ -318,7 +318,7 @@ namespace nova {
         NovaConfig::config->pm_nnovabuf = NovaConfig::config->pm_pool_size_gb * 1024 * 1024 * 1024;
 
 //用于管理
-        log_manager = new StoCInMemoryLogFileManager(mem_manager, pm_manager);
+        // log_manager = new StoCInMemoryLogFileManager(mem_manager, pm_manager);
         NovaConfig::config->add_tid_mapping();
         int bg_thread_id = 0;
 //创建后台的flush线程和compaction线程 flush和compaction由不同的线程负责??
@@ -362,6 +362,8 @@ namespace nova {
         leveldb::StocPersistentFileManager *stoc_file_manager = new leveldb::StocPersistentFileManager(env, mem_manager, pm_manager,
                                                                                                        NovaConfig::config->stoc_files_path,
                                                                                                        NovaConfig::config->max_stoc_file_size);        
+        log_manager = new StoCInMemoryLogFileManager(mem_manager, pm_manager, stoc_file_manager); //挪位置
+        
         std::vector<nova::RDMAMsgCallback *> rdma_threads;
         for (int db_index = 0; db_index < cfg->fragments.size(); db_index++) {
 //如果fragment的ltc的serverid不是当前自己的id，那就填一个null进去

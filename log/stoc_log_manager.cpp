@@ -56,8 +56,8 @@ namespace nova {
 
 //初始化，这个类应该是用于管理stoc的内存中的log文件的??
     StoCInMemoryLogFileManager::StoCInMemoryLogFileManager(
-            nova::NovaMemManager *mem_manager, nova::NovaPMManager *pm_manager) : 
-            mem_manager_(mem_manager), pm_manager_(pm_manager) {
+            nova::NovaMemManager *mem_manager, nova::NovaPMManager *pm_manager, leveldb::StocPersistentFileManager *stoc_file_manager) : 
+            mem_manager_(mem_manager), pm_manager_(pm_manager), stoc_file_manager_(stoc_file_manager){
         uint32_t nranges = NovaConfig::config->cfgs[0]->fragments.size();
         db_log_files_ = new DBLogFiles *[nranges]; // 每个数据库1个
         NOVA_LOG(rdmaio::DEBUG)
@@ -87,7 +87,8 @@ namespace nova {
 // 只有stoc有local backing? ltc只有remote backing?
 
 // stoc端建立本地的log文件
-    void
+// 返回值标志是否是第一次对log_file调用
+    bool
     StoCInMemoryLogFileManager::AddLocalBuf(const std::string &log_file,
                                             char *local_buf, leveldb::StoCLogType log_type) {
         uint32_t db_index;
@@ -101,8 +102,10 @@ namespace nova {
         if (it == db->logfiles_.end()) { // 如果没有就新建
             records = new LogRecords;
             db->logfiles_[log_file] = records;
-        } else {
+        } else { // 如果有了 什么也不做
             records = it->second;
+            db->mutex_.Unlock();
+            return false; // 对于disk的情况
         }
         db->mutex_.Unlock();
 
@@ -112,10 +115,12 @@ namespace nova {
         records->mu.unlock();
         NOVA_LOG(DEBUG)
             << fmt::format("Allocate log buf for file:{}", log_file);
+        return true;
     }
 
 // ltc端建立远程的log文件
-    void StoCInMemoryLogFileManager::AddRemoteBuf(const std::string &log_file, uint32_t remote_server_id,
+// 返回值标志是否是第一次对log_file调用
+    bool StoCInMemoryLogFileManager::AddRemoteBuf(const std::string &log_file, uint32_t remote_server_id,
                                                   uint64_t remote_buf_offset, leveldb::StoCLogType log_type) {
         uint32_t db_index;
         ParseDBIndexFromLogFileName(log_file, &db_index);
@@ -128,6 +133,8 @@ namespace nova {
             db->logfiles_[log_file] = records;
         } else {
             records = it->second;
+            db->mutex_.Unlock();
+            return false; // disk存在即返回            
         }
         db->mutex_.Unlock();
 
@@ -136,6 +143,7 @@ namespace nova {
         records->remote_backing_mems[remote_server_id] = remote_buf_offset;
         records->mu.unlock();
         NOVA_LOG(DEBUG) << fmt::format("Allocate log buf for file:{}", log_file);
+        return true;
     }
 
 // ltc删除本地的log buf
@@ -166,8 +174,9 @@ namespace nova {
                         NOVA_LOG(DEBUG) << fmt::format("Free log buf for file:{}", log_file[i]);
                     }else if(it->second->log_type == leveldb::StoCLogType::STOC_LOG_PM){
                         pm_manager_->FreeItem(db_index, log_file[i], buf);
-                    }else if(it->second->log_type == leveldb::StoCLogType::STOC_LOG_DISK){
-                        // 之后再写
+                    }else if(it->second->log_type == leveldb::StoCLogType::STOC_LOG_DISK){ // 应该调用的是删除persist file的方法
+                        // 删除persistent里面的文件 
+                        stoc_file_manager_->DeleteSSTable(log_file[i]); // 不需要在这里处理dram的缓冲区 因为 stoc_file_manager里面会自动回收
                     }
                 }
             }

@@ -48,7 +48,7 @@ namespace leveldb {
             return file_id_;
         }
 
-        void ForceSeal();
+        void ForceSeal(); //标识是否成功forceseal
 
         bool sealed() const {
             return sealed_;
@@ -57,6 +57,7 @@ namespace leveldb {
         std::string stoc_file_name_;
         bool is_pm_file_;
         bool is_manifest_;
+        bool is_wallog_;
         char *backing_mem_ = nullptr;
         char *mmap_base_ = nullptr;
     private:
@@ -70,6 +71,8 @@ namespace leveldb {
             bool written_to_mem;
             FileInternalType internal_type;
         };
+
+        // static bool cmp(AllocatedBuf& buf1, AllocatedBuf& buf2);
 
         struct StoCPersistStatus {
             BlockHandle disk_handle = {};

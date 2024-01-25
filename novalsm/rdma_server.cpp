@@ -130,7 +130,19 @@ namespace nova {
                 rdma_broker_->PostSend(send_buf, 1 + 1 + 8 + 8,
                                        task.remote_server_id,
                                        task.stoc_req_id);
-            } else if (task.request_type == leveldb::RDMA_WRITE_REQUEST) {
+            } else if(task.request_type == leveldb::STOC_WRITE_LOG_BUFFER_DISK){ // disk模式的log stoc处理了第一次发送过来的消息 返回
+                char *send_buf = rdma_broker_->GetSendBuf(
+                        task.remote_server_id);
+                send_buf[0] = leveldb::StoCRequestType::STOC_WRITE_LOG_BUFFER_DISK_RESPONSE; // 1
+                leveldb::EncodeFixed32(send_buf + 1,
+                                       task.stoc_file_id); // 1 + 4
+                leveldb::EncodeFixed64(send_buf + 5, task.stoc_file_buf_offset); // 1 + 4 + 8 相当于rdma_buf 不过这里会变化
+                leveldb::EncodeFixed64(send_buf + 13,
+                                       NovaConfig::config->max_stoc_file_size); // 1 + 4 + 8 + 8
+                rdma_broker_->PostSend(send_buf, 1 + 4 + 8 + 8,
+                                       task.remote_server_id,
+                                       task.stoc_req_id);
+            }else if (task.request_type == leveldb::RDMA_WRITE_REQUEST) {
                 char *sendbuf = rdma_broker_->GetSendBuf(task.remote_server_id);
                 sendbuf[0] =
                         leveldb::StoCRequestType::RDMA_WRITE_REMOTE_BUF_ALLOCATED;
@@ -191,6 +203,13 @@ namespace nova {
                 }
                 rdma_broker_->PostSend(sendbuf, msg_size, task.remote_server_id,
                                        task.stoc_req_id);
+            } else if(task.request_type == 
+                      leveldb::StoCRequestType::STOC_LOG_PERSIST){
+                char *sendbuf = rdma_broker_->GetSendBuf(task.remote_server_id);
+                sendbuf[0] = leveldb::StoCRequestType::STOC_LOG_PERSIST_RESPONSE;
+                // 对面用这些信息应该可以找到对应的log什么的 核心是request id
+                rdma_broker_->PostSend(sendbuf, 1, task.remote_server_id, // 只需要发送一个在干啥就好
+                                        task.stoc_req_id);
             } else if (task.request_type ==
                        leveldb::StoCRequestType::STOC_COMPACTION) {
                 char *sendbuf = rdma_broker_->GetSendBuf(task.remote_server_id);
@@ -340,7 +359,44 @@ namespace nova {
                             AddBGStorageTask(task);
                             request_context_map_.erase(req_id);
                         }
-                    } else if (context.request_type ==
+                    } else if(context.request_type == 
+                        leveldb::StoCRequestType::STOC_WRITE_LOG_BUFFER_DISK){
+                        if (IsRDMAWRITEComplete(
+                                (char *) context.stoc_file_buf_offset,
+                                context.size)){ // write写好了
+                            NOVA_ASSERT(stoc_file_manager_->FindStoCFile(
+                                    context.stoc_file_id)->MarkOffsetAsWritten(
+                                    context.stoc_file_id,
+                                    context.stoc_file_buf_offset))
+                                << fmt::format(
+                                        "rdma-server[{}]: Write StoC file failed id:{} offset:{} creq_id:{} req_id:{}",
+                                        thread_id_, context.stoc_file_id,
+                                        context.stoc_file_buf_offset,
+                                        stoc_req_id,
+                                        req_id);
+                            processed = true;
+
+                            NOVA_LOG(DEBUG) << fmt::format(
+                                        "rdma-server[{}]: Write StoC file complete id:{} offset:{} creq_id:{} req_id:{}",
+                                        thread_id_, context.stoc_file_id,
+                                        context.stoc_file_buf_offset,
+                                        stoc_req_id,
+                                        req_id);
+                            
+                            StorageTask task = {};
+                            task.request_type = leveldb::StoCRequestType::STOC_LOG_PERSIST; // DISK log的persist任务
+                            task.remote_server_id = remote_server_id;
+                            task.rdma_server_thread_id = thread_id_;
+                            task.stoc_req_id = stoc_req_id;
+                            task.internal_type = context.internal_type;
+                            leveldb::SSTableStoCFilePair pair = {};
+                            pair.stoc_file_id = context.stoc_file_id;
+                            pair.sstable_name = context.sstable_name;
+                            task.persist_pairs.push_back(pair);
+                            AddBGStorageTask(task);
+                            request_context_map_.erase(req_id);
+                        }
+                    }else if (context.request_type ==
                                leveldb::StoCRequestType::RDMA_WRITE_REMOTE_BUF_ALLOCATED) {
                         rdma_write_handler_->Handle(context.buf, context.size);
                         request_context_map_.erase(req_id);
@@ -560,7 +616,55 @@ namespace nova {
                                 "rdma-server{}]: Allocate log buffer for file {}.",
                                 thread_id_, log_file);
                     processed = true;
-                } else if (buf[0] ==
+                } else if(buf[0] == 
+                           leveldb::StoCRequestType::STOC_WRITE_LOG_BUFFER_DISK){ // disk的申请log相关的 第一次收到ltc的请求
+                    leveldb::StoCLogType log_type = leveldb::StoCLogType::STOC_LOG_DISK; // disk的
+                    uint32_t log_record_size = leveldb::DecodeFixed32(buf + 1); // 要分配的空间大小
+                    uint32_t name_size = leveldb::DecodeFixed32(buf + 5); // log name相关
+                    std::string log_file(buf + 9, name_size);
+                    uint32_t db_index;
+                    nova::ParseDBIndexFromLogFileName(log_file, &db_index);
+                    leveldb::StoCPersistentFile *stoc_file = stoc_file_manager_->OpenStoCFile(
+                        thread_id_, log_file); // 开一个wal 文件
+                    uint64_t stoc_file_off = stoc_file->AllocateBuf(
+                            log_file, log_record_size, leveldb::FileInternalType::kFileData);                    
+
+                    NOVA_ASSERT(stoc_file_off != UINT64_MAX)
+                        << fmt::format("rdma-server{}: {} {}", thread_id_,
+                                       log_file,
+                                       log_record_size);
+                    NOVA_ASSERT(stoc_file->stoc_file_name_ == log_file)
+                        << fmt::format("rdma-server{}: {} {}", thread_id_,
+                                       stoc_file->stoc_file_name_, log_file);
+                    // 里面需要加一个判断 如果是第一次添加的话那就加上 不是的话那就不加
+                    // true 代表第一次
+                    log_manager_->AddLocalBuf(log_file, stoc_file->backing_mem_, log_type); // 里面已经加上了 只有第一次申请会添加
+                    ServerCompleteTask task = {};
+                    task.request_type = leveldb::StoCRequestType::STOC_WRITE_LOG_BUFFER_DISK;
+                    task.rdma_buf = (char*) stoc_file_off; // 每次申请的buf的开头
+                    task.log_type = log_type; // log的需求
+                    task.remote_server_id = remote_server_id;
+                    task.stoc_req_id = stoc_req_id;
+
+                    // 以下是sstable的要求
+                    task.stoc_file_id = stoc_file->file_id();
+                    task.stoc_file_buf_offset = stoc_file_off;
+                    private_cq_.push_back(task);
+
+                    RequestContext context = {}; // writesstable的东西
+                    context.request_type = leveldb::StoCRequestType::STOC_WRITE_LOG_BUFFER_DISK;
+                    context.stoc_file_id = stoc_file->file_id();
+                    context.stoc_file_buf_offset = stoc_file_off; // 每次申请的开头
+                    context.sstable_name = log_file;
+                    context.internal_type = leveldb::FileInternalType::kFileData;
+                    context.size = log_record_size; // 申请的空间大小
+                    request_context_map_[req_id] = context;
+
+                    NOVA_LOG(DEBUG) << fmt::format(
+                                "rdma-server{}]: Allocate log buffer for file {}.",
+                                thread_id_, log_file);
+                    processed = true;                    
+                }else if (buf[0] ==
                            leveldb::StoCRequestType::RDMA_WRITE_REQUEST) {
                     uint32_t size = leveldb::DecodeFixed32(buf + 1);
                     uint32_t slabclassid = mem_manager_->slabclassid(thread_id_, size);

@@ -1174,6 +1174,7 @@ namespace leveldb {
             wo.rdma_backing_mem = backing_mem;
             wo.rdma_backing_mem_size = nova::NovaConfig::config->max_stoc_file_size;
             wo.is_loading_db = false;
+            // 这里又新建了一个option用于写log
             GenerateLogRecord(wo, log_records, output_memtable->memtableid(), nova::NovaConfig::config->log_type); // 新的memtable中的写入日志 以及新生成的memtable的id
             bg_thread->mem_manager()->FreeItem(0, backing_mem, scid);
         }
@@ -2753,6 +2754,7 @@ namespace leveldb {
         if (nova::NovaConfig::config->log_record_mode ==
             nova::NovaLogRecordMode::LOG_RDMA && !options.local_write) { // 写log的时候可以让出
             partition->mutex.Unlock(); // 生成日志的时候可以让别人上锁
+            // 这里是唯一一个写log的地方 还有wo那里(
             GenerateLogRecord(options, last_sequence, key, value, memtable_id, nova::NovaConfig::config->log_type); // 这里生成日志！
             partition->mutex.Lock();
         }

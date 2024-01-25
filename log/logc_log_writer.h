@@ -82,6 +82,7 @@ namespace leveldb {
         };
 
         struct LogFileMetadata {
+            //std::mutex mu; // 保证 stoc_buf的修改安全
             LogFileBuf *stoc_bufs = nullptr;
             StoCLogType log_type = leveldb::StoCLogType::STOC_LOG_DRAM;
         };
@@ -94,6 +95,7 @@ namespace leveldb {
 
         nova::NovaRDMABroker *rdma_broker_ = nullptr;
         std::unordered_map<std::string, LogFileMetadata> logfile_last_buf_;
+        std::mutex mu_; // 保证logfile_last_buf的访问安全
         MemManager *mem_manager_ = nullptr;
         MemManager *pm_manager_ = nullptr;
         nova::StoCInMemoryLogFileManager *log_manager_ = nullptr;

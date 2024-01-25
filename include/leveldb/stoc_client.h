@@ -60,6 +60,8 @@ namespace leveldb {
         STOC_READ_BLOCKS = 'a',
         STOC_ALLOCATE_LOG_BUFFER = 'k',
         STOC_ALLOCATE_LOG_BUFFER_SUCC = 'l',
+        STOC_WRITE_LOG_BUFFER_DISK = '[', // 用于disk模式的write
+        STOC_WRITE_LOG_BUFFER_DISK_RESPONSE = ']', // 对应于sstable response
         STOC_DELETE_LOG_FILE = 'm',
         STOC_DELETE_TABLES = 'o',
         STOC_READ_IN_MEMORY_LOG_FILE = 'p',
@@ -67,6 +69,8 @@ namespace leveldb {
         STOC_WRITE_SSTABLE_RESPONSE = 'r',
         STOC_PERSIST = 'T',
         STOC_PERSIST_RESPONSE = 't',
+        STOC_LOG_PERSIST = '!', // 用于disk模式的write和response
+        STOC_LOG_PERSIST_RESPONSE = '@',
         STOC_READ_STATS = 'u',
         STOC_READ_STATS_RESPONSE = 's',
         STOC_REPLICATE_LOG_RECORDS = 'v',
@@ -161,6 +165,7 @@ namespace leveldb {
         RDMA_CLIENT_COMPACTION = 'j',
         RDMA_CLIENT_WRITE_SSTABLE_RESPONSE = 'k',
         RDMA_CLIENT_ALLOCATE_LOG_BUFFER_SUCC = 'l',
+        RDMA_CLIENT_WRITE_LOG_BUFFER_DISK_RESPONSE = '?', // 一个rtt之后对于disk的写
         RDMA_CLIENT_IS_READY_FOR_REQUESTS = 'm',
         RDMA_CLIENT_RDMA_WRITE_REQUEST = 'n',
         RDMA_CLIENT_RDMA_WRITE_REMOTE_BUF_ALLOCATED = 'o',

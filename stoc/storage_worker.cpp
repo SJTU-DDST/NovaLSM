@@ -210,6 +210,33 @@ namespace nova {
                             stoc_file->ForceSeal();
                         }
                     }
+                } else if(task.request_type ==
+                           leveldb::StoCRequestType::STOC_LOG_PERSIST) {
+                    NOVA_ASSERT(task.persist_pairs.size() == 1);
+                    for (auto &pair : task.persist_pairs) {
+                        leveldb::StoCPersistentFile *stoc_file = stoc_file_manager_->FindStoCFile(
+                                pair.stoc_file_id);
+                        uint64_t persisted_bytes = stoc_file->Persist(
+                                pair.stoc_file_id);
+                        stat_write_bytes_ += persisted_bytes;
+                        NOVA_LOG(DEBUG) << fmt::format(
+                                    "Persisting stoc file {} for sstable {}",
+                                    pair.stoc_file_id, pair.sstable_name);
+
+                        // 不需要返回handle,也不需要seal 等到close的时候seal就好
+
+                        // leveldb::BlockHandle h = stoc_file->Handle(pair.sstable_name, task.internal_type);
+                        // leveldb::StoCBlockHandle rh = {};
+                        // rh.server_id = NovaConfig::config->my_server_id;
+                        // rh.stoc_file_id = pair.stoc_file_id;
+                        // rh.offset = h.offset();
+                        // rh.size = h.size();
+                        // ct.stoc_block_handles.push_back(rh);
+                        // NOVA_ASSERT(leveldb::ParseFileName(pair.sstable_name, &type));
+                        // if (type == leveldb::FileType::kTableFile) {
+                        //     stoc_file->ForceSeal();
+                        // }
+                    }                                        
                 } else if (task.request_type ==
                            leveldb::StoCRequestType::STOC_REPLICATE_SSTABLES) {
                     ct.replication_results = ReplicateSSTables(task.dbname, task.pmname, task.level, task.levels_in_pm, task.replication_pairs); // replicate相关

@@ -205,6 +205,15 @@ namespace leveldb {
         }
     }
 
+    bool IsWALfile(const std::string &filename){
+        size_t found = filename.find("wal");
+        if(found != std::string::npos){
+            return true;
+        }else{
+            return false;
+        }
+    }
+
 // tbd
     bool ParseDBindexFromFilename(const std::string &filename, int *index){
         *index = 0;

@@ -15,17 +15,18 @@
 #include "db/dbformat.h"
 #include "leveldb/log_writer.h"
 #include "leveldb/stoc_client.h"
+#include "stoc/persistent_stoc_file.h"
 //#include "common/nova_common.h"
 
 namespace nova {
     // Manage in-memory log files to provide high availability.
     class StoCInMemoryLogFileManager {
     public:
-        StoCInMemoryLogFileManager(NovaMemManager *mem_manager, NovaPMManager *pm_manager);
+        StoCInMemoryLogFileManager(NovaMemManager *mem_manager, NovaPMManager *pm_manager, leveldb::StocPersistentFileManager *stoc_file_manager);
 
-        void AddLocalBuf(const std::string &log_file, char *buf, leveldb::StoCLogType log_type);
+        bool AddLocalBuf(const std::string &log_file, char *buf, leveldb::StoCLogType log_type);
 
-        void AddRemoteBuf(const std::string &log_file, uint32_t remote_server_id, uint64_t remote_buf_offset, leveldb::StoCLogType log_type);
+        bool AddRemoteBuf(const std::string &log_file, uint32_t remote_server_id, uint64_t remote_buf_offset, leveldb::StoCLogType log_type);
 
         void DeleteLogBuf(const std::vector<std::string> &log_files, bool is_ltc);
 
@@ -52,6 +53,7 @@ namespace nova {
         };
         NovaMemManager *mem_manager_;
         NovaPMManager *pm_manager_;
+        leveldb::StocPersistentFileManager *stoc_file_manager_;
         DBLogFiles **db_log_files_;
     };
 }
