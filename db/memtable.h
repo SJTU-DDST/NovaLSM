@@ -16,6 +16,9 @@
 #include "leveldb/stoc_client.h"
 #include "util/arena.h"
 
+// 改为从mem manager中分配连续的空间 然后直接发送到对面
+// memtable与整理的一体化
+// 发送的时候同时存储到 用于读的那个东西里面, 可以加入统计进行evict 
 namespace leveldb {
 
     class InternalKeyComparator;
