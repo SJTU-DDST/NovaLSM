@@ -39,14 +39,10 @@ scatter_bench
 version_set_test
 exp_out
 stats_tutorial_out
-gitsync.sh
-makesync.sh
-sync.sh
 db_files
 nova/*
 nova-tutorial-*
 nova-experiment*
-sync
 YCSB-Nova
 preload_out
 expriments
