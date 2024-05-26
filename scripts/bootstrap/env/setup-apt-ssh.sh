@@ -1,4 +1,5 @@
 #!/bin/bash
+# 
 
 # this script is deserted because I have set ssh
 # END=$1 #这里第一个参数是node的个数,也没什么用了

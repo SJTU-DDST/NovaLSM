@@ -225,7 +225,7 @@ namespace nova {
 
 // 固定
     std::string PMpoolName(const std::string &pm_path){
-        return "/dev/dax0.0";
+        return "/dev/dax1.0";
     }
 
 // 大概不会用到 或者 只有恢复的时候会用到

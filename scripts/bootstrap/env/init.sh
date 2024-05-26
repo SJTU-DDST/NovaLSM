@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# 
 basedir="/home/yuhang/NovaLSM"
 numServers=$1
 #prefix="h"

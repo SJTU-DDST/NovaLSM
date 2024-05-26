@@ -1,4 +1,5 @@
 ### KERNEL TUNING ###
+# 
 
 # Increase size of file handles and inode cache
 sudo sysctl -w fs.file-max=10000000
