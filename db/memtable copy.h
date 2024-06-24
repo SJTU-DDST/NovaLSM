@@ -97,6 +97,12 @@ namespace leveldb {
         uint32_t current_log_size_ = 0;
 
         bool is_pinned_ = false;
+    private:
+        void WaitUntilReady();
+
+        friend class MemTableIterator;
+
+        friend class MemTableBackwardIterator;
 
         struct KeyComparator {
             const InternalKeyComparator comparator;
@@ -107,38 +113,23 @@ namespace leveldb {
             int operator()(const char *a, const char *b) const;
         };
 
-    private:
-        void WaitUntilReady();
-
-        friend class MemTableIterator;
-
-        friend class MemTableBackwardIterator;
-
         std::atomic_bool is_ready_;
         port::Mutex is_ready_mutex_;
         port::CondVar is_ready_signal_;
-        
         typedef SkipList<const char *, KeyComparator> Table;
-        Arena arena_;
-        Table table_;
-        
         DBProfiler *db_profiler_ = nullptr;
         KeyComparator comparator_;
         int refs_ = 0;
         uint32_t memtable_id_ = 0;
+        Arena arena_;
+        Table table_;
         FileMetaData flushed_meta_;
-        
         MemManager *mem_manager_; // 负责分配和回收空间的
         uint32_t db_index_; // 负责存储这个是第几个db对应的index
         // 改arena 改成连续分配类似于不断地挖
         // 加rep 直接指向arena的东西 并且组织一个可以理解的文本流?
         // 加encode和decode方法 先不开subrange的更新试一试
         // 整理好直接发送
-
-        char* buf_;
-        uint32_t scid_;
-        uint64_t size_;
-
     };
 
 // 对于l0文件的更改，用的比较广泛

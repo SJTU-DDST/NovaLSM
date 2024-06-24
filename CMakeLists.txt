@@ -124,6 +124,9 @@ target_sources(leveldb
         "include/leveldb/log_writer.h"
         "db/memtable.cc"
         "db/memtable.h"
+        "db/pmmemtable.h"
+        "db/pmmemtable.cpp"
+        "db/pmskiplist.h"
         "db/skiplist.h"
         "db/snapshot.h"
         "db/table_cache.cc"
@@ -177,6 +180,10 @@ target_sources(leveldb
         "util/env_mem.cc"
         "util/env_mem.h"
         "util/env_posix.h"
+
+        "util/pmarena.h"
+        "util/pmarena.cpp"
+
         "ltc/stoc_client_impl.cpp"
         "ltc/stoc_client_impl.h"
         "novalsm/rdma_server.cpp"

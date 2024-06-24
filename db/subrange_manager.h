@@ -37,7 +37,8 @@ namespace leveldb {
                         const Comparator *user_comparator,
                         std::atomic_int_fast32_t *memtable_id_seq,
                         std::vector<MemTablePartition *> *partitioned_active_memtables,
-                        std::vector<uint32_t> *partitioned_imms);
+                        std::vector<uint32_t> *partitioned_imms,
+                        MemManager* mem_manager);
 
         void ReorganizeSubranges();
 
@@ -110,6 +111,7 @@ namespace leveldb {
         std::atomic_int_fast32_t *memtable_id_seq_;
         std::vector<MemTablePartition *> *partitioned_active_memtables_ = nullptr;
         std::vector<uint32_t> *partitioned_imms_ = nullptr;
+        MemManager* mem_manager_;
     };
 }
 

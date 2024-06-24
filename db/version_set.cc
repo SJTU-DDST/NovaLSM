@@ -1040,7 +1040,8 @@ namespace leveldb {
 // mvcc的链表
     VersionSet::VersionSet(const std::string &dbname, const std::string &pmname, int levels_in_pm, const Options *options,
                            TableCache *table_cache,
-                           const InternalKeyComparator *cmp) // TO BE DONE FOR THIS CLASS
+                           const InternalKeyComparator *cmp,
+                           MemManager* mem_manager) // TO BE DONE FOR THIS CLASS
             : env_(options->env),
               dbname_(dbname), // 大部分是标识 小部分有关文件
               pmname_(pmname),
@@ -1055,10 +1056,13 @@ namespace leveldb {
               version_id_seq_(0),
               dummy_versions_(cmp, table_cache, options, version_id_seq_++,
                               nullptr),
-              current_(nullptr) {
+              current_(nullptr),
+              mem_manager_(mem_manager) {
         //midtable mapping和versions????
         for (int i = 0; i < MAX_LIVE_MEMTABLES; i++) {
-            mid_table_mapping_[i] = new AtomicMemTable;
+            uint32_t db_index;
+            nova::ParseDBIndexFromDBName(dbname_, &db_index);
+            mid_table_mapping_[i] = new AtomicMemTable(mem_manager_, db_index);
             mid_table_mapping_[i]->generation_id_ = 0;
             mid_table_mapping_[i]->is_scheduled_for_flushing = false;
             mid_table_mapping_[i]->nentries_ = 0;

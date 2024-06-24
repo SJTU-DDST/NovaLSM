@@ -135,14 +135,15 @@ namespace leveldb {
               shutting_down_(false),
               seed_(0),
               manual_compaction_(nullptr),
-              versions_(new VersionSet(dbname_, pmname_,  levels_in_pm_, &options_, table_cache_, &internal_comparator_)), // To BE DONE
+              versions_(new VersionSet(dbname_, pmname_,  levels_in_pm_, &options_, table_cache_, &internal_comparator_, raw_options.mem_manager)), // To BE DONE
               bg_compaction_threads_(raw_options.bg_compaction_threads),
               bg_flush_memtable_threads_(raw_options.bg_flush_memtable_threads),
               reorg_thread_(raw_options.reorg_thread),
               compaction_coordinator_thread_(raw_options.compaction_coordinator_thread),
               memtable_available_signal_(&range_lock_), // mempool模式使用
               l0_stop_write_signal_(&l0_stop_write_mutex_), // 从来没有使用过
-              user_comparator_(raw_options.comparator) {
+              user_comparator_(raw_options.comparator),
+              mem_manager_(raw_options.mem_manager) { // 加上mem_manager, 这样db impl可以使用了
         is_loading_db_ = false;
         memtable_id_seq_ = 100; // memtable_id 从100开始 也就是说 0 - 99 应该是 level 0的!!!
         start_coordinated_compaction_ = false; // 用于开始major compaction
@@ -1133,7 +1134,7 @@ namespace leveldb {
                           options_, bg_thread, table_cache_);
         uint32_t memtable_id = memtable_id_seq_.fetch_add(1);
         MemTable *output_memtable = new MemTable(internal_comparator_, memtable_id,
-                                                 db_profiler_, true);
+                                                 db_profiler_, true, mem_manager_, dbid_);
         NOVA_ASSERT(memtable_id < MAX_LIVE_MEMTABLES);
         auto atomic_output_memtable = versions_->mid_table_mapping_[memtable_id];
         atomic_output_memtable->SetMemTable(flush_order_->latest_generation_id, output_memtable); // 输出设置为一个新的memtable
@@ -2436,7 +2437,7 @@ namespace leveldb {
             if (memtableid != 0) {
                 if (nova::NovaConfig::config->ltc_migration_policy == nova::LTCMigrationPolicy::IMMEDIATE) {
                     // Mark this table as immutable.
-                    MemTable *table = new MemTable(internal_comparator_, memtableid, nullptr, false);
+                    MemTable *table = new MemTable(internal_comparator_, memtableid, nullptr, false, mem_manager_, dbid_);
                     NOVA_ASSERT(!p->available_slots.empty());
                     uint32_t slotid = p->available_slots.front();
                     p->available_slots.pop();
@@ -2453,7 +2454,7 @@ namespace leveldb {
                     pair.imm_slot = slotid;
                     (*mid_table_map)[memtableid] = pair;
                 } else {
-                    p->active_memtable = new MemTable(internal_comparator_, memtableid, nullptr, false);
+                    p->active_memtable = new MemTable(internal_comparator_, memtableid, nullptr, false, mem_manager_, dbid_);
                     versions_->mid_table_mapping_[memtableid]->SetMemTable(flush_order_->latest_generation_id,
                                                                            p->active_memtable);
                     MemTableLogFilePair pair = {};
@@ -2469,7 +2470,7 @@ namespace leveldb {
             for (int j = 0; j < size; j++) {
                 uint32_t imm_memtableid = 0;
                 NOVA_ASSERT(DecodeFixed32(buf, &imm_memtableid));
-                MemTable *table = new MemTable(internal_comparator_, imm_memtableid, nullptr, false);
+                MemTable *table = new MemTable(internal_comparator_, imm_memtableid, nullptr, false, mem_manager_, dbid_);
                 NOVA_ASSERT(!p->available_slots.empty());
                 uint32_t slotid = p->available_slots.front();
                 p->available_slots.pop();
@@ -2491,7 +2492,7 @@ namespace leveldb {
                 !p->available_slots.empty()) {
                 // Create a new active memtable.
                 uint32_t new_memtable_id = memtable_id_seq_.fetch_add(1);
-                p->active_memtable = new MemTable(internal_comparator_, new_memtable_id, nullptr, true);
+                p->active_memtable = new MemTable(internal_comparator_, new_memtable_id, nullptr, true, mem_manager_, dbid_);
                 versions_->mid_table_mapping_[new_memtable_id]->SetMemTable(flush_order_->latest_generation_id,
                                                                             p->active_memtable);
             }
@@ -2536,7 +2537,7 @@ namespace leveldb {
                     partition->immutable_memtable_ids.push_back(table->memtableid());
 //新建一个memtable
                     uint32_t new_memtable_id = memtable_id_seq_.fetch_add(1);
-                    MemTable *new_table = new MemTable(internal_comparator_, new_memtable_id, db_profiler_, true);
+                    MemTable *new_table = new MemTable(internal_comparator_, new_memtable_id, db_profiler_, true, mem_manager_, dbid_);
                     NOVA_ASSERT(new_memtable_id < MAX_LIVE_MEMTABLES);
                     uint64_t gen_id = flush_order_->latest_generation_id;
                     versions_->mid_table_mapping_[new_memtable_id]->SetMemTable(gen_id, new_table);
@@ -2714,7 +2715,7 @@ namespace leveldb {
 
                 // Create a new table.
                 uint32_t memtable_id = memtable_id_seq_.fetch_add(1);
-                table = new MemTable(internal_comparator_, memtable_id, db_profiler_, true);
+                table = new MemTable(internal_comparator_, memtable_id, db_profiler_, true, mem_manager_, dbid_);
                 NOVA_ASSERT(memtable_id < MAX_LIVE_MEMTABLES);
                 uint64_t generation_id = flush_order_->latest_generation_id;
                 versions_->mid_table_mapping_[memtable_id]->SetMemTable(generation_id, table);
@@ -3049,7 +3050,7 @@ namespace leveldb {
             if (has_available_memtable) {
                 number_of_active_memtables_ += 1;
                 uint32_t memtable_id = memtable_id_seq_.fetch_add(1);
-                MemTable *new_table = new MemTable(internal_comparator_, memtable_id, db_profiler_, true);
+                MemTable *new_table = new MemTable(internal_comparator_, memtable_id, db_profiler_, true, mem_manager_, dbid_);
                 if (pin) {
                     new_table->is_pinned_ = true;
                 }
@@ -3503,7 +3504,7 @@ namespace leveldb {
         if (options.memtable_type == MemTableType::kMemTablePool) { //默认的是else static partition
             for (int i = 0; i < impl->min_memtables_; i++) { // 默认为2 选两个memtable出来
                 uint32_t memtable_id = impl->memtable_id_seq_.fetch_add(1);
-                MemTable *new_table = new MemTable(impl->internal_comparator_, memtable_id, impl->db_profiler_, true);
+                MemTable *new_table = new MemTable(impl->internal_comparator_, memtable_id, impl->db_profiler_, true, impl->mem_manager_, impl->dbid_);
                 new_table->is_pinned_ = true; // 如果是pinned就只能用于某种场景??
                 NOVA_ASSERT(memtable_id < MAX_LIVE_MEMTABLES);
                 impl->versions_->mid_table_mapping_[memtable_id]->SetMemTable(INIT_GEN_ID, new_table);
@@ -3528,7 +3529,7 @@ namespace leveldb {
             uint32_t slot_id = 0;
             for (int i = 0; i < options.num_memtable_partitions; i++) {
                 uint64_t memtable_id = impl->memtable_id_seq_.fetch_add(1); // 初始值是100 也就是memtableid从100开始
-                MemTable *table = new MemTable(impl->internal_comparator_, memtable_id, impl->db_profiler_, true);
+                MemTable *table = new MemTable(impl->internal_comparator_, memtable_id, impl->db_profiler_, true, impl->mem_manager_, impl->dbid_);
                 NOVA_ASSERT(memtable_id < MAX_LIVE_MEMTABLES);
                 impl->versions_->mid_table_mapping_[memtable_id]->SetMemTable(INIT_GEN_ID, table); // 这个是imm还是acti，大概率active
                 impl->partitioned_active_memtables_[i] = new MemTablePartition; // 
@@ -3584,7 +3585,8 @@ namespace leveldb {
                                                           impl->user_comparator_,
                                                           &impl->memtable_id_seq_,
                                                           &impl->partitioned_active_memtables_,
-                                                          &impl->partitioned_imms_);
+                                                          &impl->partitioned_imms_,
+                                                          impl->mem_manager_);
         }
         if (options.enable_range_index) { // 开启range index和不开
             impl->range_index_manager_ = new RangeIndexManager(&impl->scan_stats, impl->versions_,

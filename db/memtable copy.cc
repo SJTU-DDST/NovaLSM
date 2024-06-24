@@ -34,12 +34,7 @@ namespace leveldb {
               db_profiler_(db_profiler), is_ready_(is_ready),
               is_ready_signal_(&is_ready_mutex_),
               mem_manager_(mem_manager_),
-              db_index_(db_index),
-              size_(16 * 1024 * 1024) {
-        scid_ = mem_manager_->slabclassid(db_index_, size_); // 这里size设为多大??? 这里一般是搞成16mb了
-        buf_ = mem_manager_->ItemAlloc(db_index_, scid_);
-        arena_.Set(buf_, scid_, size_, mem_manager_, db_index_);
-        table_.init();
+              db_index_(db_index) {
     }
 
 // 一个config永远ready
@@ -211,21 +206,16 @@ namespace leveldb {
         const size_t encoded_len = VarintLength(internal_key_size) +
                                    internal_key_size + VarintLength(val_size) +
                                    val_size;
-        // char *buf = arena_.Allocate(encoded_len);
-        // char *p = EncodeVarint32(buf, internal_key_size);
-        uint64_t buf_offset = arena_.Allocate(encoded_len);
-        char *p = EncodeVarint32(buf_ + buf_offset, internal_key_size);
-        
+        char *buf = arena_.Allocate(encoded_len);
+        char *p = EncodeVarint32(buf, internal_key_size);
         memcpy(p, key.data(), key_size);
         p += key_size;
         EncodeFixed64(p, (s << 8) | type);
         p += 8;
         p = EncodeVarint32(p, val_size);
         memcpy(p, value.data(), val_size);
-
-
-        assert(p + val_size == buf_ + buf_offset + encoded_len);
-        table_.Insert(buf_ + buf_offset);
+        assert(p + val_size == buf + encoded_len);
+        table_.Insert(buf);
     }
 
 

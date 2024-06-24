@@ -21,14 +21,16 @@ namespace leveldb {
                                      const leveldb::Comparator *user_comparator,
                                      std::atomic_int_fast32_t *memtable_id_seq,
                                      std::vector<leveldb::MemTablePartition *> *partitioned_active_memtables,
-                                     std::vector<uint32_t> *partitioned_imms)
+                                     std::vector<uint32_t> *partitioned_imms,
+                                     MemManager* mem_manager)
             : manifest_file_(manifest_file), flush_order_(flush_order), dbname_(dbname), dbindex_(dbindex),
               versions_(versions), options_(options),
               internal_comparator_(internal_comparator),
               user_comparator_(user_comparator),
               memtable_id_seq_(memtable_id_seq),
               partitioned_active_memtables_(partitioned_active_memtables),
-              partitioned_imms_(partitioned_imms) {
+              partitioned_imms_(partitioned_imms),
+              mem_manager_(mem_manager) {
         lower_bound_ = options.lower_key;
         upper_bound_ = options.upper_key;
         auto sr = new SubRanges;
@@ -1200,7 +1202,8 @@ namespace leveldb {
                                 partition->slot_imm_id[next_imm_slot] = table->memtableid();
                                 uint32_t memtable_id = memtable_id_seq_->fetch_add(1);
                                 partition->immutable_memtable_ids.push_back(table->memtableid());
-                                table = new MemTable(*internal_comparator_, memtable_id, nullptr, true);
+                                table = new MemTable(*internal_comparator_, memtable_id, nullptr, true, mem_manager_, dbindex_);
+                                // 这里先用0??
                                 auto new_atomic_table = versions_->mid_table_mapping_[table->memtableid()];
                                 NOVA_ASSERT(memtable_id < MAX_LIVE_MEMTABLES);
                                 new_atomic_table->SetMemTable(impacted_dranges.generation_id, table);

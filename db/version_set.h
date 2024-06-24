@@ -311,7 +311,7 @@ namespace leveldb {
     public:
 // done
         VersionSet(const std::string &dbname, const std::string &pmname, int levels_in_pm, const Options *options,
-                   TableCache *table_cache, const InternalKeyComparator *);
+                   TableCache *table_cache, const InternalKeyComparator *, MemManager* mem_manager);
 
         VersionSet(const VersionSet &) = delete;
 
@@ -424,6 +424,7 @@ namespace leveldb {
         Version dummy_versions_;  // Head of circular doubly-linked list of versions.
         Version *current_;        // == dummy_versions_.prev_
         std::atomic_int_fast32_t current_version_id_;
+        MemManager* mem_manager_;
     };
 }  // namespace leveldb
 

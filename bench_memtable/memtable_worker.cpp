@@ -46,7 +46,7 @@ namespace leveldb {
             auto cmp = new YCSBKeyComparator();
             leveldb::InternalKeyComparator *comp = new leveldb::InternalKeyComparator(
                     cmp);
-            MemTable *table = new MemTable(*comp, 0, nullptr, true);
+            MemTable *table = new MemTable(*comp, 0, nullptr, true, nullptr, 0);
             table->Ref();
             active_memtables_.push_back(table);
             mutexs_.push_back(new std::mutex);
@@ -65,7 +65,7 @@ namespace leveldb {
             auto cmp = new YCSBKeyComparator();
             leveldb::InternalKeyComparator *comp = new leveldb::InternalKeyComparator(
                     cmp);
-            table = new MemTable(*comp, 0, nullptr, true);
+            table = new MemTable(*comp, 0, nullptr, true, nullptr, 0);
             table->Ref();
             active_memtables_[partition_id] = table;
         }

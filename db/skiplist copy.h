@@ -52,8 +52,6 @@ namespace leveldb {
         // must remain allocated for the lifetime of the skiplist object.
         explicit SkipList(Comparator cmp, Arena *arena);
 
-        void init();
-
         SkipList(const SkipList &) = delete;
 
         SkipList &operator=(const SkipList &) = delete;
@@ -64,14 +62,6 @@ namespace leveldb {
 
         // Returns true iff an entry that compares equal to key is in the list.
         bool Contains(const Key &key) const;
-
-        Node* SpecialEnd(){
-            return reinterpret_cast<Node*>(arena_->Buf());
-        }
-
-        char* Begin(){
-            return arena_->Buf();
-        }
 
         // Iteration over the contents of a skip list
         class Iterator {
@@ -120,15 +110,14 @@ namespace leveldb {
         };
 
         inline int GetMaxHeight() const {
-            // return max_height_.load(std::memory_order_relaxed);
-            return (*max_height_).load(std::memory_order_relaxed);
+            return max_height_.load(std::memory_order_relaxed);
         }
 
         Node *NewNode(const Key &key, int height);
 
         int RandomHeight();
 
-        bool Equal(const Key &a, const Key &b) const { // 传入的是const char*
+        bool Equal(const Key &a, const Key &b) const {
             return (compare_(a, b) == 0);
         }
 
@@ -151,14 +140,14 @@ namespace leveldb {
         Node *FindLast() const;
 
         // Immutable after construction
-        Comparator compare_;
-        Arena *arena_;  // Arena used for allocations of nodes
+        Comparator const compare_;
+        Arena *const arena_;  // Arena used for allocations of nodes
 
-        Node *head_;
+        Node *const head_;
 
         // Modified only by Insert().  Read racily by readers, but stale
         // values are ok.
-        std::atomic<int>* max_height_;  // Height of the entire list
+        std::atomic<int> max_height_;  // Height of the entire list
 
         std::atomic_int_fast32_t nputs_per_level[kMaxHeight];
 
@@ -170,21 +159,21 @@ namespace leveldb {
 // node里面包括 一个key和一些atomic类型的指针
     template<typename Key, class Comparator>
     struct SkipList<Key, Comparator>::Node {
-        explicit Node(const uint64_t &k) : key(k) {
+        explicit Node(const Key &k) : key(k) {
         }
 
-        const uint64_t key;
+        Key const key;
 
         // Accessors/mutators for links.  Wrapped in methods so we can
         // add the appropriate barriers as necessary.
-        uint64_t Next(int n) {
+        Node *Next(int n) {
             assert(n >= 0);
             // Use an 'acquire load' so that we observe a fully initialized
             // version of the returned Node.
             return next_[n].load(std::memory_order_acquire);
         }
 
-        void SetNext(int n, uint64_t x) {
+        void SetNext(int n, Node *x) {
             assert(n >= 0);
             // Use a 'release store' so that anybody who reads through this
             // pointer observes a fully initialized version of the inserted node.
@@ -192,37 +181,29 @@ namespace leveldb {
         }
 
         // No-barrier variants that can be safely used in a few locations.
-        uint64_t NoBarrier_Next(int n) {
+        Node *NoBarrier_Next(int n) {
             assert(n >= 0);
             return next_[n].load(std::memory_order_relaxed);
         }
 
-        void NoBarrier_SetNext(int n, uint64_t x) {
+        void NoBarrier_SetNext(int n, Node *x) {
             assert(n >= 0);
             next_[n].store(x, std::memory_order_relaxed);
         }
 
     private:
         // Array of length equal to the node height.  next_[0] is lowest level link.
-        std::atomic<uint64_t> next_[1];
+        std::atomic<Node *> next_[1];
     };
 
 // 先分配内存再在内存上构造 key的节点 这里其实height拉满了 placement new
-
-// 如果是head该怎么办，关注一下 head存了开头，key就变成0了
     template<typename Key, class Comparator>
     typename SkipList<Key, Comparator>::Node *
     SkipList<Key, Comparator>::NewNode(
             const Key &key, int height) {
-        uint64_t node_memory_offset = arena_->AllocateAligned(
-            sizeof(Node) + sizeof(std::atomic<uint64_t>) * (height - 1)
-        );
-        uint64_t key_offset = key - arena_->Buf();
-        new(arena_->Buf() + node_memory_offset) Node(key_offset); // 这里相当于写了offset进去
-        return reinterpret_cast<Node*>(arena_->Buf() + node_memory_offset);        
-        // char *const node_memory = arena_->AllocateAligned(
-        //         sizeof(Node) + sizeof(std::atomic<Node *>) * (height - 1));
-        // return new(node_memory) Node(key);
+        char *const node_memory = arena_->AllocateAligned(
+                sizeof(Node) + sizeof(std::atomic<Node *>) * (height - 1));
+        return new(node_memory) Node(key);
     }
 
 // iterator 需要传入头节点
@@ -252,22 +233,19 @@ namespace leveldb {
 
     template<typename Key, class Comparator>
     inline bool SkipList<Key, Comparator>::Iterator::Valid() const {
-        return node_ != nullptr && node_ != reinterpret_cast<Node*>(list_->arena_->Buf());
+        return node_ != nullptr;
     }
 
     template<typename Key, class Comparator>
     inline const Key &SkipList<Key, Comparator>::Iterator::key() const {
         assert(Valid());
-        // return node_->key;
-        return list_->arena_->Buf() + node_->key;
+        return node_->key;
     }
 
     template<typename Key, class Comparator>
     inline void SkipList<Key, Comparator>::Iterator::Next() {
         assert(Valid());
-        // node_ = node_->Next(iter_level_);
-        uint64_t next_offset = node_->Next(iter_level_); // 取offset 然后重新做
-        node_ = reinterpret_cast<Node*>(list_->arena_->Buf() + next_offset);
+        node_ = node_->Next(iter_level_);
     }
 
 
@@ -277,9 +255,8 @@ namespace leveldb {
         // Instead of using explicit "prev" links, we just search for the
         // last node that falls before key.
         assert(Valid());
-        // node_ = list_->FindLessThan(node_->key);
-        node_ = list_->FindLessThan(list_->arena_->Buf() + node_->key);
-        if (node_ == list_->head_ || node_ == nullptr || node_ == reinterpret_cast<Node*>(list_->arena_->Buf())) {
+        node_ = list_->FindLessThan(node_->key);
+        if (node_ == list_->head_) {
             node_ = nullptr;
         }
     }
@@ -292,16 +269,14 @@ namespace leveldb {
 
     template<typename Key, class Comparator>
     inline void SkipList<Key, Comparator>::Iterator::SeekToFirst() {
-        // node_ = list_->head_->Next(iter_level_);
-        uint64_t next_offset = list_->head_->Next(iter_level_);
-        node_ = reinterpret_cast<Node*>(list_->arena_->Buf() + next_offset);
+        node_ = list_->head_->Next(iter_level_);
     }
 
     template<typename Key, class Comparator>
     inline void SkipList<Key, Comparator>::Iterator::SeekToLast() {
         NOVA_ASSERT(sampled_puts_ == 0);
         node_ = list_->FindLast();
-        if (node_ == list_->head_|| node_ == reinterpret_cast<Node*>(list_->arena_->Buf())) {
+        if (node_ == list_->head_) {
             node_ = nullptr;
         }
     }
@@ -327,7 +302,7 @@ namespace leveldb {
     bool
     SkipList<Key, Comparator>::KeyIsAfterNode(const Key &key, Node *n) const {
         // null n is considered infinite
-        return (n != reinterpret_cast<Node*>(arena_->Buf())) && (n != nullptr) && (compare_(arena_->Buf() + n->key, key) < 0);
+        return (n != nullptr) && (compare_(n->key, key) < 0);
     }
 
 // prev用于记录下各级的前一个节点，换句话说就是在各级的哪个节点下展开寻找
@@ -338,9 +313,7 @@ namespace leveldb {
         Node *x = head_;
         int level = GetMaxHeight() - 1;
         while (true) {
-            // Node *next = x->Next(level);
-            uint64_t next_offset = x->Next(level);
-            Node* next = reinterpret_cast<Node*>(arena_->Buf() + next_offset);
+            Node *next = x->Next(level);
             if (KeyIsAfterNode(key, next)) { // 一直到找到一个节点next
                 // Keep searching in this list
                 x = next;
@@ -363,11 +336,9 @@ namespace leveldb {
         Node *x = head_;
         int level = GetMaxHeight() - 1;
         while (true) {
-            assert(x == head_ || compare_(arena_->Buf() + x->key, key) < 0);
-            // Node *next = x->Next(level);
-            uint64_t next_offset = x->Next(level);
-            Node* next = reinterpret_cast<Node*>(arena_->Buf() + next_offset);        
-            if (next == nullptr || next == reinterpret_cast<Node*>(arena_->Buf()) || compare_(arena_->Buf() + next->key, key) >= 0) { // next的比要找的大了
+            assert(x == head_ || compare_(x->key, key) < 0);
+            Node *next = x->Next(level);
+            if (next == nullptr || compare_(next->key, key) >= 0) { // next的比要找的大了
                 if (level == 0) {
                     return x;
                 } else {
@@ -388,10 +359,8 @@ namespace leveldb {
         Node *x = head_;
         int level = GetMaxHeight() - 1;
         while (true) {
-            uint64_t next_offset = x->Next(level);
-            Node* next = reinterpret_cast<Node*>(arena_->Buf() + next_offset);            
-            // Node *next = x->Next(level);
-            if (next == nullptr || next == reinterpret_cast<Node*>(arena_->Buf())) {
+            Node *next = x->Next(level);
+            if (next == nullptr) {
                 if (level == 0) {
                     return x;
                 } else {
@@ -409,27 +378,13 @@ namespace leveldb {
     SkipList<Key, Comparator>::SkipList(Comparator cmp, Arena *arena)
             : compare_(cmp),
               arena_(arena),
-              //head_(NewNode(0 /* any key will do */, kMaxHeight)),
-              head_(nullptr),
-              //max_height_(1),
-              max_height_(nullptr),
+              head_(NewNode(0 /* any key will do */, kMaxHeight)),
+              max_height_(1),
               rnd_(0xdeadbeef) {
-        // for (int i = 0; i < kMaxHeight; i++) {
-        //     head_->SetNext(i, nullptr);
-        //     nputs_per_level[i] = 0;
-        // }
-    }
-
-    template<typename Key, class Comparator>
-    void SkipList<Key, Comparator>::init(){
-        uint64_t max_height_offset = arena_->Allocate(sizeof(std::atomic<int>));
-        max_height_ = reinterpret_cast<std::atomic<int>*>(arena_->Buf() + max_height_offset);
-        *max_height_ = 1;
-        head_ = NewNode(arena_->Buf(), kMaxHeight); // 指向开头的 就是head_c key是0
         for (int i = 0; i < kMaxHeight; i++) {
-            head_->SetNext(i, 0); // 都是0
+            head_->SetNext(i, nullptr);
             nputs_per_level[i] = 0;
-        } 
+        }
     }
 
     template<typename Key, class Comparator>
@@ -440,7 +395,7 @@ namespace leveldb {
         Node *x = FindGreaterOrEqual(key, prev); // 找到路线和插入位置的下一个节点x
 
         // Our data structure does not allow duplicate insertion
-        assert(x == nullptr || x == reinterpret_cast<Node*>(arena_->Buf()) || !Equal(key, arena_->Buf() + x->key));
+        assert(x == nullptr || !Equal(key, x->key));
 
         int height = RandomHeight();
         if (height > GetMaxHeight()) { // 开始的时候max_height_设置为1 初始化的时候
@@ -454,7 +409,7 @@ namespace leveldb {
             // the loop below.  In the former case the reader will
             // immediately drop to the next level since nullptr sorts after all
             // keys.  In the latter case the reader will use the new node.
-            (*max_height_).store(height, std::memory_order_relaxed);
+            max_height_.store(height, std::memory_order_relaxed);
         }
 
         x = NewNode(key, height); // 新申请节点和层数
@@ -462,7 +417,7 @@ namespace leveldb {
             // NoBarrier_SetNext() suffices since we will add a barrier when
             // we publish a pointer to "x" in prev[i].
             x->NoBarrier_SetNext(i, prev[i]->NoBarrier_Next(i)); // 层数越高越靠上
-            prev[i]->SetNext(i, static_cast<uint64_t>(reinterpret_cast<char*>(x) - arena_->Buf()));
+            prev[i]->SetNext(i, x);
             nputs_per_level[i].fetch_add(1, std::memory_order_relaxed);
         }
     }
@@ -470,7 +425,7 @@ namespace leveldb {
     template<typename Key, class Comparator>
     bool SkipList<Key, Comparator>::Contains(const Key &key) const {
         Node *x = FindGreaterOrEqual(key, nullptr);
-        if (x != nullptr && x != reinterpret_cast<Node*>(arena_->Buf()) && Equal(key, arena_->Buf() + x->key)) {
+        if (x != nullptr && Equal(key, x->key)) {
             return true;
         } else {
             return false;

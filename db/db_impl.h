@@ -314,7 +314,7 @@ namespace leveldb {
         const bool owns_info_log_;
         const bool owns_cache_;
 // done
-        const std::string dbname_;
+        const std::string dbname_; // 这个里面有db_index 相关的信息 所以需要db_index直接从这里拿出来
         const std::string pmname_;
         int levels_in_pm_;
 
@@ -384,6 +384,9 @@ namespace leveldb {
 
         StoCWritableFileClient *manifest_file_ = nullptr;
         unsigned int rand_seed_ = 0;
+
+        MemManager *mem_manager_ = nullptr; // 用于传入mem_manager然后传给memtable
+        // MemManager *pm_manager_ = nullptr;
     };
 
 // Sanitize db options.  The caller should delete result.info_log if
