@@ -33,9 +33,9 @@ namespace leveldb {
               table_(comparator_, &arena_),
               db_profiler_(db_profiler), is_ready_(is_ready),
               is_ready_signal_(&is_ready_mutex_),
-              mem_manager_(mem_manager_),
+              mem_manager_(mem_manager),
               db_index_(db_index),
-              size_(16 * 1024 * 1024) {
+              size_(18 * 1024 * 1024) { // 数字还是要查一下 可能是这里的问题
         scid_ = mem_manager_->slabclassid(db_index_, size_); // 这里size设为多大??? 这里一般是搞成16mb了
         buf_ = mem_manager_->ItemAlloc(db_index_, scid_);
         arena_.Set(buf_, scid_, size_, mem_manager_, db_index_);

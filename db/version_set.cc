@@ -371,6 +371,7 @@ namespace leveldb {
         }
     }
 
+// 这里全是l0层的找
 // l0层的找 从fns是对应的文件号
     Status Version::Get(const leveldb::ReadOptions &options,
                         std::vector<uint64_t> &fns,
@@ -406,6 +407,8 @@ namespace leveldb {
             saver.user_key = key.user_key();
             saver.value = val;
             saver.seq = &tmp_seq;
+            
+            // l0层的格式应该有些变化 
             Status s = table_cache_->Get(options, // 通过table_cache去找
                                          file,
                                          file->number,

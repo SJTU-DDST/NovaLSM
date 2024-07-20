@@ -48,6 +48,8 @@ namespace leveldb {
         Block *index_block;
     };
 
+// table_cache->get find_table
+// 这里是l1层的打开
     Status Table::Open(const Options &options,
                        const ReadOptions &read_options,
                        const FileMetaData *meta,

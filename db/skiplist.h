@@ -5,6 +5,8 @@
 #ifndef STORAGE_LEVELDB_DB_SKIPLIST_H_
 #define STORAGE_LEVELDB_DB_SKIPLIST_H_
 
+#include<common/nova_console_logging.h>
+
 // Thread safety
 // -------------
 //
@@ -85,7 +87,7 @@ namespace leveldb {
 
             // Returns the key at the current position.
             // REQUIRES: Valid()
-            const Key &key() const;
+            const Key key() const; // 这里的key实际上永远是char*类型 所以不能返回局部变量
 
             // Advances to the next position.
             // REQUIRES: Valid()
@@ -256,9 +258,31 @@ namespace leveldb {
     }
 
     template<typename Key, class Comparator>
-    inline const Key &SkipList<Key, Comparator>::Iterator::key() const {
+    inline const Key SkipList<Key, Comparator>::Iterator::key() const {
+        // if(list_ == nullptr){
+        //     NOVA_LOG(rdmaio::INFO) << "list" ;
+        // }
+        // if(list_->arena_ == nullptr){
+        //     NOVA_LOG(rdmaio::INFO) << "arena" ;
+        // }
+        // if(list_->arena_->Buf() == nullptr){
+        //     NOVA_LOG(rdmaio::INFO) << "buf";
+        // }        
+        
+        // if(node_ == nullptr){
+        //     NOVA_LOG(rdmaio::INFO) << "node_";
+        // }
+
+        // if(node_->key == 0){
+        //     NOVA_LOG(rdmaio::INFO) << "key";
+        // }
+
         assert(Valid());
+        // NOVA_LOG(rdmaio::INFO) << "valid is true" ;
         // return node_->key;
+
+        // NOVA_LOG(rdmaio::INFO) << (uint64_t)(list_->arena_->Buf() + node_->key);
+
         return list_->arena_->Buf() + node_->key;
     }
 

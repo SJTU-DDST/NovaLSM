@@ -44,9 +44,9 @@ namespace leveldb {
     void Arena::Set(char* buf, uint32_t scid, uint64_t size, MemManager* mem_manager, uint32_t dbindex){
         buf_ = buf;
         scid_ = scid;
-        size = size_;
+        size_ = size;
         alloc_ptr_ = buf;
-        mem_manager = mem_manager_;        
+        mem_manager_ = mem_manager;        
         dbindex_ = dbindex;
     }
 

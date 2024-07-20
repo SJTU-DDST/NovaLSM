@@ -79,6 +79,8 @@ namespace leveldb {
         return s;
     }
 
+// mematble最终的序列化工作 下一步的工作改动 序列化和压缩一起改 改了之后写就完全好了 之后改读的
+// 
 // done
     Status
     BuildTable(const std::string &dbname, const std::string &pmname, int level, int levels_in_pm, Env *env, const Options &options,
@@ -108,6 +110,10 @@ namespace leveldb {
                     bg_thread->rand_seed(),
                     filename);
             WritableFile *file = new MemWritableFile(stoc_writable_file);
+
+
+            // builder这里可能会改为直接写入
+
             TableBuilder *builder = new TableBuilder(options, file);
 
             Slice user_key;

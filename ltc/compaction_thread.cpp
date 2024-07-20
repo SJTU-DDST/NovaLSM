@@ -72,6 +72,7 @@ namespace leveldb {
 
             num_tasks_ += tasks.size();
 
+            // 这里处理minor compaction相关的事情
             bool reorg = false;
             for (auto &task : tasks) {
                 if (task.memtable == nullptr &&

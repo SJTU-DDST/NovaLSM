@@ -64,6 +64,8 @@ namespace leveldb {
 //    }
 
 // 只有这里调用了randomaccessfileclientimpl -> newrandomaccesfile ->  sstable_mem模式下打开于内存
+
+// 这里是table_cache->get调用用于寻找l0和l1层的文件
     Status
     TableCache::FindTable(AccessCaller caller, const ReadOptions &options,
                           const FileMetaData *meta,
@@ -101,11 +103,14 @@ namespace leveldb {
                                                       options.thread_id,
                                                       prefetch_all,
                                                       filename);
+            // 这里根据不同的层级 应该区别对待 l1以下维持原样
+
             s = Table::Open(options_, options, meta, file, file_size, level,
                             file_number, replica_id, &table, db_profiler_);
             NOVA_ASSERT(s.ok())
                 << fmt::format("file:{} status:{}", meta->DebugString(),
                                s.ToString());
+            // 这里可能要加一种形式
             TableAndFile *tf = new TableAndFile;
             tf->file = file;
             tf->table = table;
@@ -192,6 +197,7 @@ namespace leveldb {
         return result;
     }
 
+// l0层和l1层的找 可以通过加参数的方式分辨
     Status TableCache::Get(const ReadOptions &options, const FileMetaData *meta,
                            uint64_t file_number, uint32_t replica_id,
                            uint64_t file_size, int level,
@@ -205,6 +211,7 @@ namespace leveldb {
             TableAndFile *tf = reinterpret_cast<TableAndFile *>(cache_->Value(
                     handle));
             Table *t = tf->table;
+            // 这里根据l0和l1不同的找 可能要区别的对待
             s = t->InternalGet(options, k, arg, handle_result);
             cache_->Release(handle);
         }

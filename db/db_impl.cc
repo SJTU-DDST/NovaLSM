@@ -1434,6 +1434,8 @@ namespace leveldb {
         }
     }
 
+// major compaction的任务
+// flush memtable的任务
 // flush memtable的任务 major compaction的任务
     void DBImpl::PerformCompaction(leveldb::EnvBGThread *bg_thread, const std::vector<EnvBGTask> &tasks) {
         std::vector<EnvBGTask> memtable_tasks;
@@ -2234,6 +2236,7 @@ namespace leveldb {
             versions_->versions_[vid]->Unref(dbname_);
         }
 
+        // l0层的get要特殊处理
         if (!l0fns.empty()) {
             s = current->Get(options, l0fns, lkey, &latest_seq, value, &number_of_files_to_search_for_get_);
         }
