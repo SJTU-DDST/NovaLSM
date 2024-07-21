@@ -29,10 +29,10 @@ namespace leveldb {
         void Set(char* buf, uint32_t scid, uint64_t size, MemManager* mem_manager, uint32_t db_index);
 
         // Return a pointer to a newly allocated memory block of "bytes" bytes.
-        uint64_t Allocate(size_t bytes);
+        char* Allocate(size_t bytes);
 
         // Allocate memory with the normal alignment guarantees provided by malloc.
-        uint64_t AllocateAligned(size_t bytes);
+        char* AllocateAligned(size_t bytes);
 
         // Returns an estimate of the total memory usage of data allocated
         // by the arena.
@@ -72,7 +72,9 @@ namespace leveldb {
         uint32_t dbindex_ = 0;
     };
 
-    inline uint64_t Arena::Allocate(size_t bytes) {
+    // 改为分配指针 只有l0读和压缩的时候做差 memtable和原来基本相同
+
+    inline char* Arena::Allocate(size_t bytes) {
         // The semantics of what to return are a bit messy if we allow
         // 0-byte allocations, so we disallow them here (we don't need
         // them for our internal use).
@@ -85,13 +87,13 @@ namespace leveldb {
         // }
         // return AllocateFallback(bytes);
         assert(alloc_ptr_ + bytes <= buf_ + size_);
-        uint64_t result = alloc_ptr_ - buf_;
+        char* result = alloc_ptr_;
         alloc_ptr_ += bytes;
         memory_usage_ += bytes;
         return result;        
     }
 
-    inline uint64_t Arena::AllocateAligned(size_t bytes){
+    inline char* Arena::AllocateAligned(size_t bytes){
         const int align = (sizeof(void *) > 8) ? sizeof(void *) : 8; // 8字节对齐
         assert((align & (align - 1)) == 0);
         size_t current_mod = reinterpret_cast<uintptr_t>(alloc_ptr_) & (align - 1); // 目前这个偏移比8字节多的字节数
@@ -100,7 +102,7 @@ namespace leveldb {
 
         assert(alloc_ptr_ + needed <= buf_ + size_);
 
-        uint64_t result = (alloc_ptr_ + slop) - buf_;
+        char* result = alloc_ptr_ + slop;
         alloc_ptr_ += needed;
         memory_usage_ += needed;
         return result;        

@@ -211,10 +211,10 @@ namespace leveldb {
         const size_t encoded_len = VarintLength(internal_key_size) +
                                    internal_key_size + VarintLength(val_size) +
                                    val_size;
-        // char *buf = arena_.Allocate(encoded_len);
-        // char *p = EncodeVarint32(buf, internal_key_size);
-        uint64_t buf_offset = arena_.Allocate(encoded_len);
-        char *p = EncodeVarint32(buf_ + buf_offset, internal_key_size);
+        char *buf = arena_.Allocate(encoded_len);
+        char *p = EncodeVarint32(buf, internal_key_size);
+        // uint64_t buf_offset = arena_.Allocate(encoded_len);
+        // char *p = EncodeVarint32(buf_ + buf_offset, internal_key_size);
         
         memcpy(p, key.data(), key_size);
         p += key_size;
@@ -224,8 +224,8 @@ namespace leveldb {
         memcpy(p, value.data(), val_size);
 
 
-        assert(p + val_size == buf_ + buf_offset + encoded_len);
-        table_.Insert(buf_ + buf_offset);
+        assert(p + val_size == buf + encoded_len);
+        table_.Insert(buf);
     }
 
 
