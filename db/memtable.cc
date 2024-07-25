@@ -12,6 +12,7 @@
 #include "leveldb/env.h"
 #include "leveldb/iterator.h"
 #include "util/coding.h"
+#include "common/city_hash.h"
 
 namespace leveldb {
 
@@ -23,7 +24,7 @@ namespace leveldb {
         return Slice(p, len);
     }
 
-    MemTable::MemTable(const InternalKeyComparator &comparator,
+    MemTable::MemTable(const InternalKeyComparator &comparator, // internalcomparator 用于初始化comparator
                        uint32_t memtable_id,
                        DBProfiler *db_profiler,
                        bool is_ready, 
@@ -83,6 +84,8 @@ namespace leveldb {
 
     size_t MemTable::ApproximateMemoryUsage() { return arena_.MemoryUsage(); }
 
+// keycomparator的比较
+// lookupkey和里面的key前面格式相同
     int MemTable::KeyComparator::operator()(const char *aptr,
                                             const char *bptr) const {
         // Internal keys are encoded as length-prefixed strings.
@@ -101,12 +104,14 @@ namespace leveldb {
         return scratch->data();
     }
 
+// 专注于这个提供的接口!!!!!
     class MemTableIterator : public Iterator {
     public:
         explicit MemTableIterator(MemTable *table, TraceType trace_type,
                                   AccessCaller caller, uint32_t sample_size)
+                // 去掉sample_size
                 : iter_(
-                &(table->table_), sample_size), trace_type_(trace_type),
+                &(table->table_)), trace_type_(trace_type),
                   caller_(caller) {
             if (db_profiler_ != nullptr) {
                 Access access = {
@@ -198,11 +203,12 @@ namespace leveldb {
         return new MemTableIterator(this, trace_type, caller, sample_size);
     }
 
+// 这里的key和value是最原始的
     void MemTable::Add(SequenceNumber s, ValueType type, const Slice &key,
                        const Slice &value) {
         // Format of an entry is concatenation of:
         //  key_size     : varint32 of internal_key.size()
-        //  key bytes    : char[internal_key.size()]
+        //  key bytes    : char[internal_key.size()]    ->这个里面包括原本的user_key和tag和seq的东西
         //  value_size   : varint32 of value.size()
         //  value bytes  : char[value.size()]
         size_t key_size = key.size();
@@ -216,6 +222,10 @@ namespace leveldb {
         // uint64_t buf_offset = arena_.Allocate(encoded_len);
         // char *p = EncodeVarint32(buf_ + buf_offset, internal_key_size);
         
+        uint64_t hash = nova::CityHash64(key.data(), key.size());
+        // NOVA_LOG(rdmaio::INFO) << "put key: " << std::string(key.data(), key.size()) << " " << "hash: " << hash;
+
+
         memcpy(p, key.data(), key_size);
         p += key_size;
         EncodeFixed64(p, (s << 8) | type);
@@ -225,32 +235,28 @@ namespace leveldb {
 
 
         assert(p + val_size == buf + encoded_len);
-        table_.Insert(buf);
+        table_.Insert(buf, hash);
     }
 
 
     bool MemTable::Get(const LookupKey &key, std::string *value, Status *s) {
         WaitUntilReady();
-        Slice memkey = key.memtable_key();
-        Table::Iterator iter(&table_);
-        iter.Seek(memkey.data());
-        if (iter.Valid()) {
-            // entry format is:
-            //    klength  varint32          5
-            //    userkey  char[klength]     8
-            //    tag      uint64            8
-            //    vlength  varint32          5
-            //    value    char[vlength]     1024
-            // Check that it belongs to same user key.  We do not check the
-            // sequence number since the Seek() call above should have skipped
-            // all entries with overly large sequence numbers.
-            const char *entry = iter.key();
+        Slice memkey = key.memtable_key(); // 整个 包括长度 userkey和 sequence和tag的结合体
+
+        // 这里直接get到
+        // 找到第一个>next的
+        uint64_t hash = nova::cityhash(key.user_key().data(), key.user_key().size());
+        // NOVA_LOG(rdmaio::INFO) << "get key: " << std::string(key.user_key().data(), key.user_key().size()) << " " << "hash: " << hash;
+        // char* found_key = nullptr;
+        bool found = false;
+        auto found_key = table_.Get(memkey.data(), hash, &found);
+        if(found){
             uint32_t key_length;
-            const char *key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length); // 读出长度并且key_pt指向userkey 这里的key length 包括了tag 也就是类型和序列号的结合
+            const char *key_ptr = GetVarint32Ptr(found_key, found_key + 5, &key_length);
             if (comparator_.comparator.user_comparator()->Compare(
                     Slice(key_ptr, key_length - 8), key.user_key()) == 0) { // 对比user key
                 // Correct user key
-                const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8); //
+                const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8); // 去看tag
                 switch (static_cast<ValueType>(tag & 0xff)) {
                     case kTypeValue: {
                         Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
@@ -261,9 +267,45 @@ namespace leveldb {
                         *s = Status::NotFound(Slice());
                         return true;
                 }
-            }
+            }            
+        }else{
+            return false; // 代表没有找到
         }
-        return false;
+
+
+
+        // Table::Iterator iter(&table_);
+        // iter.Seek(memkey.data()); // 这里到底是怎么找的
+        // if (iter.Valid()) { // 这里也使用了iter 
+        //     // entry format is:
+        //     //    klength  varint32          5
+        //     //    userkey  char[klength]     8
+        //     //    tag      uint64            8
+        //     //    vlength  varint32          5
+        //     //    value    char[vlength]     1024
+        //     // Check that it belongs to same user key.  We do not check the
+        //     // sequence number since the Seek() call above should have skipped
+        //     // all entries with overly large sequence numbers.
+        //     const char *entry = iter.key();
+        //     uint32_t key_length;
+        //     const char *key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length); // 读出长度并且key_pt指向userkey 这里的key length 包括了tag 也就是类型和序列号的结合
+        //     if (comparator_.comparator.user_comparator()->Compare(
+        //             Slice(key_ptr, key_length - 8), key.user_key()) == 0) { // 对比user key
+        //         // Correct user key
+        //         const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8); // 去看tag
+        //         switch (static_cast<ValueType>(tag & 0xff)) {
+        //             case kTypeValue: {
+        //                 Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
+        //                 value->assign(v.data(), v.size());
+        //                 return true;
+        //             }
+        //             case kTypeDeletion:
+        //                 *s = Status::NotFound(Slice());
+        //                 return true;
+        //         }
+        //     }
+        // }
+        // return false;
     }
 
     AtomicMemTable::AtomicMemTable(MemManager* mem_manager, uint32_t dbid):

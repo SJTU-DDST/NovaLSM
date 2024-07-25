@@ -12,6 +12,7 @@
 #include "leveldb/db_profiler.h"
 #include "db/dbformat.h"
 #include "db/skiplist.h"
+#include "db/hashlist.h"
 #include "leveldb/db.h"
 #include "leveldb/stoc_client.h"
 #include "util/arena.h"
@@ -126,7 +127,8 @@ namespace leveldb {
         uint32_t memtable_id_ = 0;
         FileMetaData flushed_meta_;
 
-        typedef SkipList<const char *, KeyComparator> Table;
+        // typedef SkipList<const char *, KeyComparator> Table; // 改为HashList试一下
+        typedef HashList<const char *, KeyComparator> Table;
         Arena arena_;
         Table table_;        
         

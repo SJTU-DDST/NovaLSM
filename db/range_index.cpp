@@ -165,7 +165,7 @@ namespace leveldb {
                 continue;
             }
 //            NOVA_ASSERT(memtable) << memtableid;
-            list.push_back(memtable->NewIterator(TraceType::MEMTABLE, AccessCaller::kUserIterator));
+            list.push_back(memtable->NewIterator(TraceType::MEMTABLE, AccessCaller::kUserIterator)); // 这里使用了memtable的iterator
         }
         for (uint64_t sstableid : range_table.l0_sstable_ids) {
             auto meta = v->fn_files_[sstableid];

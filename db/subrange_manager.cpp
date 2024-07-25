@@ -370,7 +370,7 @@ namespace leveldb {
                     sample_size = ((double) subrange_mem_nputs[i][j] / (double) total_puts) * sample_size_per_subrange;
                 }
                 uint32_t samples = 0;
-                leveldb::Iterator *it = mem->memtable_->NewIterator(
+                leveldb::Iterator *it = mem->memtable_->NewIterator( // 这里使用了memtable的iterator
                         TraceType::MEMTABLE, AccessCaller::kUncategorized, sample_size);
                 it->SeekToFirst();
                 while (it->Valid() && samples < sample_size) {
@@ -946,7 +946,7 @@ namespace leveldb {
             double total_accesses = 0;
             for (int i = 0; i < subrange_imms.size(); i++) {
                 AtomicMemTable *mem = subrange_imms[i];
-                Iterator *it = mem->memtable_->NewIterator(MEMTABLE, kUncategorized, 0);
+                Iterator *it = mem->memtable_->NewIterator(MEMTABLE, kUncategorized, 0);// 这里使用了memtable的iterator
                 it->SeekToFirst();
                 while (it->Valid()) {
                     Slice uk = ExtractUserKey(it->key());

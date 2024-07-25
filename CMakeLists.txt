@@ -128,6 +128,7 @@ target_sources(leveldb
         "db/pmmemtable.cpp"
         "db/pmskiplist.h"
         "db/skiplist.h"
+        "db/hashlist.h"
         "db/snapshot.h"
         "db/table_cache.cc"
         "db/table_cache.h"

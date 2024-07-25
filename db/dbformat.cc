@@ -385,6 +385,7 @@ namespace leveldb {
         return "leveldb.InternalKeyComparator";
     }
 
+// 先比较用户的key 然后再比较版本号!!!
     int
     InternalKeyComparator::Compare(const Slice &akey, const Slice &bkey) const {
         // Order by:

@@ -118,3 +118,10 @@ sudo stdbuf --output=0 --error=0 /home/yuhang/NovaLSM/nova/nova_server_main --lt
 
 # 分文件mmap 只是为了debug
 stdbuf --output=0 --error=0 /home/yuhang/NovaLSM/nova/nova_server_main --ltc_migration_policy=immediate --enable_range_index=true --num_migration_threads=32 --num_sstable_replicas=1 --level=6 --l0_start_compaction_mb=4096 --subrange_no_flush_num_keys=100 --enable_detailed_db_stats=false --major_compaction_type=sc --major_compaction_max_parallism=32 --major_compaction_max_tables_in_a_set=20 --enable_flush_multiple_memtables=true --recover_dbs=true --num_recovery_threads=32 --sampling_ratio=1 --zipfian_dist_ref_counts=/tmp/zipfian --client_access_pattern=uniform --memtable_type=static_partition --enable_subrange=true --num_log_replicas=1 --log_record_mode=none --scatter_policy=power_of_two --number_of_ltcs=1 --enable_lookup_index=true --l0_stop_write_mb=10240 --num_memtable_partitions=64 --num_memtables=256 --num_rdma_bg_workers=16 --db_path=/home/yuhang/NovaLSM/db_files/nova-db-10000000-1024 --pm_path=/home/yuhang/NovaLSM/pm_files/nova-db-10000000-1024 --levels_in_pm=0 --num_storage_workers=256 --stoc_files_path=/home/yuhang/NovaLSM/db_files/stoc_files --max_stoc_file_size_mb=18432 --sstable_size_mb=16 --ltc_num_stocs_scatter_data_blocks=1 --all_servers=192.168.98.74:10993,192.168.98.70:10993 --server_id=0 --mem_pool_size_gb=30 --use_fixed_value_size=1024 --ltc_config_path=/home/yuhang/NovaLSM/config/nova-tutorial-config --ltc_num_client_workers=512 --num_rdma_fg_workers=16 --num_compaction_workers=256 --block_cache_mb=0 --row_cache_mb=0 --memtable_size_mb=16 --cc_log_buf_size=1024 --rdma_port=20624 --rdma_max_msg_size=262144 --rdma_max_num_sends=32 --rdma_doorbell_batch_size=8 --enable_rdma=True --enable_load_data=False --use_local_disk=false >& /tmp/results/server-0-out < /dev/null &
+
+
+
+
+
+
+// 时间少一点

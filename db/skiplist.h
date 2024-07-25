@@ -363,6 +363,7 @@ namespace leveldb {
     }
 
 // prev用于记录下各级的前一个节点，换句话说就是在各级的哪个节点下展开寻找
+// x >= key
     template<typename Key, class Comparator>
     typename SkipList<Key, Comparator>::Node *
     SkipList<Key, Comparator>::FindGreaterOrEqual(const Key &key,
@@ -373,12 +374,12 @@ namespace leveldb {
             // Node *next = x->Next(level);
             Node* next = x->Next(level);
             // Node* next = reinterpret_cast<Node*>(arena_->Buf() + next_offset);
-            if (KeyIsAfterNode(key, next)) { // 一直到找到一个节点next
+            if (KeyIsAfterNode(key, next)) { // 当key>=next时 一直找
                 // Keep searching in this list
                 x = next;
-            } else {
+            } else { // key < next的时候
                 if (prev != nullptr) prev[level] = x; // 记录当前节点
-                if (level == 0) { // 如果当前已经是最后一层 将下一个节点一同返回 key <= next
+                if (level == 0) { // 如果当前已经是最后一层 将下一个节点一同返回 key < next
                     return next; 
                 } else {
                     // Switch to next list
@@ -388,7 +389,7 @@ namespace leveldb {
         }
     }
 
-// 严格小于
+// 严格小于           x < key next >= key
     template<typename Key, class Comparator>
     typename SkipList<Key, Comparator>::Node *
     SkipList<Key, Comparator>::FindLessThan(const Key &key) const {

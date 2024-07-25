@@ -1008,7 +1008,7 @@ namespace leveldb {
             meta.flush_timestamp = versions_->last_sequence_;
             meta.level = 0;
             Status s;
-            Iterator *iter = imm->NewIterator(TraceType::IMMUTABLE_MEMTABLE,
+            Iterator *iter = imm->NewIterator(TraceType::IMMUTABLE_MEMTABLE,// 这里使用了memtable的iterator
                                               AccessCaller::kCompaction);
             s = TestBuildTable(dbname_, pmname_, 0, levels_in_pm_, env_, options_, table_cache_, iter,
                                &meta, bg_thread);
@@ -1083,7 +1083,7 @@ namespace leveldb {
             meta.flush_timestamp = versions_->last_sequence_;
             meta.level = 0;
             Status s;
-            Iterator *iter = imm->NewIterator(TraceType::IMMUTABLE_MEMTABLE, AccessCaller::kCompaction);
+            Iterator *iter = imm->NewIterator(TraceType::IMMUTABLE_MEMTABLE, AccessCaller::kCompaction);// 这里使用了memtable的iterator
             nova::NovaGlobalVariables::global.generated_memtable_sizes += imm->ApproximateMemoryUsage();
             s = BuildTable(dbname_, pmname_, meta.level, levels_in_pm_, env_, options_, table_cache_, iter, &meta, bg_thread, prune_memtable); // 把sstable做出来
             NOVA_ASSERT(s.ok()) << s.ToString();
@@ -1115,7 +1115,7 @@ namespace leveldb {
         for (auto &task : tasks) {
             MemTable *imm = reinterpret_cast<MemTable *>(task.memtable);
             NOVA_ASSERT(imm);
-            Iterator *iter = imm->NewIterator(TraceType::IMMUTABLE_MEMTABLE, AccessCaller::kCompaction);
+            Iterator *iter = imm->NewIterator(TraceType::IMMUTABLE_MEMTABLE, AccessCaller::kCompaction);// 这里使用了memtable的iterator
             iterators.push_back(iter);
             stats.input_source.num_files += 1;
             stats.input_source.file_size += imm->ApproximateMemoryUsage();
@@ -1188,7 +1188,7 @@ namespace leveldb {
             p->mutex.Lock();
             {
                 if (lookup_index_) {
-                    auto new_memtable_it = output_memtable->NewIterator(TraceType::IMMUTABLE_MEMTABLE,
+                    auto new_memtable_it = output_memtable->NewIterator(TraceType::IMMUTABLE_MEMTABLE,// 这里使用了memtable的iterator
                                                                         AccessCaller::kCompaction);
                     while (new_memtable_it->Valid()) {
                         Slice ukey = ExtractUserKey(new_memtable_it->key());
@@ -1278,7 +1278,7 @@ namespace leveldb {
             meta.flush_timestamp = versions_->last_sequence_;
             meta.level = 0;
             Status s;
-            Iterator *iter = imm->NewIterator(TraceType::IMMUTABLE_MEMTABLE,
+            Iterator *iter = imm->NewIterator(TraceType::IMMUTABLE_MEMTABLE,// 这里使用了memtable的iterator
                                               AccessCaller::kCompaction);
             s = BuildTable(dbname_, pmname_, meta.level, levels_in_pm_, env_, options_, table_cache_, iter,
                            &meta, bg_thread, false);
@@ -2836,14 +2836,14 @@ namespace leveldb {
                                  const leveldb::Slice &val) {
         uint64_t last_sequence = versions_->last_sequence_.fetch_add(1);
         // 先不管subrange的reorg 先针对均匀场景进行操作 就是不开subrange reorganization enable !!! 选项要选为 false
-        if (processed_writes_ > SUBRANGE_WARMUP_NPUTS && // 只有在这里改了subrange
-            processed_writes_ % SUBRANGE_REORG_INTERVAL == 0 &&
-            options_.enable_subrange_reorg) {
-            // wake up reorg thread.
-            EnvBGTask task = {};
-            task.db = this;
-            reorg_thread_->Schedule(task);
-        }
+        // if (processed_writes_ > SUBRANGE_WARMUP_NPUTS && // 只有在这里改了subrange
+        //     processed_writes_ % SUBRANGE_REORG_INTERVAL == 0 &&
+        //     options_.enable_subrange_reorg) {
+        //     // wake up reorg thread.
+        //     EnvBGTask task = {};
+        //     task.db = this;
+        //     reorg_thread_->Schedule(task);
+        // }
         SubRange *subrange = nullptr;
         int subrange_id = subrange_manager_->SearchSubranges(options, key, val,
                                                              &subrange);
