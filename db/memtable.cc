@@ -249,7 +249,7 @@ namespace leveldb {
         // NOVA_LOG(rdmaio::INFO) << "get key: " << std::string(key.user_key().data(), key.user_key().size()) << " " << "hash: " << hash;
         // char* found_key = nullptr;
         bool found = false;
-        auto found_key = table_.Get(memkey.data(), hash, &found);
+        auto found_key = table_.Get(memkey.data(), hash, &found, key.user_key());
         if(found){
             uint32_t key_length;
             const char *key_ptr = GetVarint32Ptr(found_key, found_key + 5, &key_length);

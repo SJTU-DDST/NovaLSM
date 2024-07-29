@@ -2127,6 +2127,9 @@ namespace leveldb {
                 return Status::OK();
             }
         }
+        *value = "didn't find";
+        NOVA_LOG(rdmaio::ERROR) << "didn't find key: " << std::string(key.data(), key.size());
+        return Status::OK();
         return GetWithRangeIndex(options, key, value);
     }
 
@@ -2197,12 +2200,16 @@ namespace leveldb {
 //                               memtable->memtable_->memtableid(),
 //                               s.ToString());
 
+            //NOVA_LOG(rdmaio::INFO) << "lookup index has key: " << std::string(key.data(), key.size());
+
             bool found = memtable->memtable_->Get(lkey, value, &s);
             versions_->mid_table_mapping_[memtableid]->Unref(dbname_);
             if (found) {
                 number_of_memtable_hits_ += 1;
+                //NOVA_LOG(rdmaio::INFO) << "lookup index has key: " << std::string(key.data(), key.size()) << " and find it in memtable";
                 return Status::OK();
             } else {
+                //NOVA_LOG(rdmaio::INFO) << "lookup index has key: " << std::string(key.data(), key.size()) << " but didn't find it";
                 return Status::NotFound("");
             }
         }
@@ -2236,6 +2243,14 @@ namespace leveldb {
             versions_->versions_[vid]->Unref(dbname_);
         }
 
+        // std::string l0s;
+        // for(int i = 0; i < l0fns.size(); i++){
+        //     l0s += std::to_string(l0fns[i]);
+        //     l0s += ",";
+        // }
+
+        // NOVA_LOG(rdmaio::INFO) << "look up for key: " << std::string(key.data(), key.size()) << "in level 0 files " << l0s;
+
         // l0层的get要特殊处理
         if (!l0fns.empty()) {
             s = current->Get(options, l0fns, lkey, &latest_seq, value, &number_of_files_to_search_for_get_);
@@ -2244,6 +2259,8 @@ namespace leveldb {
             << fmt::format("v:{} status:{} mid:{} version:{}", vid, s.ToString(), memtableid, current->DebugString());
         if (s.IsNotFound()) { // 如果l0层的没找到 那就去l1及以上找吧
             // Search L1 files.
+            // NOVA_LOG(rdmaio::INFO) << "look up in level 0 and didn't find key: " << std::string(key.data(), key.size());
+
             Version::GetStats stats = {};
             SequenceNumber l1seq;
             s = current->Get(options, lkey, &l1seq, value, &stats, GetSearchScope::kL1AndAbove,
@@ -2251,12 +2268,25 @@ namespace leveldb {
 //            if (l1seq > latest_seq) {
 //                value->assign(l1val);
 //            }
+        }else{
+            // NOVA_LOG(rdmaio::INFO) << "look up in level 0 and find key: " << std::string(key.data(), key.size());
+            versions_->versions_[vid]->Unref(dbname_);
+            return s;
+            // NOVA_ASSERT(s.ok())
+            //     << fmt::format("key:{} val:{} seq:{} status:{} version:{}",
+            //                 key.ToString(), value->size(), latest_seq,
+            //                 s.ToString(),
+            //                 current->DebugString());            
         }
-        NOVA_ASSERT(s.ok())
-            << fmt::format("key:{} val:{} seq:{} status:{} version:{}",
-                           key.ToString(), value->size(), latest_seq,
-                           s.ToString(),
-                           current->DebugString());
+
+        if(s.ok()){
+            // NOVA_LOG(rdmaio::INFO) << "look up in level 1 and find key: " << std::string(key.data(), key.size());
+        }else{
+            // NOVA_LOG(rdmaio::INFO) << "look up in level 1 and didn't find key: " << std::string(key.data(), key.size());
+        }
+
+
+
         versions_->versions_[vid]->Unref(dbname_);
         return s;
     }

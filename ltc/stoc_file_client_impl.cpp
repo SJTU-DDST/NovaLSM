@@ -9,6 +9,7 @@
 #include <table/block.h>
 #include <table/block_builder.h>
 #include <util/crc32c.h>
+#include <util/env_posix.h>
 
 #include "stoc_file_client_impl.h"
 #include "storage_selector.h"
@@ -776,6 +777,7 @@ namespace leveldb {
                 FetchMetadataFiles(files, dbname, pmname, levels_in_pm, options, stoc_block_client, env_);
             }
             s = env_->NewRandomAccessFile(metafile, &local_ra_file_);
+            reinterpret_cast<leveldb::PosixEnv*>(env_)->unref(metafile);
         }
         if (prefetch_all_) {
             NOVA_ASSERT(ReadAll(stoc_client).ok());

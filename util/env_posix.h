@@ -327,6 +327,13 @@ namespace leveldb {
 
         void SleepForMicroseconds(int micros) override;
 
+        void unref(const std::string &filename){
+            auto fn = NormalizePath(filename);
+            mutex_.Lock();
+            file_map_[fn]->Unref();
+            mutex_.Unlock();
+        }
+
     private:
         std::string NormalizePath(const std::string &path);
 

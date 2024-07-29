@@ -10,6 +10,8 @@
 #include "util/arena.h"
 #include "util/random.h"
 #include "common/city_hash.h"
+#include "db/dbformat.h"
+#include "util/coding.h"
 
 namespace leveldb {
     class Arena;
@@ -43,7 +45,7 @@ namespace leveldb {
         bool Contains(const Key &key, uint64_t hash) const; // 待定
 
         // 这个方法新加入，用于memtable.cc中的查询，查找是否还有其他点查询
-        Key Get(const Key &key, uint64_t hash, bool* s) const; // 之后再加入
+        Key Get(const Key &key, uint64_t hash, bool* s, Slice user_key) const; // 之后再加入
 
         // insert和get只有memtable.cc里面会调用，
         int Compare(const Key& key1, const Key& key2) const;
@@ -392,18 +394,30 @@ namespace leveldb {
 
 // 去看seek的方法
     template<typename Key, class Comparator>
-    Key HashList<Key, Comparator>::Get(const Key &key, uint64_t hash, bool* s) const {
+    Key HashList<Key, Comparator>::Get(const Key &key, uint64_t hash, bool* s, Slice user_key) const {
         Node* x = hashlist_[hash % 20000].load(std::memory_order_relaxed);
         while(x != nullptr){
-            if(Compare(key, x->key) >= 0){
-                // *s = true;
-                // return x->key;
-                x = x->Next();
-            }else{
+            // 这里改为只比较 userkey的部分
+            uint32_t key_length;
+            const char *key_ptr = GetVarint32Ptr(x->key, x->key + 5, &key_length);
+            if(compare_.comparator.user_comparator()->Compare(Slice(key_ptr, key_length - 8), user_key) == 0){
                 *s = true;
                 return x->key;
-                // x = x->next_;
+            }else{
+                x = x->Next();
             }
+
+
+
+            // if(){
+            //     // *s = true;
+            //     // return x->key;
+            //     x = x->Next();
+            // }else{
+            //     *s = true;
+            //     return x->key;
+            //     // x = x->next_;
+            // }
         }
         *s = false;
         return nullptr;

@@ -657,6 +657,7 @@ namespace leveldb {
             MutexLock lock(&mutex_);
             if (file_map_.find(fn) != file_map_.end()) {
                 // File exists
+                file_map_[fn]->Ref();
                 return true;
             }
             // Now also check if fn exists as a dir
