@@ -668,6 +668,38 @@ namespace leveldb {
         }
         return ::access(filename.c_str(), F_OK) == 0;
     }
+    
+    bool PosixEnv::FileExistsandGet(const std::string &filename, RandomAccessFile **result) {
+        auto fn = NormalizePath(filename);
+        {
+            MutexLock lock(&mutex_);
+            if (file_map_.find(fn) != file_map_.end()) {
+                // File exists
+                // file_map_[fn]->Ref();
+                auto *f = file_map_[fn];
+                // if (f->is_lock_file()) {
+                //     return Status::InvalidArgument(fn,
+                //                                    "Cannot open a lock file.");
+                // }
+                *result = new MemRandomAccessFile(f);
+            }
+            if (*result != nullptr) {
+                return true;
+            }
+        }
+        return false;
+            // Now also check if fn exists as a dir
+        //     for (const auto &iter : file_map_) {
+        //         const std::string &filename = iter.first;
+        //         if (filename.size() >= fn.size() + 1 &&
+        //             filename[fn.size()] == '/' &&
+        //             Slice(filename).starts_with(Slice(fn))) {
+        //             return true;
+        //         }
+        //     }
+        // }
+        // return ::access(filename.c_str(), F_OK) == 0;
+    }    
 
     Status PosixEnv::GetChildren(const std::string &directory_path,
                                  std::vector<std::string> *result) {

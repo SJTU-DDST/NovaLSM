@@ -14,6 +14,7 @@
 #include "storage_selector.h"
 #include "db/filename.h"
 #include "common/nova_config.h"
+#include "util/env_posix.h"
 
 namespace leveldb {
 //用这个函数建立了manifest文件，这个文件应该放置于stoc?
@@ -749,15 +750,15 @@ namespace leveldb {
         NOVA_ASSERT(stoc_block_client);
         {
             auto metafile = TableFileName(dbname, file_number, FileInternalType::kFileData, replica_id);
-            if (!env_->FileExists(metafile)) {
+            if (!reinterpret_cast<leveldb::PosixEnv*>(env_)->FileExistsandGet(metafile, &local_ra_file_)) {
                 NOVA_LOG(rdmaio::INFO)
                     << fmt::format("Fetch missing metadata db:{} fd:{} file {}", dbname, file_number,
                                    meta->DebugString());
                 std::vector<const FileMetaData *> files;
                 files.push_back(meta);
                 FetchMetadataFiles(files, dbname, options, stoc_block_client, env_);
+                s = env_->NewRandomAccessFile(metafile, &local_ra_file_);
             }
-            s = env_->NewRandomAccessFile(metafile, &local_ra_file_);
         }
         if (prefetch_all_) {
             NOVA_ASSERT(ReadAll(stoc_client).ok());

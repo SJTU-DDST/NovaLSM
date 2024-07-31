@@ -45,7 +45,7 @@ namespace rdmaio {
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
 #ifndef NOVA_LOG_LEVEL
-#define NOVA_LOG_LEVEL ::rdmaio::DEBUG
+#define NOVA_LOG_LEVEL ::rdmaio::INFO
 #endif
 
 // logging macro definiations

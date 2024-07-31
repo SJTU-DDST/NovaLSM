@@ -22,7 +22,7 @@ namespace nova {
     void NovaRDMARCBroker::Init(RdmaCtrl *rdma_ctrl) {
         NOVA_LOG(INFO) << "RDMA client thread " << thread_id_
                        << " initializing";
-        RdmaCtrl::DevIdx idx{.dev_id = 0, .port_id = 1}; // using the first RNIC's first port
+        RdmaCtrl::DevIdx idx{.dev_id = 1, .port_id = 1}; // using the first RNIC's first port
         const char *cache_buf = mr_buf_;
         uint64_t my_memory_id = my_server_id_;
 
