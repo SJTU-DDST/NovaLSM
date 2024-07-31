@@ -768,16 +768,17 @@ namespace leveldb {
         NOVA_ASSERT(stoc_block_client);
         {
             auto metafile = TableFileName(dbname, pmname, file_number, level, levels_in_pm, FileInternalType::kFileData, replica_id);
-            if (!env_->FileExists(metafile)) {
+            if (!reinterpret_cast<leveldb::PosixEnv*>(env_)->FileExistsandGet(metafile, &local_ra_file_)) {
                 NOVA_LOG(rdmaio::INFO)
                     << fmt::format("Fetch missing metadata db:{} fd:{} file {}", dbname, file_number,
                                    meta->DebugString());
                 std::vector<const FileMetaData *> files;
                 files.push_back(meta);
                 FetchMetadataFiles(files, dbname, pmname, levels_in_pm, options, stoc_block_client, env_);
+                s = env_->NewRandomAccessFile(metafile, &local_ra_file_);
             }
-            s = env_->NewRandomAccessFile(metafile, &local_ra_file_);
-            reinterpret_cast<leveldb::PosixEnv*>(env_)->unref(metafile);
+            // s = env_->NewRandomAccessFile(metafile, &local_ra_file_);
+            // reinterpret_cast<leveldb::PosixEnv*>(env_)->unref(metafile);
         }
         if (prefetch_all_) {
             NOVA_ASSERT(ReadAll(stoc_client).ok());

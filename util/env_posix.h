@@ -295,6 +295,8 @@ namespace leveldb {
 
         bool FileExists(const std::string &filename) override;
 
+        bool FileExistsandGet(const std::string &filename, RandomAccessFile **result);
+
         Status GetChildren(const std::string &directory_path,
                            std::vector<std::string> *result) override;
 
