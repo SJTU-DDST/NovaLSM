@@ -266,7 +266,7 @@ namespace nova {
 
     uint64_t mul_hash(const char *key, size_t len);
 
-    std::string ibv_wr_opcode_str(ibv_wr_opcode code);
+    std::string ibv_wr_opcode_str_my(ibv_wr_opcode code);
 
     std::string ibv_wc_opcode_str(ibv_wc_opcode code);
 

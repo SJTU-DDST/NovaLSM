@@ -252,7 +252,7 @@ namespace nova {
         mkdir(tmp, 0777);
     }
 
-    std::string ibv_wr_opcode_str(ibv_wr_opcode code) {
+    std::string ibv_wr_opcode_str_my(ibv_wr_opcode code) {
         switch (code) {
             case IBV_WR_RDMA_WRITE:
                 return "WRITE";
